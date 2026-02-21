@@ -328,6 +328,27 @@ with SessionFactory() as session:
     else:
         print("    - Not enough roster fighters to test cornerstones (skipped)")
 
+    # 5e: Archetype-record consistency
+    print("\n  5e. Archetype-record consistency...")
+    from models.models import Archetype
+    all_fighters = session.execute(select(Fighter)).scalars().all()
+    mismatches = []
+    for f in all_fighters:
+        total_decided = f.wins + f.losses
+        if total_decided == 0:
+            continue
+        win_rate = f.wins / total_decided
+        if f.archetype == Archetype.GOAT_CANDIDATE and win_rate < 0.70:
+            mismatches.append(f"{f.name} GOAT_CANDIDATE {f.wins}-{f.losses} ({win_rate:.0%})")
+        if f.archetype == Archetype.SHOOTING_STAR and win_rate < 0.60:
+            mismatches.append(f"{f.name} SHOOTING_STAR {f.wins}-{f.losses} ({win_rate:.0%})")
+    if mismatches:
+        errors.append(f"Archetype-record mismatches: {mismatches}")
+        for m in mismatches:
+            print(f"    ✗ {m}")
+    else:
+        print("    ✓ No archetype-record mismatches found")
+
     # Summary
     print()
     if errors:

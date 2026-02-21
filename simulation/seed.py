@@ -142,6 +142,7 @@ def _assign_archetype(
         and 22 <= f.age <= 26
         and (f.prime_end - f.prime_start) >= 8
         and goat_counts.get(wc, 0) < 2
+        and f.wins > f.losses * 2
     ):
         goat_counts[wc] = goat_counts.get(wc, 0) + 1
         return Archetype.GOAT_CANDIDATE
@@ -149,7 +150,7 @@ def _assign_archetype(
     if f.overall >= 70 and 19 <= f.age <= 24 and f.losses <= 2:
         return Archetype.PHENOM
 
-    if f.overall >= 68 and f.prime_end <= 29 and f.cardio < 60:
+    if f.overall >= 68 and f.prime_end <= 29 and f.cardio < 60 and f.wins > f.losses:
         return Archetype.SHOOTING_STAR
 
     if f.overall < 62 and 29 <= f.prime_start <= 31:
@@ -258,6 +259,54 @@ def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -
     return traits[:3]
 
 
+def _adjust_record_for_archetype(
+    f: Fighter,
+    archetype: Archetype,
+    rng: random.Random,
+) -> None:
+    """Adjust W-L record so it fits the archetype narrative.
+
+    Keeps total fights the same; redistributes losses to wins
+    (and scales ko_wins/sub_wins proportionally) when needed.
+    """
+    total = f.wins + f.losses + f.draws
+    if total == 0:
+        return
+
+    if archetype == Archetype.GOAT_CANDIDATE:
+        min_rate = 0.70
+    elif archetype == Archetype.SHOOTING_STAR:
+        min_rate = 0.60
+    else:
+        return  # Other archetypes don't need adjustment
+
+    fight_total = f.wins + f.losses  # excluding draws
+    if fight_total == 0:
+        return
+
+    current_rate = f.wins / fight_total
+    if current_rate >= min_rate:
+        return
+
+    # Calculate new wins needed for the minimum rate
+    new_wins = max(f.wins, int(fight_total * min_rate) + 1)
+    new_wins = min(new_wins, fight_total)  # can't exceed total
+    old_wins = f.wins
+
+    f.wins = new_wins
+    f.losses = fight_total - new_wins
+
+    # Scale ko_wins and sub_wins proportionally
+    if old_wins > 0:
+        ratio = new_wins / old_wins
+        f.ko_wins = min(int(f.ko_wins * ratio), new_wins)
+        f.sub_wins = min(int(f.sub_wins * ratio), new_wins - f.ko_wins)
+    else:
+        # Had zero wins before, assign some finish methods
+        f.ko_wins = int(new_wins * rng.uniform(0.15, 0.40))
+        f.sub_wins = int((new_wins - f.ko_wins) * rng.uniform(0.1, 0.35))
+
+
 def seed_fighters(
     session: Session,
     orgs: list[Organization],
@@ -304,6 +353,7 @@ def seed_fighters(
         session.flush()
 
         archetype = _assign_archetype(f, goat_counts, rng)
+        _adjust_record_for_archetype(f, archetype, rng)
         popularity, hype = _starting_popularity_hype(archetype, rng)
         f.archetype = archetype
         f.popularity = popularity
