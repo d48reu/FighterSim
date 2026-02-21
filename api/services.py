@@ -195,19 +195,20 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
                 _task_error(task_id, "No player organization found")
                 return
 
-            # Use any available fighters (player org starts with none)
+            # Only use fighters on the player org's roster
             available = session.execute(
                 select(Contract, Fighter)
                 .join(Fighter, Contract.fighter_id == Fighter.id)
                 .where(
+                    Contract.organization_id == player_org.id,
                     Contract.status == ContractStatus.ACTIVE,
                     Contract.fights_remaining > 0,
                     Fighter.injury_months == 0,
                 )
             ).all()
 
-            if len(available) < 4:
-                _task_error(task_id, "Not enough available fighters (need at least 4)")
+            if len(available) < 2:
+                _task_error(task_id, "Not enough available fighters on your roster (need at least 2)")
                 return
 
             rng = random.Random(seed)
