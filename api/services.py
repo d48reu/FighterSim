@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import random
 import threading
 import uuid
@@ -117,7 +118,15 @@ def _fighter_dict(f: Fighter) -> dict:
         "popularity": round(f.popularity, 1),
         "hype": round(f.hype, 1),
         "goat_score": round(f.goat_score, 1),
+        "traits": _get_traits_list(f),
     }
+
+
+def _get_traits_list(f: Fighter) -> list[str]:
+    try:
+        return json.loads(f.traits) if f.traits else []
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +305,7 @@ def _to_stats(f: Fighter) -> FighterStats:
         id=f.id, name=f.name,
         striking=f.striking, grappling=f.grappling, wrestling=f.wrestling,
         cardio=f.cardio, chin=f.chin, speed=f.speed,
+        traits=_get_traits_list(f),
     )
 
 

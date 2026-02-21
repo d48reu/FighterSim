@@ -27,11 +27,17 @@ class FighterStats:
     chin: int
     speed: int
 
+    # Permanent traits — list of trait name strings
+    traits: list[str] = field(default_factory=list)
+
     # Runtime state — set at fight start
     stamina: float = 100.0          # 0–100, degrades over rounds
     damage: float = 0.0             # accumulated damage
     standing_damage: float = 0.0   # head/body damage tracking
     ground_damage: float = 0.0
+
+    def _has(self, trait: str) -> bool:
+        return trait in self.traits
 
     def effective_striking(self) -> float:
         stamina_factor = 0.5 + 0.5 * (self.stamina / 100)
@@ -47,12 +53,21 @@ class FighterStats:
 
     def is_finished_by_strikes(self) -> bool:
         """Check if cumulative standing damage causes a KO."""
-        chin_threshold = 60 + (self.chin - 50) * 0.8
+        chin_eff = self.chin
+        if self._has("iron_chin"):
+            chin_eff += 8
+        if self._has("journeyman_heart"):
+            chin_eff += 4
+        # Comeback king: extra resistance once already absorbing heavy shots
+        if self._has("comeback_king") and self.standing_damage > 30:
+            chin_eff += 6
+        chin_threshold = 60 + (chin_eff - 50) * 0.8
         return self.standing_damage >= chin_threshold
 
     def is_finished_by_grappling(self) -> bool:
         """Check if ground damage + grappling exposure causes a stoppage."""
-        return self.ground_damage >= 70
+        threshold = 55 if self._has("submission_magnet") else 70
+        return self.ground_damage >= threshold
 
 
 @dataclass
@@ -180,10 +195,10 @@ def _simulate_round(
             # Ground phase
             _simulate_ground_tick(a, b, rng, result)
         elif in_clinch:
-            _simulate_clinch_tick(a, b, rng, result)
+            _simulate_clinch_tick(a, b, rng, result, round_num)
         else:
             # Striking exchange
-            _simulate_striking_tick(a, b, rng, result)
+            _simulate_striking_tick(a, b, rng, result, round_num)
 
         # Check for finish after each tick
         elapsed_seconds = (tick + 1) * TICK_DURATION_SECONDS
@@ -225,35 +240,78 @@ def _simulate_round(
 
 
 def _simulate_striking_tick(
-    a: FighterStats, b: FighterStats, rng: random.Random, result: RoundResult
+    a: FighterStats, b: FighterStats, rng: random.Random,
+    result: RoundResult, round_num: int = 1,
 ) -> None:
     """Model a brief striking exchange."""
-    # A attacks B
-    if rng.random() < _hit_probability(a, b):
-        dmg = _strike_damage(a, b, rng)
+    # ── A attacks B ──────────────────────────────────────────────────────────
+    hit_prob_a = _hit_probability(a, b)
+    if a._has("fast_hands"):
+        hit_prob_a = min(0.85, hit_prob_a + 0.10)
+    if a._has("veteran_iq") and round_num >= 2:
+        hit_prob_a = min(0.85, hit_prob_a + 0.05)
+
+    if rng.random() < hit_prob_a:
+        # Multipliers for slow_starter / late-round payoff
+        mult = 1.0
+        if a._has("slow_starter"):
+            mult *= (0.85 if round_num == 1 else (1.10 if round_num >= 3 else 1.0))
+        # Pressure fighter bonus when opponent is tired
+        if a._has("pressure_fighter") and b.stamina < 40:
+            mult *= 1.20
+        # Comeback king: extra output when absorbing damage
+        if a._has("comeback_king") and a.standing_damage > 25:
+            mult *= 1.20
+
+        dmg = _strike_damage(a, b, rng) * mult
         b.standing_damage += dmg
         b.damage += dmg * 0.5
         result.events.append(f"{a.name} lands strike ({dmg:.1f} dmg)")
 
-    # B attacks A
-    if rng.random() < _hit_probability(b, a):
-        dmg = _strike_damage(b, a, rng)
+        # Knockout artist: small per-strike chance of instant-stop impact
+        if a._has("knockout_artist") and rng.random() < 0.05:
+            b.standing_damage += 200
+
+    # ── B attacks A ──────────────────────────────────────────────────────────
+    hit_prob_b = _hit_probability(b, a)
+    if b._has("fast_hands"):
+        hit_prob_b = min(0.85, hit_prob_b + 0.10)
+    if b._has("veteran_iq") and round_num >= 2:
+        hit_prob_b = min(0.85, hit_prob_b + 0.05)
+
+    if rng.random() < hit_prob_b:
+        mult = 1.0
+        if b._has("slow_starter"):
+            mult *= (0.85 if round_num == 1 else (1.10 if round_num >= 3 else 1.0))
+        if b._has("pressure_fighter") and a.stamina < 40:
+            mult *= 1.20
+        if b._has("comeback_king") and b.standing_damage > 25:
+            mult *= 1.20
+
+        dmg = _strike_damage(b, a, rng) * mult
         a.standing_damage += dmg
         a.damage += dmg * 0.5
         result.events.append(f"{b.name} lands strike ({dmg:.1f} dmg)")
 
+        if b._has("knockout_artist") and rng.random() < 0.05:
+            a.standing_damage += 200
+
 
 def _simulate_clinch_tick(
-    a: FighterStats, b: FighterStats, rng: random.Random, result: RoundResult
+    a: FighterStats, b: FighterStats, rng: random.Random,
+    result: RoundResult, round_num: int = 1,
 ) -> None:
     """Clinch work — knees, elbows, and wrestling scrambles."""
-    # Reduced damage output in clinch
     if rng.random() < 0.5:
         dmg = _strike_damage(a, b, rng) * 0.6
+        if a._has("slow_starter") and round_num == 1:
+            dmg *= 0.85
         b.standing_damage += dmg
         b.damage += dmg * 0.3
     if rng.random() < 0.5:
         dmg = _strike_damage(b, a, rng) * 0.6
+        if b._has("slow_starter") and round_num == 1:
+            dmg *= 0.85
         a.standing_damage += dmg
         a.damage += dmg * 0.3
 
@@ -268,9 +326,11 @@ def _simulate_ground_tick(
     else:
         attacker, defender = b, a
 
-    # Ground and pound — more impactful, less standing damage (controlled position)
+    # Ground and pound
     if rng.random() < 0.65:
         dmg = rng.uniform(6, 15) * (attacker.effective_striking() / 100)
+        if attacker._has("ground_and_pound_specialist"):
+            dmg *= 1.25
         defender.ground_damage += dmg * 0.6
         defender.standing_damage += dmg * 0.1
         result.events.append(f"{attacker.name} lands GnP")
@@ -279,10 +339,12 @@ def _simulate_ground_tick(
     grappling_edge = (attacker.effective_grappling() - defender.effective_grappling()) / 100
     sub_prob = max(0.05, min(0.40, 0.15 + grappling_edge * 0.5))
     if rng.random() < sub_prob:
-        # Escape difficulty based purely on defender's grappling + wrestling
         escape_prob = min(0.75, (defender.effective_grappling() + defender.effective_wrestling()) / 200)
         if rng.random() > escape_prob:
-            defender.ground_damage += rng.uniform(25, 45)
+            sub_dmg = rng.uniform(25, 45)
+            if defender._has("submission_magnet"):
+                sub_dmg *= 1.20
+            defender.ground_damage += sub_dmg
             result.events.append(f"{attacker.name} locks in submission attempt")
         else:
             result.events.append(f"{defender.name} escapes submission")
@@ -313,6 +375,8 @@ def _drain_stamina(fighter: FighterStats, rng: random.Random) -> None:
     """Drain stamina per tick based on cardio."""
     base_drain = rng.uniform(1.5, 3.5)
     cardio_factor = 1.0 - (fighter.cardio / 150)  # high cardio = less drain
+    if fighter._has("gas_tank"):
+        cardio_factor *= 0.40
     fighter.stamina = max(0, fighter.stamina - base_drain * cardio_factor)
 
 
@@ -321,7 +385,7 @@ def _apply_round_fatigue(fighter: FighterStats, completed_round: int) -> None:
     recovery = max(3, 15 - completed_round * 2)
     fighter.stamina = min(100, fighter.stamina + recovery)
     # Stamina ceiling drops each round for low-cardio fighters
-    if fighter.cardio < 60:
+    if fighter.cardio < 60 and not fighter._has("gas_tank"):
         max_stamina = 100 - (completed_round * (60 - fighter.cardio) * 0.3)
         fighter.stamina = min(fighter.stamina, max_stamina)
 

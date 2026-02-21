@@ -102,7 +102,10 @@ async function loadFighters(weightClass = null) {
         <td>${esc(f.name)}</td>
         <td>${f.age}</td>
         <td><span class="badge">${esc(f.weight_class)}</span></td>
-        <td><span class="badge">${esc(f.archetype || '—')}</span></td>
+        <td>${(f.traits || []).map(t => {
+          const label = t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          return `<span class="trait-badge" style="font-size:10px;padding:2px 6px">${esc(label)}</span>`;
+        }).join(' ') || '<span class="badge">' + esc(f.archetype || '—') + '</span>'}</td>
         <td>${f.striking}</td>
         <td>${f.grappling}</td>
         <td>${f.wrestling}</td>
@@ -167,6 +170,17 @@ async function showFighterPanel(fighterId) {
     document.getElementById('val-popularity').textContent = fighter.popularity.toFixed(1);
     document.getElementById('val-hype').textContent       = fighter.hype.toFixed(1);
 
+    // Traits (permanent gold badges)
+    const traitsEl = document.getElementById('panel-traits');
+    const traits = fighter.traits || [];
+    traitsEl.innerHTML = traits.length
+      ? traits.map(t => {
+          const label = t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          return `<span class="trait-badge">${esc(label)}</span>`;
+        }).join('')
+      : '';
+
+    // Narrative tags (grey pills — change over time)
     const tagsEl = document.getElementById('panel-tags');
     const tags = tagsData.tags || [];
     tagsEl.innerHTML = tags.length

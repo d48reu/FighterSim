@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import random
 from datetime import date, timedelta
 
@@ -11,6 +12,7 @@ from models.models import (
     Fighter, Organization, Contract,
     WeightClass, FighterStyle, ContractStatus, Archetype,
 )
+from simulation.traits import TRAITS, contradicts
 
 _FIRST_NAMES = [
     "Carlos", "Luis", "Andre", "Marcus", "Kevin", "Jake", "Tony", "Darian",
@@ -126,6 +128,75 @@ def _starting_popularity_hype(archetype: Archetype, rng: random.Random) -> tuple
     return round(rng.uniform(plo, phi), 1), round(rng.uniform(hlo, hhi), 1)
 
 
+def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -> list[str]:
+    """Return 1-3 trait names for a fighter based on archetype + stats."""
+    traits: list[str] = []
+
+    # Guaranteed traits
+    if archetype == Archetype.GATEKEEPER:
+        traits.append("veteran_iq")
+    elif archetype == Archetype.JOURNEYMAN:
+        traits.append("journeyman_heart")
+    elif archetype == Archetype.GOAT_CANDIDATE:
+        # Always gets one elite defensive trait
+        anchor = rng.choice(["gas_tank", "iron_chin", "comeback_king"])
+        traits.append(anchor)
+
+    # Archetype-based weighted pool
+    _pools: dict[Archetype, list[tuple[str, int]]] = {
+        Archetype.GOAT_CANDIDATE: [
+            ("knockout_artist", 3), ("fast_hands", 3), ("pressure_fighter", 2),
+            ("ground_and_pound_specialist", 2), ("veteran_iq", 1), ("media_darling", 1),
+        ],
+        Archetype.PHENOM: [
+            ("fast_hands", 4), ("pressure_fighter", 3), ("knockout_artist", 3),
+            ("gas_tank", 2), ("comeback_king", 2), ("slow_starter", 1),
+        ],
+        Archetype.GATEKEEPER: [
+            ("iron_chin", 3), ("comeback_king", 3), ("slow_starter", 2),
+            ("gas_tank", 2), ("ground_and_pound_specialist", 2), ("journeyman_heart", 1),
+        ],
+        Archetype.JOURNEYMAN: [
+            ("iron_chin", 3), ("veteran_iq", 3), ("slow_starter", 2),
+            ("comeback_king", 2), ("submission_magnet", 2), ("media_darling", 1),
+        ],
+        Archetype.LATE_BLOOMER: [
+            ("veteran_iq", 4), ("slow_starter", 3), ("iron_chin", 2),
+            ("comeback_king", 2), ("gas_tank", 2), ("ground_and_pound_specialist", 1),
+        ],
+        Archetype.SHOOTING_STAR: [
+            ("knockout_artist", 4), ("fast_hands", 3), ("submission_magnet", 3),
+            ("pressure_fighter", 2), ("media_darling", 2), ("gas_tank", 1),
+        ],
+    }
+
+    pool = list(_pools.get(archetype, []))
+
+    # Stat-based bonus weights
+    if fighter.striking >= 80:
+        pool = [(t, w + (2 if t in ("fast_hands", "knockout_artist", "pressure_fighter") else 0)) for t, w in pool]
+    if fighter.cardio >= 80:
+        pool = [(t, w + (2 if t == "gas_tank" else 0)) for t, w in pool]
+    if fighter.chin >= 80:
+        pool = [(t, w + (2 if t in ("iron_chin", "comeback_king") else 0)) for t, w in pool]
+    if fighter.grappling >= 80:
+        pool = [(t, w + (2 if t == "ground_and_pound_specialist" else 0)) for t, w in pool]
+
+    # Pick additional traits from pool up to target count (1-3 total)
+    target = rng.randint(1, 3)
+    attempts = 0
+    while len(traits) < target and pool and attempts < 20:
+        attempts += 1
+        candidates = [(t, w) for t, w in pool if t not in traits and not contradicts(t, traits)]
+        if not candidates:
+            break
+        names, weights = zip(*candidates)
+        chosen = rng.choices(list(names), weights=list(weights), k=1)[0]
+        traits.append(chosen)
+
+    return traits[:3]
+
+
 def seed_fighters(
     session: Session,
     orgs: list[Organization],
@@ -172,6 +243,7 @@ def seed_fighters(
         f.hype = hype
         f.narrative_tags = "[]"
         f.goat_score = 0.0
+        f.traits = json.dumps(_assign_traits(archetype, f, rng))
 
         org = rng.choice(ai_orgs)
         contract = Contract(

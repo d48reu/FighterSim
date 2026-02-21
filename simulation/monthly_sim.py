@@ -7,6 +7,7 @@ Must complete in under 2 seconds for any roster size.
 
 from __future__ import annotations
 
+import json
 import random
 from datetime import date, timedelta
 from typing import Callable
@@ -246,6 +247,10 @@ def _generate_ai_event(
 
 
 def _fighter_to_stats(f: Fighter) -> FighterStats:
+    try:
+        traits = json.loads(f.traits) if f.traits else []
+    except (json.JSONDecodeError, TypeError):
+        traits = []
     return FighterStats(
         id=f.id,
         name=f.name,
@@ -255,6 +260,7 @@ def _fighter_to_stats(f: Fighter) -> FighterStats:
         cardio=f.cardio,
         chin=f.chin,
         speed=f.speed,
+        traits=traits,
     )
 
 
