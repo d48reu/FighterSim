@@ -96,7 +96,7 @@ class FighterStats:
 
     def is_finished_by_strikes(self, opponent_momentum: float = 0.0) -> bool:
         """Check if cumulative standing damage causes a KO."""
-        threshold = 60 + (self.chin - 50) * 0.8
+        threshold = 68 + (self.chin - 50) * 0.8
         # iron_chin: +8 then *1.12
         if self._has("iron_chin"):
             threshold += 8
@@ -178,13 +178,18 @@ class _StyleContext:
 
 # Takedown modifiers: (attacker_style, defender_style) -> modifier
 STYLE_TAKEDOWN_MODS: dict[tuple[str, str], float] = {
-    ("Wrestler", "Striker"): +0.12,
-    ("Wrestler", "Well-Rounded"): +0.05,
+    ("Wrestler", "Striker"): +0.10,
     ("Wrestler", "Grappler"): +0.03,
-    ("Grappler", "Striker"): +0.08,
+    ("Wrestler", "Wrestler"): +0.05,
+    ("Wrestler", "Well-Rounded"): +0.05,
     ("Striker", "Wrestler"): -0.08,
-    ("Striker", "Grappler"): -0.05,
-    ("Well-Rounded", "Wrestler"): -0.03,
+    ("Striker", "Grappler"): -0.04,
+    ("Striker", "Striker"): -0.05,
+    ("Striker", "Well-Rounded"): -0.02,
+    ("Grappler", "Striker"): +0.08,
+    ("Grappler", "Grappler"): +0.08,
+    ("Grappler", "Wrestler"): +0.03,
+    ("Grappler", "Well-Rounded"): +0.03,
 }
 
 
@@ -205,7 +210,7 @@ def _compute_style_context(a: FighterStats, b: FighterStats) -> _StyleContext:
         ctx.style_narrative = "takedown battle"
     # Grappler vs Grappler
     elif sa == "Grappler" and sb == "Grappler":
-        ctx.ground_stickiness = 0.60  # harder to stand up
+        ctx.ground_stickiness = 0.80  # 20% reduction in scramble probability
         ctx.style_narrative = "grappling clinic"
 
     return ctx
@@ -499,8 +504,8 @@ def _process_strike(
             attacker.adjust_momentum(+0.30)
             defender.adjust_momentum(-0.30)
 
-            # Ref stoppage: 15% chance on knockdown
-            if rng.random() < 0.15:
+            # Ref stoppage: 12% chance on knockdown
+            if rng.random() < 0.12:
                 result.winner_id = attacker.id
                 result.method = "KO/TKO"
                 result.events.append(f"Referee stops the fight! {attacker.name} wins by TKO after knockdown")
@@ -513,9 +518,9 @@ def _process_strike(
                 result.events.append(f"Second knockdown in the round! {attacker.name} wins by TKO")
                 return
 
-    # Knockout artist: small per-strike chance of instant-stop impact
-    if attacker._has("knockout_artist") and rng.random() < 0.05:
-        defender.standing_damage += 200
+    # Knockout artist: small per-strike chance of bonus impact
+    if attacker._has("knockout_artist") and rng.random() < 0.04:
+        defender.standing_damage += 25
 
 
 # ---------------------------------------------------------------------------
@@ -585,10 +590,11 @@ def _simulate_ground_tick(
         result.events.append(f"{attacker.name} lands GnP")
 
     # Submission attempt
-    sub_rate = 0.35 if attacker.effective_grappling() > 65 else 0.15
+    sub_rate = 0.32 if attacker.effective_grappling() > 80 else 0.22
     if rng.random() < sub_rate:
         # Escape probability
-        escape_prob = (defender.effective_grappling() * 0.6 + defender.effective_wrestling() * 0.4) / 200
+        escape_prob = (defender.effective_grappling() * 0.7 + defender.effective_wrestling() * 0.3) / 180
+        escape_prob = max(0.22, escape_prob)  # minimum floor — no fighter is completely helpless
 
         # Penalties/bonuses to escape
         if defender.is_hurt:
@@ -625,8 +631,9 @@ def _simulate_ground_tick(
 # ---------------------------------------------------------------------------
 
 def _takedown_probability(a: FighterStats, b: FighterStats) -> float:
-    advantage = (a.effective_wrestling() - b.effective_wrestling()) / 100
-    return max(0.02, min(0.60, 0.12 + advantage * 0.55))
+    shoot = (a.effective_wrestling() / 100) * 0.20
+    defense = (b.effective_wrestling() / 100) * 0.12
+    return max(0.02, min(0.35, shoot - defense + 0.04))
 
 
 def _hit_probability(attacker: FighterStats, defender: FighterStats) -> float:
@@ -642,7 +649,7 @@ def _hit_probability(attacker: FighterStats, defender: FighterStats) -> float:
 def _strike_damage(attacker: FighterStats, defender: FighterStats, rng: random.Random) -> float:
     power = attacker.effective_striking() / 100
     chin_reduction = defender.chin / 100
-    base = rng.uniform(5, 15)
+    base = rng.uniform(4, 14)
     return base * power * (1.2 - chin_reduction * 0.4)
 
 
