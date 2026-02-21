@@ -15,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from models.database import Base
 from models.models import (
     Fighter, Organization, Contract, Event, Fight,
-    WeightClass, ContractStatus,
+    WeightClass, ContractStatus, Notification,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -404,3 +404,349 @@ def get_fighter_tags(fighter_id: int) -> Optional[list[str]]:
         if not f:
             return None
         return get_tags(f)
+
+
+# ---------------------------------------------------------------------------
+# Contract negotiation: free agents, roster, offers, releases, renewals
+# ---------------------------------------------------------------------------
+
+def _asking_salary(fighter: Fighter) -> int:
+    ovr = fighter.overall
+    hype = fighter.hype if fighter.hype else 10.0
+    wins = fighter.wins or 0
+    raw = ovr * 800 * (1 + hype / 200) + wins * 200
+    return int(round(raw, -2))
+
+
+def _asking_fights(fighter: Fighter) -> int:
+    age = fighter.age
+    if age < 25:
+        return random.choice([5, 6])
+    elif age <= 30:
+        return random.choice([3, 4])
+    else:
+        return random.choice([2, 3])
+
+
+def _asking_length_months(fighter: Fighter) -> int:
+    age = fighter.age
+    if age < 25:
+        return 24
+    elif age <= 30:
+        return 18
+    else:
+        return 12
+
+
+def get_free_agents(
+    weight_class: Optional[str] = None,
+    style: Optional[str] = None,
+    min_overall: Optional[int] = None,
+    sort_by: Optional[str] = None,
+) -> list[dict]:
+    with _SessionFactory() as session:
+        from sqlalchemy import and_, or_
+
+        # Subquery: fighter IDs with an active contract
+        active_ids = (
+            session.execute(
+                select(Contract.fighter_id).where(
+                    Contract.status == ContractStatus.ACTIVE
+                )
+            ).scalars().all()
+        )
+        active_set = set(active_ids)
+
+        q = select(Fighter)
+        if weight_class:
+            q = q.where(Fighter.weight_class == weight_class)
+        if style:
+            q = q.where(Fighter.style == style)
+
+        fighters = session.execute(q).scalars().all()
+        results = []
+        for f in fighters:
+            if f.id in active_set:
+                continue
+            if min_overall and f.overall < min_overall:
+                continue
+            d = _fighter_dict(f)
+            d["asking_salary"] = _asking_salary(f)
+            d["asking_fights"] = _asking_fights(f)
+            d["asking_length_months"] = _asking_length_months(f)
+            results.append(d)
+
+        if sort_by == "overall":
+            results.sort(key=lambda x: x["overall"], reverse=True)
+        elif sort_by == "salary":
+            results.sort(key=lambda x: x["asking_salary"], reverse=True)
+        elif sort_by == "age":
+            results.sort(key=lambda x: x["age"])
+        elif sort_by == "hype":
+            results.sort(key=lambda x: x["hype"], reverse=True)
+        else:
+            results.sort(key=lambda x: x["overall"], reverse=True)
+
+        return results
+
+
+def get_roster() -> list[dict]:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        rows = session.execute(
+            select(Contract, Fighter)
+            .join(Fighter, Contract.fighter_id == Fighter.id)
+            .where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).all()
+
+        results = []
+        for contract, fighter in rows:
+            d = _fighter_dict(fighter)
+            d["salary"] = contract.salary
+            d["fights_remaining"] = contract.fights_remaining
+            d["fight_count_total"] = contract.fight_count_total
+            d["expiry_date"] = contract.expiry_date.isoformat() if contract.expiry_date else None
+            results.append(d)
+        return results
+
+
+_OFFER_ACCEPTED_MSGS = [
+    "{name} is excited to join your organization!",
+    "{name} has signed on the dotted line. Welcome aboard!",
+    "{name} agrees to terms — ready to fight under your banner.",
+    "{name} shakes hands on the deal. Let's go!",
+    "{name} accepts your offer and is eager to prove their worth.",
+    "{name} liked what they saw. Contract signed!",
+]
+
+_OFFER_REJECTED_MSGS = [
+    "{name} felt the offer was too low and walked away.",
+    "{name} is looking for a bigger payday elsewhere.",
+    "{name} turned down the contract — not enough money on the table.",
+    "{name} wasn't convinced by the offer. Try sweetening the deal.",
+]
+
+
+def make_contract_offer(fighter_id: int, salary: float, fight_count: int, length_months: int) -> dict:
+    with _SessionFactory() as session:
+        fighter = session.get(Fighter, fighter_id)
+        if not fighter:
+            return {"accepted": False, "message": "Fighter not found."}
+
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"accepted": False, "message": "No player organization found."}
+
+        # Check if fighter already has an active contract
+        existing = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter_id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return {"accepted": False, "message": f"{fighter.name} already has an active contract."}
+
+        # Affordability check
+        if player_org.bank_balance < salary * 3:
+            return {"accepted": False, "message": "You can't afford this contract. Need at least 3x the salary in the bank."}
+
+        asking = _asking_salary(fighter)
+        salary_factor = salary / asking if asking > 0 else 1.0
+        prestige_factor = player_org.prestige / 100
+        acceptance_prob = min(0.95, salary_factor * 0.6 + prestige_factor * 0.4)
+
+        if random.random() < acceptance_prob:
+            from datetime import timedelta
+            expiry = date.today() + timedelta(days=length_months * 30)
+            contract = Contract(
+                fighter_id=fighter_id,
+                organization_id=player_org.id,
+                status=ContractStatus.ACTIVE,
+                salary=salary,
+                fight_count_total=fight_count,
+                fights_remaining=fight_count,
+                expiry_date=expiry,
+            )
+            session.add(contract)
+            session.commit()
+            msg = random.choice(_OFFER_ACCEPTED_MSGS).format(name=fighter.name)
+            return {"accepted": True, "message": msg}
+        else:
+            msg = random.choice(_OFFER_REJECTED_MSGS).format(name=fighter.name)
+            return {"accepted": False, "message": msg}
+
+
+def release_fighter(fighter_id: int) -> dict:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"success": False, "message": "No player organization found."}
+
+        contract = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter_id,
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if not contract:
+            return {"success": False, "message": "No active contract found for this fighter."}
+
+        fighter = session.get(Fighter, fighter_id)
+        contract.status = ContractStatus.TERMINATED
+
+        notif = Notification(
+            message=f"{fighter.name} has been released from your roster.",
+            type="fighter_released",
+            created_date=date.today(),
+        )
+        session.add(notif)
+        session.commit()
+        return {"success": True, "message": f"{fighter.name} has been released."}
+
+
+def get_expiring_contracts() -> list[dict]:
+    from datetime import timedelta
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        cutoff = date.today() + timedelta(days=60)
+        rows = session.execute(
+            select(Contract, Fighter)
+            .join(Fighter, Contract.fighter_id == Fighter.id)
+            .where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).all()
+
+        results = []
+        for contract, fighter in rows:
+            if contract.expiry_date <= cutoff or contract.fights_remaining == 0:
+                d = _fighter_dict(fighter)
+                d["salary"] = contract.salary
+                d["fights_remaining"] = contract.fights_remaining
+                d["expiry_date"] = contract.expiry_date.isoformat() if contract.expiry_date else None
+                results.append(d)
+        return results
+
+
+def renew_contract(fighter_id: int, salary: float, fight_count: int, length_months: int) -> dict:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"accepted": False, "message": "No player organization found."}
+
+        fighter = session.get(Fighter, fighter_id)
+        if not fighter:
+            return {"accepted": False, "message": "Fighter not found."}
+
+        contract = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter_id,
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if not contract:
+            return {"accepted": False, "message": "No active contract to renew."}
+
+        if player_org.bank_balance < salary * 3:
+            return {"accepted": False, "message": "You can't afford this renewal. Need at least 3x the salary in the bank."}
+
+        asking = _asking_salary(fighter)
+        salary_factor = salary / asking if asking > 0 else 1.0
+        prestige_factor = player_org.prestige / 100
+        acceptance_prob = min(0.95, salary_factor * 0.6 + prestige_factor * 0.4)
+        acceptance_prob = min(0.95, acceptance_prob * 1.15)  # loyalty bonus
+
+        if random.random() < acceptance_prob:
+            from datetime import timedelta
+            contract.expiry_date = date.today() + timedelta(days=length_months * 30)
+            contract.salary = salary
+            contract.fight_count_total = fight_count
+            contract.fights_remaining = fight_count
+            session.commit()
+            msg = random.choice(_OFFER_ACCEPTED_MSGS).format(name=fighter.name)
+            return {"accepted": True, "message": msg}
+        else:
+            msg = random.choice(_OFFER_REJECTED_MSGS).format(name=fighter.name)
+            return {"accepted": False, "message": msg}
+
+
+def get_finances() -> dict:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {}
+
+        active_contracts = session.execute(
+            select(Contract).where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalars().all()
+
+        total_salaries = sum(c.salary for c in active_contracts)
+        monthly_payroll = total_salaries / 12
+        projected_fight_costs = sum(c.salary * c.fights_remaining for c in active_contracts)
+
+        return {
+            "bank_balance": round(player_org.bank_balance, 2),
+            "monthly_payroll": round(monthly_payroll, 2),
+            "total_annual_salaries": round(total_salaries, 2),
+            "projected_fight_costs": round(projected_fight_costs, 2),
+            "roster_size": len(active_contracts),
+            "prestige": round(player_org.prestige, 1),
+        }
+
+
+def get_notifications() -> list[dict]:
+    with _SessionFactory() as session:
+        notifs = session.execute(
+            select(Notification)
+            .where(Notification.read == False)
+            .order_by(Notification.created_date.desc())
+            .limit(20)
+        ).scalars().all()
+        return [
+            {
+                "id": n.id,
+                "message": n.message,
+                "type": n.type,
+                "created_date": n.created_date.isoformat(),
+                "read": n.read,
+            }
+            for n in notifs
+        ]
+
+
+def mark_notification_read(notification_id: int) -> dict:
+    with _SessionFactory() as session:
+        notif = session.get(Notification, notification_id)
+        if not notif:
+            return {"success": False}
+        notif.read = True
+        session.commit()
+        return {"success": True}

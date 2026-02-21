@@ -12,10 +12,17 @@
       <div class="sidebar-logo">
         <span class="logo-icon">&#x1F94A;</span>
         <span class="logo-text">FighterSim</span>
+        <span id="notif-bell" class="notif-bell" style="margin-left:auto">
+          <span class="notif-icon">&#x1F514;</span>
+          <span id="notif-badge" class="notif-badge hidden">0</span>
+        </span>
+        <div id="notif-dropdown" class="notif-dropdown hidden"></div>
       </div>
       <nav>
         <div class="nav-item active" data-view="dashboard">Dashboard</div>
         <div class="nav-item" data-view="fighters">Fighters</div>
+        <div class="nav-item" data-view="roster">Roster</div>
+        <div class="nav-item" data-view="free-agents">Free Agents</div>
         <div class="nav-item" data-view="rankings">Rankings</div>
         <div class="nav-item" data-view="hof">Hall of Fame</div>
       </nav>
@@ -47,6 +54,39 @@
             <div class="stat-label">Roster</div>
             <div class="stat-value" id="org-roster">—</div>
           </div>
+        </div>
+
+        <div class="finance-grid">
+          <div class="stat-card">
+            <div class="stat-label">Monthly Payroll</div>
+            <div class="stat-value" id="dash-payroll">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Bank Balance</div>
+            <div class="stat-value" id="dash-balance">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Roster Size</div>
+            <div class="stat-value" id="dash-roster-size">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Projected Fight Costs</div>
+            <div class="stat-value" id="dash-fight-costs">—</div>
+          </div>
+        </div>
+
+        <div id="expiring-widget" class="expiring-widget hidden">
+          <h3>Expiring Contracts</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Fighter</th>
+                <th>Expires</th>
+                <th>Fights Left</th>
+              </tr>
+            </thead>
+            <tbody id="expiring-tbody"></tbody>
+          </table>
         </div>
 
         <div class="section">
@@ -124,6 +164,101 @@
         </div>
       </div>
 
+      <!-- Roster -->
+      <div id="view-roster" class="view hidden">
+        <h1>Roster</h1>
+        <div id="roster-payroll-bar" class="payroll-bar">
+          <div class="payroll-item">
+            <div class="payroll-item-label">Fighters</div>
+            <div class="payroll-item-value" id="roster-count">0</div>
+          </div>
+          <div class="payroll-item">
+            <div class="payroll-item-label">Monthly Payroll</div>
+            <div class="payroll-item-value" id="roster-payroll">$0</div>
+          </div>
+          <div class="payroll-item">
+            <div class="payroll-item-label">Bank Balance</div>
+            <div class="payroll-item-value" id="roster-balance">$0</div>
+          </div>
+          <div class="payroll-progress-wrap">
+            <div class="payroll-progress">
+              <div class="payroll-progress-fill" id="roster-progress-fill" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Age</th>
+                <th>Class</th>
+                <th>Style</th>
+                <th>OVR</th>
+                <th>Record</th>
+                <th>Fights Left</th>
+                <th>Salary</th>
+                <th>Expires</th>
+              </tr>
+            </thead>
+            <tbody id="roster-tbody">
+              <tr><td colspan="9" class="muted">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Free Agents -->
+      <div id="view-free-agents" class="view hidden">
+        <h1>Free Agents</h1>
+        <div class="filter-bar">
+          <select id="fa-wc-filter">
+            <option value="">All Weight Classes</option>
+            <option value="Flyweight">Flyweight</option>
+            <option value="Lightweight">Lightweight</option>
+            <option value="Welterweight">Welterweight</option>
+            <option value="Middleweight">Middleweight</option>
+            <option value="Heavyweight">Heavyweight</option>
+          </select>
+          <select id="fa-style-filter">
+            <option value="">All Styles</option>
+            <option value="Striker">Striker</option>
+            <option value="Grappler">Grappler</option>
+            <option value="Wrestler">Wrestler</option>
+            <option value="Well-Rounded">Well-Rounded</option>
+          </select>
+          <label>Min OVR <span id="fa-ovr-val">0</span>
+            <input type="range" id="fa-ovr-filter" min="0" max="100" value="0">
+          </label>
+          <select id="fa-sort">
+            <option value="overall">Sort: Overall</option>
+            <option value="salary">Sort: Salary</option>
+            <option value="age">Sort: Age</option>
+            <option value="hype">Sort: Hype</option>
+          </select>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Age</th>
+                <th>Class</th>
+                <th>Style</th>
+                <th>OVR</th>
+                <th>Record</th>
+                <th>Hype</th>
+                <th>Asking Salary</th>
+                <th>Asking Fights</th>
+              </tr>
+            </thead>
+            <tbody id="free-agents-tbody">
+              <tr><td colspan="9" class="muted">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Hall of Fame -->
       <div id="view-hof" class="view hidden">
         <h1>Hall of Fame</h1>
@@ -196,9 +331,15 @@
           </div>
         </div>
 
+        <div id="panel-stat-bars" class="panel-stat-bars"></div>
+
         <div id="panel-traits" class="panel-traits"></div>
 
         <div id="panel-tags" class="panel-tags"></div>
+
+        <div id="panel-actions" class="panel-actions hidden"></div>
+
+        <div id="panel-offer-result"></div>
 
         <div class="panel-bio-section">
           <div class="panel-bio-label">Fighter Profile</div>

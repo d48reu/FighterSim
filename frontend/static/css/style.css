@@ -397,3 +397,337 @@ tbody td { padding: 9px 10px; }
   white-space: nowrap;
   letter-spacing: 0.2px;
 }
+
+/* ── Filter bar ─────────────────────────────────── */
+
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-bar select,
+.filter-bar input {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+
+.filter-bar select:focus,
+.filter-bar input:focus {
+  border-color: var(--accent);
+}
+
+.filter-bar input[type="range"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.filter-bar label {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Payroll bar ────────────────────────────────── */
+
+.payroll-bar {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.payroll-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.payroll-item-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+
+.payroll-item-value {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.payroll-progress-wrap {
+  flex: 1;
+  min-width: 120px;
+}
+
+.payroll-progress {
+  height: 8px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.payroll-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  background: #4cc9f0;
+}
+
+.payroll-progress-fill.warning { background: #ffc107; }
+.payroll-progress-fill.danger  { background: var(--accent); }
+
+/* ── Panel form (offer / renew) ─────────────────── */
+
+.panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.panel-form label {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panel-form input,
+.panel-form select {
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+
+.panel-form input:focus,
+.panel-form select:focus {
+  border-color: var(--accent);
+}
+
+/* ── Offer result banner ────────────────────────── */
+
+.offer-result {
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.offer-result.success {
+  background: rgba(76, 201, 240, 0.15);
+  border: 1px solid rgba(76, 201, 240, 0.4);
+  color: #4cc9f0;
+}
+
+.offer-result.rejected {
+  background: rgba(230, 57, 70, 0.15);
+  border: 1px solid rgba(230, 57, 70, 0.4);
+  color: var(--accent);
+}
+
+/* ── Button variants ────────────────────────────── */
+
+.btn-danger {
+  background: rgba(230, 57, 70, 0.2);
+  color: var(--accent);
+  border: 1px solid rgba(230, 57, 70, 0.4);
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.12s;
+}
+.btn-danger:hover { background: rgba(230, 57, 70, 0.35); }
+
+.btn-success {
+  background: rgba(76, 201, 240, 0.2);
+  color: #4cc9f0;
+  border: 1px solid rgba(76, 201, 240, 0.4);
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.12s;
+}
+.btn-success:hover { background: rgba(76, 201, 240, 0.35); }
+
+/* ── Stat bars in panel ─────────────────────────── */
+
+.stat-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.stat-bar-label {
+  font-size: 11px;
+  color: var(--muted);
+  width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.stat-bar-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  background: var(--accent);
+}
+
+.stat-bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  width: 24px;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+/* ── Notification system ────────────────────────── */
+
+.notif-bell {
+  position: relative;
+  cursor: pointer;
+  font-size: 18px;
+  user-select: none;
+}
+
+.notif-icon { display: inline-block; }
+
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 8px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 14px;
+}
+
+.notif-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 280px;
+  max-height: 350px;
+  overflow-y: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 100;
+  padding: 6px 0;
+}
+
+.notif-item {
+  padding: 10px 14px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notif-item:hover { background: rgba(255,255,255,0.04); }
+.notif-item:last-child { border-bottom: none; }
+
+.notif-item-date {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.notif-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ── Expiring contracts widget ──────────────────── */
+
+.expiring-widget {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.expiring-widget h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.expiring-widget table { font-size: 12px; }
+
+/* ── Finance grid on dashboard ──────────────────── */
+
+.finance-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+/* ── Clickable rows for roster / free agents ────── */
+
+#roster-tbody tr,
+#free-agents-tbody tr {
+  cursor: pointer;
+}
+
+/* ── Panel actions area ─────────────────────────── */
+
+.panel-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-actions-row {
+  display: flex;
+  gap: 8px;
+}

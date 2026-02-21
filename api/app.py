@@ -119,4 +119,64 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     def rivalries():
         return jsonify(services.get_rivalries())
 
+    # ------------------------------------------------------------------
+    # Contract negotiation
+    # ------------------------------------------------------------------
+
+    @app.route("/api/free-agents")
+    def list_free_agents():
+        weight_class = request.args.get("weight_class")
+        style = request.args.get("style")
+        min_overall = request.args.get("min_overall", type=int)
+        sort_by = request.args.get("sort_by")
+        return jsonify(services.get_free_agents(weight_class, style, min_overall, sort_by))
+
+    @app.route("/api/roster")
+    def list_roster():
+        return jsonify(services.get_roster())
+
+    @app.route("/api/contracts/offer", methods=["POST"])
+    def contract_offer():
+        data = request.json
+        result = services.make_contract_offer(
+            fighter_id=data["fighter_id"],
+            salary=data["salary"],
+            fight_count=data["fight_count"],
+            length_months=data["length_months"],
+        )
+        return jsonify(result)
+
+    @app.route("/api/contracts/release", methods=["POST"])
+    def contract_release():
+        data = request.json
+        result = services.release_fighter(data["fighter_id"])
+        return jsonify(result)
+
+    @app.route("/api/contracts/expiring")
+    def expiring_contracts():
+        return jsonify(services.get_expiring_contracts())
+
+    @app.route("/api/contracts/renew", methods=["POST"])
+    def contract_renew():
+        data = request.json
+        result = services.renew_contract(
+            fighter_id=data["fighter_id"],
+            salary=data["salary"],
+            fight_count=data["fight_count"],
+            length_months=data["length_months"],
+        )
+        return jsonify(result)
+
+    @app.route("/api/finances")
+    def finances():
+        return jsonify(services.get_finances())
+
+    @app.route("/api/notifications")
+    def notifications():
+        return jsonify(services.get_notifications())
+
+    @app.route("/api/notifications/<int:notif_id>/read", methods=["POST"])
+    def mark_notification_read(notif_id: int):
+        return jsonify(services.mark_notification_read(notif_id))
+
     return app

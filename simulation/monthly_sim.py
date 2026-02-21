@@ -17,7 +17,7 @@ from sqlalchemy import select, update
 
 from models.models import (
     Fighter, Organization, Contract, Event, Fight,
-    Ranking, WeightClass, ContractStatus
+    Ranking, WeightClass, ContractStatus, Notification
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
@@ -71,6 +71,30 @@ def _age_fighter(fighter: Fighter, rng: random.Random) -> None:
 
 def _process_contracts(session: Session, today: date, rng: random.Random) -> None:
     """Expire contracts past their date and auto-renew or release fighters."""
+    # Notify about contracts expiring within 60 days (before processing expirations)
+    cutoff = today + timedelta(days=60)
+    expiring_soon = (
+        session.execute(
+            select(Contract).where(
+                Contract.expiry_date <= cutoff,
+                Contract.expiry_date > today,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for contract in expiring_soon:
+        fighter = session.get(Fighter, contract.fighter_id)
+        org = session.get(Organization, contract.organization_id)
+        if org and org.is_player and fighter:
+            session.add(Notification(
+                message=f"{fighter.name}'s contract expires soon ({contract.expiry_date.isoformat()})",
+                type="contract_expiring_soon",
+                created_date=today,
+            ))
+
+    # Process expired contracts
     expired = (
         session.execute(
             select(Contract).where(
@@ -96,6 +120,12 @@ def _process_contracts(session: Session, today: date, rng: random.Random) -> Non
             contract.salary = round(contract.salary * rng.uniform(1.0, 1.15), 2)
         else:
             contract.status = ContractStatus.EXPIRED
+            if org and org.is_player and fighter:
+                session.add(Notification(
+                    message=f"{fighter.name}'s contract has expired",
+                    type="contract_expired",
+                    created_date=today,
+                ))
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +328,32 @@ def sim_month(
         "injuries_healed": 0,
         "events_simulated": 0,
     }
+
+    # 0. Player org monthly payroll deduction
+    player_org = session.execute(
+        select(Organization).where(Organization.is_player == True)
+    ).scalar_one_or_none()
+    if player_org:
+        active_player_contracts = session.execute(
+            select(Contract).where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalars().all()
+        monthly_payroll = sum(c.salary / 12 for c in active_player_contracts)
+        player_org.bank_balance -= monthly_payroll
+        if player_org.bank_balance < 0:
+            session.add(Notification(
+                message="Your organization's finances are in the red. Consider releasing fighters.",
+                type="finances_critical",
+                created_date=sim_date,
+            ))
+        if player_org.bank_balance < -500_000:
+            session.add(Notification(
+                message="Bankruptcy warning! Your debt exceeds $500,000. Take immediate action.",
+                type="bankruptcy_warning",
+                created_date=sim_date,
+            ))
 
     # 1. Age all fighters (bulk update — fast regardless of roster size)
     all_fighters = session.execute(select(Fighter)).scalars().all()

@@ -307,3 +307,19 @@ class Ranking(Base):
     __table_args__ = (
         Index("ix_ranking_weight_class", "weight_class"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+class Notification(Base):
+    """Lightweight event log for contract and finance alerts."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    message: Mapped[str] = Column(String(300), nullable=False)
+    type: Mapped[str] = Column(String(50), nullable=False)
+    created_date: Mapped[date] = Column(Date, nullable=False)
+    read: Mapped[bool] = Column(Boolean, default=False)
