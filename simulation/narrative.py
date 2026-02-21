@@ -343,16 +343,8 @@ def display_archetype(fighter: Fighter) -> str:
 
 
 # ---------------------------------------------------------------------------
-# generate_fighter_bio — no archetype names ever appear in output text
+# generate_fighter_bio — context-aware, validated bio generation
 # ---------------------------------------------------------------------------
-
-# Priority order for selecting the most narratively significant tag
-_TAG_PRIORITY = [
-    "goat_watch", "legendary_rivalry", "unstoppable", "ageless_wonder",
-    "answered_doubters", "redemption", "giant_killer", "champion",
-    "on_a_tear", "chin_concerns", "fading", "at_the_crossroads",
-    "first_setback", "first_win",
-]
 
 # Trait sentences — describe the effect naturally, never name the trait
 _TRAIT_BIO_LINES: dict[str, list[str]] = {
@@ -411,181 +403,6 @@ _TRAIT_BIO_PRIORITY = [
     "slow_starter", "veteran_iq", "journeyman_heart", "submission_magnet", "media_darling",
 ]
 
-# Main bio templates by (archetype_value, key_tag)
-# RULE: never include the words Phenom, Gatekeeper, Journeyman, Late Bloomer,
-#       Shooting Star, or GOAT Candidate anywhere in the template text.
-_TEMPLATES: dict[tuple[str, Optional[str]], list[str]] = {
-
-    # ── GOAT Candidate ───────────────────────────────────────────────────────
-    ("GOAT Candidate", "goat_watch"): [
-        "The conversation has already started — not about whether {name} belongs, but where he ranks historically in {division}. {wins} wins against quality opposition doesn't happen by accident.",
-        "People keep setting milestones expecting {name} to plateau. He keeps clearing them. The {division} weight class is running out of benchmarks.",
-        "At {age}, {name} is building something in {division} that the sport hasn't seen in a long time. The numbers are one thing. The quality of the names on his record is another.",
-    ],
-    ("GOAT Candidate", "champion"): [
-        "Champions get challenged. {name} gets studied. Every camp in the {division} division has tape on him — and so far, nobody has found the answer.",
-        "{name} didn't just reach the top of the {division} division. He made it look like it was always going to happen.",
-        "The belt is just the punctuation. What {name} is doing in {division} is the actual sentence — {wins} wins, finishing ability, and an aura that changes the energy in the building.",
-    ],
-    ("GOAT Candidate", "ageless_wonder"): [
-        "Age brackets were invented for fighters who decline on schedule. {name} at {age} hasn't received that memo. The {division} division's younger contenders are doing the math — and getting nervous.",
-        "At {age}, {name} should theoretically be mentoring. Instead, he's competing at the highest level {division} has to offer. Nobody has fully explained how.",
-    ],
-    ("GOAT Candidate", "unstoppable"): [
-        "Run back {name}'s last {wins} appearances in {division}. One story, told {wins} different ways: dominant from start to finish.",
-        "The {division} field has run out of answers. {name}'s record is built on an uncomfortable truth — he's simply better than almost everyone wants to publicly admit.",
-    ],
-    ("GOAT Candidate", None): [
-        "Labeled a once-in-a-generation talent, {name} is starting to make that label feel conservative. {wins} wins, top-level opposition, a finish rate that leaves no room for debate. The {division} division has a genuine problem.",
-        "The tools were obvious from day one. The results have followed. {name}'s {record} record in {division} is less a surprise than a confirmation of everything scouts said early.",
-        "Some fighters build toward greatness. {name} arrived looking for it — and found it faster than anyone expected. The {division} weight class is still adjusting.",
-        "{name} is the kind of fighter other fighters study. The {division} record of {wins}-{losses} doesn't fully capture what's happening in there.",
-    ],
-
-    # ── Phenom ───────────────────────────────────────────────────────────────
-    ("Phenom", "giant_killer"): [
-        "{name} stepped over the expected path and went straight for a {division} name on the way up. At {age}, this kind of confidence shouldn't be possible — and yet.",
-        "Prospects aren't supposed to pick hard fights early. {name} picked one anyway, won, and changed the entire conversation about what he is.",
-        "He arrived at {age} expecting to be tested. The {division} division obliged — and he passed every test, including the one everyone thought would slow him down.",
-    ],
-    ("Phenom", "on_a_tear"): [
-        "{wins} straight wins at {age}. Some fighters spend a career chasing numbers like that. {name} is treating them as a starting point in the {division} division.",
-        "The wins have come fast and they've come with authority. {name}'s rise through {division} has been the kind of run that forces established names to pay attention whether they want to or not.",
-        "At {age}, the level of competition should still be modest. {name} disagrees — {wins} wins in {division} against increasingly serious opposition.",
-    ],
-    ("Phenom", "first_win"): [
-        "The debut is done, the first win is logged, and {name} at {age} looks exactly as advertised. The {division} division just got more interesting.",
-        "First impressions matter. {name}'s first appearance in {division} was the kind of debut that scouts replay four or five times just to confirm what they think they're seeing.",
-    ],
-    ("Phenom", "chin_concerns"): [
-        "The talent was never the question. At {age}, {name} has the tools to do real damage in {division} — the question is whether the durability questions get answered before they become the headline.",
-    ],
-    ("Phenom", None): [
-        "At {age}, {name} has already developed the kind of technical package that most {division} fighters spend a decade building. The results are following the tools.",
-        "Youth and skill are a dangerous combination in {division}. {name}, at {age}, has both — and the composure to not waste either.",
-        "The trajectory is obvious if you've watched {name} fight. The only question left for the {division} weight class is: how far does it go?",
-        "Once in a while a fighter walks in and immediately looks like they belong at a higher level. {name} in {division} is that fighter.",
-    ],
-
-    # ── Gatekeeper ───────────────────────────────────────────────────────────
-    ("Gatekeeper", "giant_killer"): [
-        "{name} has never been anyone's pick. That underestimation has a price — and more than one {division} name has found out the hard way.",
-        "The {division} record of {wins}-{losses} tells one story. The signature upset tells another. {name} is more dangerous than the rankings suggest.",
-        "Nobody put {name} on a poster. Nobody picked him to win. That's exactly how he likes it — and exactly why the {division} division should stay cautious.",
-    ],
-    ("Gatekeeper", "at_the_crossroads"): [
-        "After {losses} losses, the question isn't whether {name} can still compete in {division} — it's what comes next. That answer isn't obvious. Neither is the trajectory.",
-        "Consecutive setbacks in {division} are a hard thing. {name} has been at the top of the divisional tier for years. The path back is narrow but it's not closed.",
-        "Every fight career has a crossroads. {name}'s is here. The {division} résumé is real — the question is whether there's a new chapter ahead.",
-    ],
-    ("Gatekeeper", "ageless_wonder"): [
-        "At {age}, {name} has outlasted most of the {division} fighters he came up with. There's something to be said for durability — and for fighters who refuse to accept what they're supposed to do next.",
-        "The {division} division has changed around {name}, but he's still here. At {age}, he remains exactly what he's always been: a problem that needs solving.",
-    ],
-    ("Gatekeeper", None): [
-        "Some fighters test champions on the way up. {name} has been that test in {division} more than once — and made them work for every second of it.",
-        "The {record} record understates what {name} brings into a {division} cage. He's been in there with the best in the world. That experience isn't nothing.",
-        "The {division} division is full of hungry contenders. {name} is the fighter who tells you which ones are real — a walking litmus test at the top of the division.",
-        "Veterans don't get enough credit. {name} has been in the {division} trenches long enough to have seen every trick in the book — and a few that haven't been invented yet.",
-    ],
-
-    # ── Journeyman ───────────────────────────────────────────────────────────
-    ("Journeyman", "giant_killer"): [
-        "Nobody bet on {name}. Nobody predicted the upset. That's been the story of a {division} career that refuses to follow the expected script.",
-        "The {division} establishment underestimated {name}. They have the record to prove it — and so does he.",
-        "Don't let the losses fool you. {name} is capable of beating anyone in {division} on a given night — and has done exactly that when the moment arrived.",
-    ],
-    ("Journeyman", "fading"): [
-        "The miles are beginning to show. {name} has given a lot to the {division} division over the years — the question now is how much is left and what the next chapter looks like.",
-        "A {record} record over a long career in {division} is an honest résumé. {name} has been in fights that mattered. Whether more of those are ahead is genuinely less certain.",
-    ],
-    ("Journeyman", "redemption"): [
-        "{name} was written off. He came back. That's the short version — the longer one involves more determination than most {division} fighters will ever have to find.",
-        "Redemption is rare. When it happens, it's worth watching. {name} got his in {division}, and the division had to adjust its expectations all over again.",
-    ],
-    ("Journeyman", "answered_doubters"): [
-        "He's had setbacks. He came back from them. That's the whole story — and it keeps repeating in {division} every time the narrative says it's over.",
-        "{name} answered the doubters in {division} the only way that actually counts. Another win, another chapter.",
-    ],
-    ("Journeyman", None): [
-        "Not every fight career is a title chase. {name}'s {division} record of {wins}-{losses} is an honest account of a fighter who showed up and competed against serious opposition.",
-        "Some fighters exist to test the contenders. {name} has served that role in {division} and done it with more ability than the résumé suggests.",
-        "Nobody put {name} on a poster. He kept fighting anyway. The {division} division is better for it.",
-        "A career like {name}'s in {division} is undervalued. {wins} wins, {losses} losses — an honest decade of competition against people who belong at this level.",
-    ],
-
-    # ── Late Bloomer ─────────────────────────────────────────────────────────
-    ("Late Bloomer", "on_a_tear"): [
-        "It took {age} years to get here, but {name} has arrived with authority — {wins} straight wins in {division} that suggest the slow start was simply an adjustment period.",
-        "At {age}, {name} is running out of patience with being overlooked. The {wins}-fight run is {division}'s problem now.",
-        "Some fighters develop at 22. {name} developed at {age}. The {division} record doesn't show everything that changed to make the current version possible.",
-    ],
-    ("Late Bloomer", "giant_killer"): [
-        "The {division} establishment dismissed {name} for years. The upset that changed the conversation wasn't luck — it was the result of a fighter who quietly became better than anyone was paying attention to.",
-        "At {age}, {name} engineered a result in {division} that nobody predicted. The surprising part is that it was surprising at all.",
-    ],
-    ("Late Bloomer", None): [
-        "Development is non-linear. {name}'s {division} career has taken the long route — and is arriving exactly where it was always going, just on a different timeline.",
-        "The best fighters sometimes need time. {name} has spent the early part of a {division} career building something. The results are starting to show what it is.",
-        "At {age}, {name} is in the middle of the career that scouts thought was years away. The {division} weight class is adjusting its expectations accordingly.",
-        "Second acts are underrated. {name} in {division} is on one — and the current version of this fighter is more dangerous than the early record suggested.",
-    ],
-
-    # ── Shooting Star ────────────────────────────────────────────────────────
-    ("Shooting Star", "chin_concerns"): [
-        "The explosive upside was never in question. But recent finishes have raised durability questions that {name} will need to answer if the {division} ceiling is ever going to be reached.",
-        "The {division} division saw a spectacular run from {name}. The question now is whether the chin can hold up as the competition level rises — it's a fair question and an important one.",
-        "Explosive, dangerous, electric when it's working. {name}'s {division} career has had the highlights. The consistency question is real and unresolved.",
-    ],
-    ("Shooting Star", "fading"): [
-        "The burst that announced {name} in {division} may not be sustainable — recent results have raised questions about whether the peak was the starting line or the finish line.",
-        "Every fighter runs at a different pace. {name} ran fast and made {division} pay attention. Whether there's fuel for another run is genuinely unclear.",
-        "The {division} debut was memorable. The trajectory since has been harder to read. {name} still has the tools — the question is whether they're assembling correctly.",
-    ],
-    ("Shooting Star", "on_a_tear"): [
-        "Explosive, dangerous, and producing results that are hard to argue with. {name} is in the middle of a {division} run that the rest of the weight class hasn't been able to interrupt.",
-        "{name} arrived in {division} and immediately turned the volume up. Nothing has changed since — the {wins}-fight run is evidence.",
-    ],
-    ("Shooting Star", "unstoppable"): [
-        "{wins} straight in {division} at {age}. The finishing ability plus the athleticism plus the momentum — it's a combination the {division} weight class hasn't fully solved.",
-    ],
-    ("Shooting Star", None): [
-        "Brilliant, athletic, and capable of finishing anyone in {division} on a given night. The ceiling is visible. The consistency question will define the career.",
-        "The {division} division has a new variable. Unpredictable, explosive, dangerous. The ceiling is real and the floor is hard to locate.",
-        "Some fighters burn bright from the first bell. {name} is one of them — and the {division} weight class has felt that heat since the opening appearance.",
-        "Athleticism like {name}'s in {division} doesn't come along often. The talent is exceptional. The consistency question will define what this career actually becomes.",
-    ],
-
-    # ── Aged Phenom (Phenom archetype at age 30+) ────────────────────────────
-    ("Aged Phenom", "goat_watch"): [
-        "There was a time when {name} was the next big thing in {division}. At {age}, the conversation has moved past potential — {wins} wins against quality opposition makes the case on its own merits.",
-    ],
-    ("Aged Phenom", "champion"): [
-        "{name} was supposed to have arrived years ago in {division}. At {age}, the belt says he finally did — though the path was longer and harder than anyone originally predicted.",
-    ],
-    ("Aged Phenom", "ageless_wonder"): [
-        "The early hype around {name} in {division} was deafening. At {age}, the noise has quieted, but the results haven't — and that might be more impressive than anything the earlier version of this fighter ever promised.",
-    ],
-    ("Aged Phenom", "unstoppable"): [
-        "{name} was once the most anticipated talent in {division}. At {age}, he's stopped being anticipated and started being unavoidable — {wins} wins deep and still accelerating.",
-    ],
-    ("Aged Phenom", "on_a_tear"): [
-        "The early chapter of {name}'s {division} career wrote itself. At {age}, the current chapter is more interesting — a veteran run that the division's newer names haven't been able to interrupt.",
-    ],
-    ("Aged Phenom", "fading"): [
-        "There was a time when {name} was the most anticipated fighter in {division}. At {age}, the conversation is different now — recent results have raised questions that the earlier version of this fighter never had to answer.",
-    ],
-    ("Aged Phenom", "at_the_crossroads"): [
-        "{name} arrived in {division} with expectations most fighters never carry. At {age}, those expectations have been replaced by a simpler question: what's next?",
-    ],
-    ("Aged Phenom", None): [
-        "There was a time when {name} was the most talked-about fighter in {division}. At {age}, he's still here — which tells its own story.",
-        "The tools that made {name} special at the start of his {division} career are still there. At {age}, it's experience and intelligence doing the work the athleticism used to handle alone.",
-        "{name} came into {division} with expectations that most fighters never face. At {age}, those expectations look different — but the competitiveness hasn't changed.",
-        "Once the most talked-about name in {division}, {name} at {age} has settled into something more sustainable. The spectacular has given way to the effective — and the results keep coming.",
-    ],
-}
-
 
 def _build_bio_from_traits(fighter: Fighter, division: str) -> str:
     """Return 0-2 trait description sentences, picking the most narratively interesting traits."""
@@ -605,53 +422,381 @@ def _build_bio_from_traits(fighter: Fighter, division: str) -> str:
     return " ".join(sentences)
 
 
-def generate_fighter_bio(fighter: Fighter) -> str:
-    """Return a single coherent bio paragraph based on archetype, age, and tags.
+# ---------------------------------------------------------------------------
+# Career context calculator
+# ---------------------------------------------------------------------------
 
-    Rules enforced:
-    - Never uses 'youth/young/prospect/future/rising' for fighters age 30+.
-    - Phenom fighters aged 30+ are routed to veteran-flavoured 'Aged Phenom' templates.
-    - Picks the single best matching template — no concatenation of multiple blocks.
-    - fighter.age drives template selection before any language is chosen.
-    - NEVER references archetype names in output text.
-    """
+def _get_career_context(fighter) -> dict:
+    """Calculate career stage, trajectory, archetype display, and key narrative tag."""
+    career_fights = fighter.wins + fighter.losses + fighter.draws
+
+    # Career stage based on age AND fight count
+    if career_fights < 6 or fighter.age < 22:
+        career_stage = "prospect"
+    elif career_fights < 15 or fighter.age < 26:
+        career_stage = "developing"
+    elif career_fights < 25 or fighter.age < 30:
+        career_stage = "established"
+    elif fighter.age < 35:
+        career_stage = "veteran"
+    else:
+        career_stage = "elder"
+
+    # Career trajectory based on record and age vs prime
+    past_prime = fighter.age > fighter.prime_end
+    win_rate = fighter.wins / career_fights if career_fights > 0 else 0.5
+
+    if career_fights < 6:
+        trajectory = "rising"
+    elif past_prime and win_rate < 0.5:
+        trajectory = "declining"
+    elif past_prime and win_rate >= 0.5:
+        trajectory = "resilient"
+    elif win_rate >= 0.65:
+        trajectory = "rising"
+    elif win_rate >= 0.45:
+        trajectory = "steady"
+    else:
+        trajectory = "struggling"
+
+    # Archetype display — override if age has passed the archetype's window
     archetype_val = (
         fighter.archetype.value
         if hasattr(fighter.archetype, "value")
         else (fighter.archetype or "Journeyman")
     )
+    displayed_archetype = archetype_val
+    if archetype_val == "Phenom" and fighter.age > fighter.prime_end:
+        displayed_archetype = "Former Phenom"
+    if archetype_val == "Shooting Star" and fighter.age > fighter.prime_end:
+        displayed_archetype = "Fading Star"
+    if archetype_val == "Gatekeeper" and fighter.age < 27:
+        displayed_archetype = "Developing"
+    if archetype_val == "Journeyman" and fighter.wins > fighter.losses and fighter.age < 28:
+        displayed_archetype = "Developing"
 
-    # Phenom fighters aged 30+ get veteran narrative treatment
-    if archetype_val == "Phenom" and fighter.age >= 30:
-        archetype_val = "Aged Phenom"
+    # Significant tags — most narratively important ones take priority
+    priority_tags = [
+        "goat_watch", "champion", "legendary_rivalry", "giant_killer",
+        "ageless_wonder", "redemption", "comeback_king_tag", "unstoppable",
+        "chin_concerns", "fading", "at_the_crossroads",
+    ]
+    tags = get_tags(fighter) if hasattr(fighter, "narrative_tags") else []
+    significant_tag = next((t for t in priority_tags if t in tags), None)
 
-    tags = get_tags(fighter)
+    # Win streak from tags
+    streak = 0
+    if "unstoppable" in tags:
+        streak = 5
+    elif "on_a_tear" in tags:
+        streak = 3
+
+    return {
+        "career_fights": career_fights,
+        "career_stage": career_stage,
+        "trajectory": trajectory,
+        "displayed_archetype": displayed_archetype,
+        "archetype": archetype_val,
+        "significant_tag": significant_tag,
+        "streak": streak,
+        "win_rate": win_rate,
+        "past_prime": past_prime,
+        "tags": tags,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Pluralization helper
+# ---------------------------------------------------------------------------
+
+def _plural(count, singular, plural):
+    """Return count with correct singular/plural form."""
+    return f"{count} {singular if count == 1 else plural}"
+
+
+# ---------------------------------------------------------------------------
+# Context-gated bio templates
+# ---------------------------------------------------------------------------
+# Each category is a tuple of (category_name, condition_fn, templates).
+# The first matching category wins. Templates use {name}, {age}, {division},
+# {record}, {wins}, {losses}, {career_fights}, {streak}, {ko_wins},
+# {wins_word}, {losses_word}.
+# RULE: never include archetype names in template text.
+
+def _select_templates(fighter, ctx: dict) -> list[str]:
+    """Return the best-matching template list based on career context."""
+    archetype = ctx["archetype"]
+    stage = ctx["career_stage"]
+    traj = ctx["trajectory"]
+    tag = ctx["significant_tag"]
+    tags = ctx["tags"]
+    past_prime = ctx["past_prime"]
+    win_rate = ctx["win_rate"]
+    fights = ctx["career_fights"]
+
+    # ── Prospect (career_fights < 6) — all archetypes get prospect language
+    if stage == "prospect":
+        return [
+            "The early signs are encouraging. {name} is {age} years old and {record} as a professional — too soon to draw conclusions, but the foundation looks solid.",
+            "{name} is finding his footing in {division}. {career_fights_word} in, there's potential here that hasn't fully shown itself yet.",
+            "Every fighter starts somewhere. At {age}, {name} is still writing the opening chapter of his story in {division}.",
+        ]
+
+    # ── Chin concerns tag (any archetype)
+    if tag == "chin_concerns":
+        return [
+            "The chin questions started after the second stoppage. {name}'s {record} record still has value — but opponents are targeting the same spot, and it's working.",
+            "Durability has become the headline for {name} in {division}. The {record} record tells part of the story. The stoppages tell the rest.",
+            "At {age}, {name} has the skills to compete with anyone in {division}. Whether the chin will let him is the question that keeps getting louder.",
+        ]
+
+    # ── At the crossroads tag (any archetype)
+    if tag == "at_the_crossroads":
+        return [
+            "Three fights. Three losses. At {age} and {record}, {name} is at the point every fighter dreads — where the next loss might be the last one that matters.",
+            "{name} has been here before — competitive fights, close decisions, brutal finishes. The {record} record is what it is. What happens next defines the career.",
+            "Every career has a crossroads. {name}'s is here — {record} in {division}, with the next fight carrying more weight than any that came before it.",
+        ]
+
+    # ── GOAT Candidate with goat_watch tag
+    if archetype == "GOAT Candidate" and tag == "goat_watch":
+        return [
+            "The debate has started. {name}'s combination of finishing ability, opposition quality, and consistency is drawing comparisons to the all-time greats in {division}. At {age}, he may not be done building the case.",
+            "Nobody wanted to say it first. Then everyone said it at once. {name} is in the conversation — the real one, about where he ranks when it's all over.",
+            "The numbers forced the discussion. {name}'s {record} record in {division}, the quality of names on it, and the way the {wins_word} came — it all adds up to something the sport can't ignore.",
+        ]
+
+    # ── GOAT Candidate — established (wins 10-19)
+    if archetype == "GOAT Candidate" and 10 <= fighter.wins <= 19:
+        return [
+            "The conversation is starting whether people want to have it or not. {name}'s {record} record, the names on it, and the way the {wins_word} have come are forcing comparisons nobody expected this soon.",
+            "{name} doesn't talk about legacy. The {wins_word} do it for him — {ko_wins} finishes, top opposition, zero controversial decisions in the wins column.",
+            "At {age} with a {record} record, {name} has moved past the point where {division} can ignore him. The question isn't whether he belongs — it's how high.",
+        ]
+
+    # ── GOAT Candidate — early (wins < 10)
+    if archetype == "GOAT Candidate" and fighter.wins < 10:
+        return [
+            "{name} has the tools. At {age} and {record}, it's too early for the bigger conversation — but the foundation is being laid correctly.",
+            "The potential is obvious. {name}'s {record} record is built on quality opposition and clean finishes. The next few years will determine how seriously to take the ceiling.",
+            "Still early days for {name} in {division}. The {record} record is promising, but the sample size needs to grow before the real comparisons start.",
+        ]
+
+    # ── GOAT Candidate — 20+ wins
+    if archetype == "GOAT Candidate" and fighter.wins >= 20:
+        return [
+            "The case is built. {name}'s {record} record in {division} speaks for itself — {wins_word}, elite opposition, and a finish rate that leaves no room for debate.",
+            "At {age}, {name} has done everything that can be asked of a {division} fighter. The {record} record is the evidence. The legacy conversation is already underway.",
+            "{name} in {division} is no longer a question mark. The {wins_word} against top competition have settled that. What remains is the conversation about where he fits historically.",
+        ]
+
+    # ── Developing Phenom (age 22-26, fights 6-15, trajectory rising)
+    if archetype == "Phenom" and 22 <= fighter.age <= 26 and stage == "developing" and traj == "rising":
+        return [
+            "{name} arrived in {division} without much noise. The {wins_word} since have started making some. At {age}, the ceiling is still unclear — but it's high.",
+            "The {division} division started paying attention to {name} around win number {wins}. At {age} with a {record} record, the attention is justified.",
+            "Some fighters take time to develop. {name} isn't one of them. {wins_word} at {age}, and the performances are getting better each time out.",
+        ]
+
+    # ── Peak Phenom (age 23-29, trajectory rising, win_rate > 0.7)
+    if archetype == "Phenom" and 23 <= fighter.age <= 29 and traj == "rising" and win_rate > 0.7:
+        return [
+            "If {name} isn't the best {division} fighter in the world right now, he's close. The {record} record doesn't fully capture how dominant some of these performances have been.",
+            "There's a version of {name} that hasn't shown up yet — and the current version is already beating everyone in front of him. That's a problem for the {division} division.",
+            "At {age} and {record}, {name} is operating at a level that the rest of {division} hasn't been able to match. The gap is real and it's growing.",
+        ]
+
+    # ── Former Phenom (age 30+, was Phenom archetype)
+    if archetype == "Phenom" and fighter.age >= 30:
+        return [
+            "There was a time when {name} was the most talked-about fighter in {division}. At {age} and {record}, the hype has quieted — but the results haven't completely abandoned him.",
+            "The prospect label faded years ago. What {name} is building now is something more durable — a career record that holds up on its own without the hype.",
+            "At {age}, {name} is no longer the future of {division}. Whether he's still the present is the question he's answering one fight at a time.",
+        ]
+
+    # ── Phenom (young, doesn't match developing or peak — fallback)
+    if archetype == "Phenom":
+        return [
+            "At {age}, {name} has already developed the kind of technical package that most {division} fighters spend years building. The results are following the tools.",
+            "Youth and skill are a dangerous combination in {division}. {name}, at {age}, has both — and the composure to not waste either.",
+            "The trajectory is obvious if you've watched {name} fight. The only question left for the {division} weight class is: how far does it go?",
+        ]
+
+    # ── Gatekeeper with ageless_wonder tag
+    if archetype == "Gatekeeper" and tag == "ageless_wonder":
+        return [
+            "At {age}, {name} should be winding down. Instead he's making the {division} division uncomfortable. Some fighters don't read the script.",
+            "At {age}, {name} has outlasted most of the {division} fighters he came up with. There's something to be said for durability — and for fighters who refuse to accept what they're supposed to do next.",
+            "The {division} division has changed around {name}, but he's still here. At {age}, he remains exactly what he's always been: a problem that needs solving.",
+        ]
+
+    # ── Gatekeeper (age 28+, established/veteran stage)
+    if archetype == "Gatekeeper" and fighter.age >= 28 and stage in ("established", "veteran", "elder"):
+        return [
+            "The {division} division needs fighters like {name}. His {record} record is a wall that contenders run into on their way up, and not all of them make it through.",
+            "{name} has been in the {division} trenches long enough to have a PhD in the division. At {age} and {record}, he's still here. That's the credential.",
+            "Every division needs a {name}. Someone who's seen everything, beaten half the ranked fighters at some point, and still shows up. He's that fighter in {division}.",
+        ]
+
+    # ── Gatekeeper fallback
+    if archetype == "Gatekeeper":
+        return [
+            "Some fighters test champions on the way up. {name} has been that test in {division} more than once — and made them work for every second of it.",
+            "The {record} record understates what {name} brings into a {division} cage. He's been in there with the best in the world. That experience isn't nothing.",
+            "The {division} division is full of hungry contenders. {name} is the fighter who tells you which ones are real — a walking litmus test at the top of the division.",
+        ]
+
+    # ── Journeyman with giant_killer tag
+    if archetype == "Journeyman" and tag == "giant_killer":
+        return [
+            "Nobody put {name} on a poster. Nobody picked him to win. That makes the upset even louder. The {division} division's top fighters have been warned.",
+            "The {record} record doesn't prepare you for what {name} did to {division}'s top competition. Upsets aren't supposed to happen that cleanly.",
+            "Don't let the {losses_word} fool you. {name} is capable of beating anyone in {division} on a given night — and has done exactly that when the moment arrived.",
+        ]
+
+    # ── Journeyman (age 28+, OR losses > wins)
+    if archetype == "Journeyman" and (fighter.age >= 28 or fighter.losses > fighter.wins):
+        return [
+            "{name} has never been anyone's pick to win. The {record} record reflects a career spent competing at a level most fighters never reach, against opponents who were supposed to be too good.",
+            "The {division} division is full of {name}'s {wins_word}. It's also full of his {losses_word}. At {age} and {career_fights_word} in, he's still competing — which is its own kind of statement.",
+            "Comfortable in the role of underdog, {name} has made a career of being underestimated. The {record} record has more footnotes than headlines, but the footnotes are interesting.",
+        ]
+
+    # ── Journeyman fallback
+    if archetype == "Journeyman":
+        return [
+            "Not every fight career is a title chase. {name}'s {record} record in {division} is an honest account of a fighter who showed up and competed against serious opposition.",
+            "Some fighters exist to test the contenders. {name} has served that role in {division} and done it with more ability than the record suggests.",
+            "Nobody put {name} on a poster. He kept fighting anyway. The {division} division is better for it.",
+        ]
+
+    # ── Late Bloomer (in prime, age 29-33)
+    if archetype == "Late Bloomer" and 29 <= fighter.age <= 33:
+        return [
+            "{name} spent his twenties being overlooked. At {age}, he's running out of patience for that. The recent fights suggest the division was wrong about him.",
+            "Late development doesn't announce itself. {name}'s {record} record in {division} has been building slowly, and then quickly. At {age} he's arrived — just not where anyone expected.",
+            "The {division} weight class didn't see {name} coming. At {age} and {record}, the conversation has shifted from whether he belongs to how far he can go.",
+        ]
+
+    # ── Late Bloomer (before prime, age < 29)
+    if archetype == "Late Bloomer" and fighter.age < 29:
+        return [
+            "{name} isn't there yet — and at {age} with a {record} record, that's fine. The attributes are developing on a slower curve. The fighters who peak late often peak highest.",
+            "Quiet fighter. {record} record. {age} years old. The {division} division hasn't noticed {name} yet. That window is closing.",
+            "Development is non-linear. {name}'s {division} career has taken the long route — and is arriving exactly where it was always going, just on a different timeline.",
+        ]
+
+    # ── Late Bloomer fallback (past 33)
+    if archetype == "Late Bloomer":
+        return [
+            "The best fighters sometimes need time. {name} has spent a career in {division} building something. The {record} record is starting to show what it is.",
+            "At {age}, {name} is in the middle of the career that scouts thought was years away. The {division} weight class is adjusting its expectations accordingly.",
+            "Second acts are underrated. {name} in {division} is on one — and the current version of this fighter is more dangerous than the early record suggested.",
+        ]
+
+    # ── Shooting Star (before prime_end)
+    if archetype == "Shooting Star" and not past_prime:
+        return [
+            "Everything about {name}'s game is built for highlight reels. The {record} record at {age} is the start of something — the question is how long the rocket burns.",
+            "{name} at {age} is the most exciting fighter in {division} on his best nights. The challenge is making best nights the standard.",
+            "Brilliant, athletic, and capable of finishing anyone in {division} on a given night. The ceiling is visible. The consistency question will define the career.",
+        ]
+
+    # ── Shooting Star (past prime_end, fading)
+    if archetype == "Shooting Star" and past_prime:
+        return [
+            "High peak, steep decline — that's the {name} story so far. At {age}, the tools are still there. The consistency that turns tools into titles has been harder to find.",
+            "The burst that announced {name} in {division} may not be sustainable — recent results have raised questions about whether the peak was the starting line or the finish line.",
+            "Every fighter runs at a different pace. {name} ran fast and made {division} pay attention. Whether there's fuel for another run is genuinely unclear.",
+        ]
+
+    # ── Resilient veteran (past prime, winning record, age 33+)
+    if past_prime and win_rate >= 0.5 and fighter.age >= 33:
+        return [
+            "At {age}, {name} has outlasted the fighters who were supposed to replace him. The {record} record at this stage of a career is either stubbornness or greatness — possibly both.",
+            "{name} is still winning fights in {division} at {age}. The division keeps sending new challengers. He keeps sending them back.",
+            "Most fighters slow down by {age}. {name} in {division} hasn't received that message. The {record} record at this point speaks louder than any scouting report.",
+        ]
+
+    # ── Safe generic fallback
+    return [
+        "{name} is a {division} fighter with a {record} record at {age} years old.",
+        "At {age}, {name} competes in the {division} division with a professional record of {record}.",
+        "{name} carries a {record} record into every {division} fight. At {age}, the story is still being written.",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Bio validation
+# ---------------------------------------------------------------------------
+
+def _validate_bio(bio: str, fighter, ctx: dict) -> tuple[bool, list[str]]:
+    """Check bio for age/career-inappropriate language. Returns (passed, red_flags)."""
+    import re
+    red_flags = []
+
+    if ctx["career_fights"] < 10 and any(w in bio for w in ["decade", "years of competition", "long career", "veteran"]):
+        red_flags.append("veteran language for low fight count")
+
+    if fighter.age < 28 and any(w in bio for w in ["decades", "seen it all", "been around"]):
+        red_flags.append("elder language for young fighter")
+
+    if ctx["career_stage"] == "prospect" and any(w in bio for w in ["arrived", "proven", "established"]):
+        red_flags.append("established language for prospect")
+
+    # Check pluralization
+    if re.search(r'\b1 (wins|losses|draws)\b', bio):
+        red_flags.append("pluralization error")
+
+    return len(red_flags) == 0, red_flags
+
+
+# ---------------------------------------------------------------------------
+# Main bio generation entry point
+# ---------------------------------------------------------------------------
+
+def generate_fighter_bio(fighter: Fighter) -> str:
+    """Return a context-appropriate bio paragraph.
+
+    Uses career context (age, fight count, trajectory, archetype, tags) to
+    select the most appropriate template category, then validates the output
+    to prevent age/career-inappropriate language.
+
+    NEVER references archetype names in output text.
+    """
+    ctx = _get_career_context(fighter)
+
     division = (
         fighter.weight_class.value
         if hasattr(fighter.weight_class, "value")
         else str(fighter.weight_class)
     ).lower()
 
-    # Pick most significant tag
-    key_tag: Optional[str] = None
-    for t in _TAG_PRIORITY:
-        if t in tags:
-            key_tag = t
-            break
-
-    # Select single best template — no joining multiple blocks
-    templates = (
-        _TEMPLATES.get((archetype_val, key_tag))
-        or _TEMPLATES.get((archetype_val, None))
-        or ["{name} is a {division} fighter with a {record} record — {wins} wins, {losses} losses."]
-    )
-
+    # Select templates based on context
+    templates = _select_templates(fighter, ctx)
     template = random.choice(templates)
-    return template.format(
-        name=fighter.name,
-        division=division,
-        record=fighter.record,
-        wins=fighter.wins,
-        losses=fighter.losses,
-        age=fighter.age,
-    )
+
+    # Build format values with proper pluralization
+    fmt = {
+        "name": fighter.name,
+        "age": fighter.age,
+        "division": division,
+        "record": fighter.record,
+        "wins": fighter.wins,
+        "losses": fighter.losses,
+        "ko_wins": fighter.ko_wins,
+        "career_fights": ctx["career_fights"],
+        "streak": ctx["streak"],
+        "wins_word": _plural(fighter.wins, "win", "wins"),
+        "losses_word": _plural(fighter.losses, "loss", "losses"),
+        "career_fights_word": _plural(ctx["career_fights"], "fight", "fights"),
+    }
+
+    bio = template.format(**fmt)
+
+    # Validate — fall back to safe generic if checks fail
+    passed, red_flags = _validate_bio(bio, fighter, ctx)
+    if not passed:
+        bio = f"{fighter.name} is a {division} fighter with a {fighter.record} record at {fighter.age} years old."
+
+    return bio
