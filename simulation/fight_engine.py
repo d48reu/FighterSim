@@ -52,7 +52,7 @@ class FighterStats:
 
     def is_finished_by_grappling(self) -> bool:
         """Check if ground damage + grappling exposure causes a stoppage."""
-        return self.ground_damage >= 90
+        return self.ground_damage >= 70
 
 
 @dataclass
@@ -172,7 +172,8 @@ def _simulate_round(
 
     for tick in range(TICKS_PER_ROUND):
         # Determine fight zone this tick (standing or ground)
-        takedown_prob = _takedown_probability(a, b)
+        # Either fighter can shoot — use the higher of the two probabilities
+        takedown_prob = max(_takedown_probability(a, b), _takedown_probability(b, a))
         in_clinch = rng.random() < 0.2
 
         if rng.random() < takedown_prob:
@@ -267,20 +268,21 @@ def _simulate_ground_tick(
     else:
         attacker, defender = b, a
 
-    # Ground and pound
-    if rng.random() < 0.6:
-        dmg = rng.uniform(4, 10) * (attacker.effective_striking() / 100)
-        defender.ground_damage += dmg * 0.4
-        defender.standing_damage += dmg * 0.3
+    # Ground and pound — more impactful, less standing damage (controlled position)
+    if rng.random() < 0.65:
+        dmg = rng.uniform(6, 15) * (attacker.effective_striking() / 100)
+        defender.ground_damage += dmg * 0.6
+        defender.standing_damage += dmg * 0.1
         result.events.append(f"{attacker.name} lands GnP")
 
-    # Submission attempt
-    sub_prob = (attacker.effective_grappling() / 100) * 0.25
+    # Submission attempt — scales with grappling advantage
+    grappling_edge = (attacker.effective_grappling() - defender.effective_grappling()) / 100
+    sub_prob = max(0.05, min(0.40, 0.15 + grappling_edge * 0.5))
     if rng.random() < sub_prob:
-        # Defender tries to escape
-        escape_prob = (defender.effective_grappling() + defender.effective_wrestling()) / 200
+        # Escape difficulty based purely on defender's grappling + wrestling
+        escape_prob = min(0.75, (defender.effective_grappling() + defender.effective_wrestling()) / 200)
         if rng.random() > escape_prob:
-            defender.ground_damage += rng.uniform(20, 35)
+            defender.ground_damage += rng.uniform(25, 45)
             result.events.append(f"{attacker.name} locks in submission attempt")
         else:
             result.events.append(f"{defender.name} escapes submission")
@@ -288,9 +290,8 @@ def _simulate_ground_tick(
 
 def _takedown_probability(a: FighterStats, b: FighterStats) -> float:
     """Probability a shoot for a takedown succeeds this tick."""
-    shoot_prob = (a.effective_wrestling() / 100) * 0.25
-    defend_prob = (b.effective_wrestling() / 100) * 0.5
-    return max(0, shoot_prob - defend_prob * 0.5)
+    advantage = (a.effective_wrestling() - b.effective_wrestling()) / 100
+    return max(0.02, min(0.60, 0.12 + advantage * 0.55))
 
 
 def _hit_probability(attacker: FighterStats, defender: FighterStats) -> float:
