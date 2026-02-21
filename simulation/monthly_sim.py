@@ -251,6 +251,7 @@ def _fighter_to_stats(f: Fighter) -> FighterStats:
         traits = json.loads(f.traits) if f.traits else []
     except (json.JSONDecodeError, TypeError):
         traits = []
+    style = f.style.value if hasattr(f.style, "value") else str(f.style)
     return FighterStats(
         id=f.id,
         name=f.name,
@@ -261,6 +262,7 @@ def _fighter_to_stats(f: Fighter) -> FighterStats:
         chin=f.chin,
         speed=f.speed,
         traits=traits,
+        style=style,
     )
 
 

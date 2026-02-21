@@ -300,11 +300,13 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
 
 
 def _to_stats(f: Fighter) -> FighterStats:
+    style = f.style.value if hasattr(f.style, "value") else str(f.style)
     return FighterStats(
         id=f.id, name=f.name,
         striking=f.striking, grappling=f.grappling, wrestling=f.wrestling,
         cardio=f.cardio, chin=f.chin, speed=f.speed,
         traits=_get_traits_list(f),
+        style=style,
     )
 
 

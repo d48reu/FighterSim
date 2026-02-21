@@ -27,6 +27,7 @@ from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import rebuild_rankings, get_rankings
 from simulation.monthly_sim import sim_month
 from sqlalchemy import select
+import json
 import random
 
 DB_URL = "sqlite:///mma_test.db"
@@ -102,12 +103,16 @@ with SessionFactory() as session:
             striking=fa.striking, grappling=fa.grappling,
             wrestling=fa.wrestling, cardio=fa.cardio,
             chin=fa.chin, speed=fa.speed,
+            traits=json.loads(fa.traits) if fa.traits else [],
+            style=fa.style.value if hasattr(fa.style, "value") else str(fa.style),
         )
         b_stats = FighterStats(
             id=fb.id, name=fb.name,
             striking=fb.striking, grappling=fb.grappling,
             wrestling=fb.wrestling, cardio=fb.cardio,
             chin=fb.chin, speed=fb.speed,
+            traits=json.loads(fb.traits) if fb.traits else [],
+            style=fb.style.value if hasattr(fb.style, "value") else str(fb.style),
         )
         
         result = simulate_fight(a_stats, b_stats, seed=rng.randint(0, 99999))
