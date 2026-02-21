@@ -117,13 +117,15 @@ def _assign_archetype(
     if f.overall < 62 and 29 <= f.prime_start <= 31:
         return Archetype.LATE_BLOOMER
 
-    if 28 <= f.age <= 34 and 60 <= f.overall <= 68 and f.losses >= f.wins:
+    career_fights = f.wins + f.losses + f.draws
+    gk_age_ok = f.age >= 28 or (f.age >= 25 and career_fights >= 10)
+    if gk_age_ok and 60 <= f.overall <= 68 and f.losses >= f.wins:
         return Archetype.GATEKEEPER
 
     if f.losses > f.wins:
         return Archetype.JOURNEYMAN
 
-    return rng.choice([Archetype.PHENOM, Archetype.GATEKEEPER, Archetype.JOURNEYMAN])
+    return rng.choice([Archetype.PHENOM, Archetype.JOURNEYMAN])
 
 
 def _starting_popularity_hype(archetype: Archetype, rng: random.Random) -> tuple[float, float]:
@@ -144,8 +146,14 @@ def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -
     traits: list[str] = []
 
     # Guaranteed traits
+    career_fights = fighter.wins + fighter.losses + fighter.draws
     if archetype == Archetype.GATEKEEPER:
-        traits.append("veteran_iq")
+        if fighter.age >= 27 or career_fights >= 12:
+            traits.append("veteran_iq")
+        elif fighter.striking >= fighter.grappling:
+            traits.append("pressure_fighter")
+        else:
+            traits.append("fast_hands")
     elif archetype == Archetype.JOURNEYMAN:
         traits.append("journeyman_heart")
     elif archetype == Archetype.GOAT_CANDIDATE:
@@ -182,6 +190,10 @@ def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -
     }
 
     pool = list(_pools.get(archetype, []))
+
+    # Gate veteran_iq: requires age >= 27 or career_fights >= 12
+    if fighter.age < 27 and career_fights < 12:
+        pool = [(t, w) for t, w in pool if t != "veteran_iq"]
 
     # Stat-based bonus weights
     if fighter.striking >= 80:

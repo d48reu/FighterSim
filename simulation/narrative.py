@@ -328,18 +328,19 @@ def update_rivalries(session: Session) -> list[dict]:
 def display_archetype(fighter: Fighter) -> str:
     """Return the archetype label for display purposes.
 
-    If the fighter's age is more than 4 years past their prime_end,
-    display 'Veteran' regardless of stored archetype.  The underlying
-    archetype in the database is never modified.
+    Uses _get_career_context() to compute context-aware overrides:
+    - Phenom past prime → 'Former Phenom'
+    - Shooting Star past prime → 'Fading Star'
+    - Gatekeeper age < 27 → 'Developing'
+    - Journeyman with winning record age < 28 → 'Developing'
+    - Age > prime_end + 4 → 'Veteran'
+
+    The underlying archetype in the database is never modified.
     """
     if fighter.age > fighter.prime_end + 4:
         return "Veteran"
-    archetype_val = (
-        fighter.archetype.value
-        if hasattr(fighter.archetype, "value")
-        else (fighter.archetype or "Journeyman")
-    )
-    return archetype_val
+    ctx = _get_career_context(fighter)
+    return ctx["displayed_archetype"]
 
 
 # ---------------------------------------------------------------------------
