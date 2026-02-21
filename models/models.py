@@ -54,6 +54,12 @@ class EventStatus(str, enum.Enum):
     CANCELLED = "Cancelled"
 
 
+class BroadcastDealStatus(str, enum.Enum):
+    ACTIVE = "Active"
+    EXPIRED = "Expired"
+    CANCELLED = "Cancelled"
+
+
 class Archetype(str, enum.Enum):
     PHENOM         = "Phenom"
     LATE_BLOOMER   = "Late Bloomer"
@@ -245,6 +251,10 @@ class Event(Base):
     has_press_conference: Mapped[bool] = Column(Boolean, default=False)
     gate_revenue: Mapped[float] = Column(Float, default=0.0)
     ppv_buys: Mapped[int] = Column(Integer, default=0)
+    broadcast_revenue: Mapped[float] = Column(Float, default=0.0)
+    venue_rental_cost: Mapped[float] = Column(Float, default=0.0)
+    tickets_sold: Mapped[int] = Column(Integer, default=0)
+    venue_capacity: Mapped[int] = Column(Integer, default=0)
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="events")
     fights: Mapped[List["Fight"]] = relationship(
@@ -258,7 +268,7 @@ class Event(Base):
 
     @property
     def total_revenue(self) -> float:
-        return self.gate_revenue + self.ppv_buys * 45.0
+        return self.gate_revenue + self.ppv_buys * 45.0 + self.broadcast_revenue
 
     def __repr__(self) -> str:
         return f"<Event {self.name} on {self.event_date}>"
@@ -358,6 +368,40 @@ class GameState(Base):
     id: Mapped[int] = Column(Integer, primary_key=True)
     current_date: Mapped[date] = Column(Date, nullable=False)
     player_org_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Broadcast Deals
+# ---------------------------------------------------------------------------
+
+class BroadcastDeal(Base):
+    """A TV/streaming broadcast deal for an organization."""
+
+    __tablename__ = "broadcast_deals"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    tier: Mapped[str] = Column(String(50), nullable=False)
+    network_name: Mapped[str] = Column(String(100), nullable=False)
+    status: Mapped[str] = Column(Enum(BroadcastDealStatus), default=BroadcastDealStatus.ACTIVE)
+    fee_per_event: Mapped[float] = Column(Float, nullable=False)
+    ppv_multiplier: Mapped[float] = Column(Float, default=1.0)
+    duration_months: Mapped[int] = Column(Integer, nullable=False)
+    start_date: Mapped[date] = Column(Date, nullable=False)
+    expiry_date: Mapped[date] = Column(Date, nullable=False)
+    min_prestige: Mapped[float] = Column(Float, default=0.0)
+    min_events_per_year: Mapped[int] = Column(Integer, default=0)
+    min_avg_card_quality: Mapped[float] = Column(Float, default=0.0)
+    events_delivered: Mapped[int] = Column(Integer, default=0)
+    compliance_warnings: Mapped[int] = Column(Integer, default=0)
+    prestige_per_month: Mapped[float] = Column(Float, default=0.0)
+
+    __table_args__ = (
+        Index("ix_broadcast_org", "organization_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<BroadcastDeal {self.tier} for org_id={self.organization_id} status={self.status}>"
 
 
 # ---------------------------------------------------------------------------

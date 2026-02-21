@@ -17,7 +17,8 @@ from sqlalchemy import select, update
 
 from models.models import (
     Fighter, Organization, Contract, Event, Fight,
-    Ranking, WeightClass, ContractStatus, EventStatus, Notification, GameState
+    Ranking, WeightClass, ContractStatus, EventStatus, Notification, GameState,
+    BroadcastDeal, BroadcastDealStatus,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
@@ -295,6 +296,58 @@ def _get_cut_severity(f: Fighter) -> str:
     return "extreme"
 
 
+def _process_broadcast_deals(session: Session, sim_date: date, player_org: Organization) -> list[str]:
+    """Check broadcast deal compliance, expiry, and apply prestige gain."""
+    notifications = []
+    if not player_org:
+        return notifications
+
+    deals = session.execute(
+        select(BroadcastDeal).where(
+            BroadcastDeal.organization_id == player_org.id,
+            BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+        )
+    ).scalars().all()
+
+    for deal in deals:
+        # Check expiry
+        if sim_date >= deal.expiry_date:
+            deal.status = BroadcastDealStatus.EXPIRED
+            notifications.append(f"Your {deal.tier} deal with {deal.network_name} has expired.")
+            continue
+
+        # Apply monthly prestige gain
+        player_org.prestige = min(100.0, player_org.prestige + deal.prestige_per_month)
+
+        # Check if prestige dropped too far below minimum
+        if player_org.prestige < deal.min_prestige - 10:
+            deal.status = BroadcastDealStatus.CANCELLED
+            player_org.prestige = max(0.0, player_org.prestige - 5.0)
+            notifications.append(
+                f"DEAL CANCELLED: {deal.network_name} terminated your {deal.tier} deal — prestige fell too far below minimum."
+            )
+            continue
+
+        # Every 3 months: check event pace
+        months_elapsed = max(1, (sim_date - deal.start_date).days // 30)
+        if months_elapsed > 0 and months_elapsed % 3 == 0:
+            expected_events = deal.min_events_per_year * months_elapsed / 12
+            if deal.events_delivered < expected_events:
+                deal.compliance_warnings += 1
+                if deal.compliance_warnings >= 2:
+                    deal.status = BroadcastDealStatus.CANCELLED
+                    player_org.prestige = max(0.0, player_org.prestige - 5.0)
+                    notifications.append(
+                        f"DEAL CANCELLED: {deal.network_name} terminated your {deal.tier} deal — insufficient events."
+                    )
+                else:
+                    notifications.append(
+                        f"WARNING: {deal.network_name} is concerned about your event pace ({deal.events_delivered} events, expected {expected_events:.0f}). Warning {deal.compliance_warnings}/2."
+                    )
+
+    return notifications
+
+
 def _fighter_to_stats(f: Fighter) -> FighterStats:
     try:
         traits = json.loads(f.traits) if f.traits else []
@@ -408,6 +461,16 @@ def sim_month(
             session.add(Notification(
                 message=msg,
                 type="development",
+                created_date=sim_date,
+            ))
+
+    # 1c. Process broadcast deals (player org only)
+    if player_org:
+        broadcast_notifications = _process_broadcast_deals(session, sim_date, player_org)
+        for msg in broadcast_notifications:
+            session.add(Notification(
+                message=msg,
+                type="broadcast",
                 created_date=sim_date,
             ))
 

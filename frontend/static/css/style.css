@@ -1730,3 +1730,242 @@ tbody td { padding: 9px 10px; }
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* ── Broadcast / TV Deals ─────────────────────── */
+
+.broadcast-tiers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.deal-tier-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s;
+}
+.deal-tier-card:not(.locked):hover { border-color: #4cc9f0; }
+
+.deal-tier-card.locked {
+  opacity: 0.45;
+}
+
+.deal-tier-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.deal-tier-fee {
+  font-size: 18px;
+  font-weight: 700;
+  color: #66bb6a;
+}
+
+.deal-tier-detail {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.deal-requirements {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.deal-requirements .met { color: #66bb6a; }
+.deal-requirements .unmet { color: var(--accent); }
+
+/* Active deal card */
+
+.deal-active-card {
+  background: var(--card-bg);
+  border: 2px solid #4cc9f0;
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+
+.deal-active-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.deal-active-network {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.deal-active-tier {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(76,201,240,0.15);
+  color: #4cc9f0;
+  border: 1px solid rgba(76,201,240,0.3);
+}
+
+.deal-active-details {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.deal-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deal-detail-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+
+.deal-detail-value {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.deal-active-warning {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(230,57,70,0.15);
+  border: 1px solid rgba(230,57,70,0.3);
+  color: var(--accent);
+}
+
+/* Org stats bar in broadcast view */
+
+.broadcast-org-stats {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.broadcast-org-stats .stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+
+.broadcast-org-stats .stat-value {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Sellout banner */
+
+.sellout-banner {
+  background: linear-gradient(90deg, #ffd700, #ff8c00);
+  color: #1a1a2e;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  text-align: center;
+  padding: 8px 16px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  animation: selloutPulse 1.5s ease-in-out;
+}
+
+@keyframes selloutPulse {
+  0% { opacity: 0; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* Event attendance line */
+
+.event-attendance {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-attendance .fill-pct {
+  font-weight: 700;
+}
+
+.event-attendance .fill-pct.high { color: #66bb6a; }
+.event-attendance .fill-pct.mid  { color: #ffc107; }
+.event-attendance .fill-pct.low  { color: var(--accent); }
+
+/* Dashboard broadcast widget */
+
+.broadcast-widget {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.broadcast-widget h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.broadcast-widget-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.broadcast-dash-warn {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(230,57,70,0.15);
+  border: 1px solid rgba(230,57,70,0.3);
+  color: var(--accent);
+}
+
+/* Responsive: stack tier cards on smaller screens */
+@media (max-width: 1200px) {
+  .broadcast-tiers {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .broadcast-tiers {
+    grid-template-columns: 1fr;
+  }
+}

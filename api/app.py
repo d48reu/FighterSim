@@ -240,6 +240,29 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         return jsonify(services.get_rivalries())
 
     # ------------------------------------------------------------------
+    # Broadcast Deals
+    # ------------------------------------------------------------------
+
+    @app.route("/api/broadcast/available")
+    def broadcast_available():
+        result = services.get_available_deals()
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/broadcast/active")
+    def broadcast_active():
+        return jsonify(services.get_active_deal())
+
+    @app.route("/api/broadcast/negotiate", methods=["POST"])
+    def broadcast_negotiate():
+        data = request.json
+        result = services.negotiate_deal(data["tier"])
+        if not result.get("success"):
+            return jsonify(result), 400
+        return jsonify(result)
+
+    # ------------------------------------------------------------------
     # Contract negotiation
     # ------------------------------------------------------------------
 

@@ -24,6 +24,7 @@
         <div class="nav-item" data-view="fighters">Fighters</div>
         <div class="nav-item" data-view="roster">Roster</div>
         <div class="nav-item" data-view="development">Development</div>
+        <div class="nav-item" data-view="broadcast">TV Deals</div>
         <div class="nav-item" data-view="free-agents">Free Agents</div>
         <div class="nav-item" data-view="rankings">Rankings</div>
         <div class="nav-item" data-view="hof">Hall of Fame</div>
@@ -110,6 +111,11 @@
           <h3>&#128081; Cornerstones</h3>
           <div id="cs-widget-list" class="cs-widget-list"></div>
         </div>
+
+        <div id="broadcast-widget" class="broadcast-widget hidden">
+          <h3>Broadcast Deal</h3>
+          <div id="broadcast-widget-content"></div>
+        </div>
       </div>
 
       <!-- Events -->
@@ -153,6 +159,18 @@
                 <div class="proj-item">
                   <span class="proj-label">PPV</span>
                   <span class="proj-value" id="proj-ppv">$0</span>
+                </div>
+                <div class="proj-item" id="proj-broadcast-item" style="display:none">
+                  <span class="proj-label">Broadcast</span>
+                  <span class="proj-value" id="proj-broadcast">$0</span>
+                </div>
+                <div class="proj-item">
+                  <span class="proj-label">Venue Cost</span>
+                  <span class="proj-value" id="proj-venue-cost">$0</span>
+                </div>
+                <div class="proj-item">
+                  <span class="proj-label">Attendance</span>
+                  <span class="proj-value" id="proj-attendance">—</span>
                 </div>
                 <div class="proj-item">
                   <span class="proj-label">Costs</span>
@@ -400,6 +418,15 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Broadcast / TV Deals -->
+      <div id="view-broadcast" class="view hidden">
+        <h1>TV &amp; Streaming Deals</h1>
+        <div id="broadcast-active-section"></div>
+        <h2 style="margin-top:24px">Available Tiers</h2>
+        <div id="broadcast-org-stats" class="broadcast-org-stats"></div>
+        <div id="broadcast-tiers" class="broadcast-tiers"></div>
       </div>
 
       <!-- Free Agents -->

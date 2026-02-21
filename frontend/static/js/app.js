@@ -75,6 +75,7 @@ function loadView(view) {
   if (view === 'fighters')     loadFighters();
   if (view === 'roster')       loadRoster();
   if (view === 'development')  loadDevelopmentView();
+  if (view === 'broadcast')    loadBroadcastView();
   if (view === 'free-agents')  loadFreeAgents();
   if (view === 'rankings')     loadRankings(state.currentWeightClass);
   if (view === 'hof')          loadHallOfFame();
@@ -99,6 +100,7 @@ async function loadDashboard() {
   loadDashUpcoming();
   loadDashRecentResults();
   loadCornerstones();
+  loadBroadcastWidget();
 }
 
 async function loadDashUpcoming() {
@@ -1059,11 +1061,22 @@ function renderCompletedEvent(event, container) {
   }
   html += '</div>';
 
+  // Sellout banner
+  if (event.tickets_sold > 0 && event.tickets_sold >= event.venue_capacity) {
+    html += '<div class="sellout-banner">SELLOUT!</div>';
+  }
+  // Attendance
+  if (event.tickets_sold > 0) {
+    const fillPct = event.venue_capacity > 0 ? (event.tickets_sold / event.venue_capacity * 100).toFixed(0) : 0;
+    html += `<div class="event-attendance">Attendance: ${event.tickets_sold.toLocaleString()} / ${event.venue_capacity.toLocaleString()} (${fillPct}%)</div>`;
+  }
   // Revenue summary
   html += `
     <div class="event-revenue-summary">
       <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(event.gate_revenue)}</span></div>
       <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(event.ppv_buys * 45)}</span></div>
+      ${event.broadcast_revenue > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(event.broadcast_revenue)}</span></div>` : ''}
+      ${event.venue_rental_cost > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(event.venue_rental_cost)}</span></div>` : ''}
       <div class="rev-item"><span class="rev-label">Total</span><span class="rev-value">${formatCurrency(event.total_revenue)}</span></div>
     </div>
   `;
@@ -1082,6 +1095,22 @@ async function loadEventProjection(eventId) {
     document.getElementById('proj-gate').textContent = formatCurrency(proj.gate_projection);
     document.getElementById('proj-ppv').textContent = formatCurrency(proj.ppv_projection);
     document.getElementById('proj-costs').textContent = formatCurrency(proj.total_costs);
+    document.getElementById('proj-venue-cost').textContent = formatCurrency(proj.venue_rental_cost);
+
+    // Attendance
+    const fillPct = proj.fill_pct || 0;
+    document.getElementById('proj-attendance').textContent =
+      `${(proj.est_tickets_sold || 0).toLocaleString()} / ${(proj.venue_capacity || 0).toLocaleString()} (${fillPct.toFixed(0)}%)`;
+
+    // Broadcast
+    const broadcastItem = document.getElementById('proj-broadcast-item');
+    if (proj.broadcast_projection > 0) {
+      broadcastItem.style.display = '';
+      document.getElementById('proj-broadcast').textContent = formatCurrency(proj.broadcast_projection);
+    } else {
+      broadcastItem.style.display = 'none';
+    }
+
     const profitEl = document.getElementById('proj-profit');
     profitEl.textContent = formatCurrency(proj.projected_profit);
     profitEl.className = 'proj-value ' + (proj.projected_profit >= 0 ? 'positive' : 'negative');
@@ -1203,9 +1232,13 @@ async function openCreateEventModal() {
   try {
     const venues = await api('/api/events/venues');
     const sel = document.getElementById('modal-event-venue');
-    sel.innerHTML = venues.map(v =>
-      `<option value="${esc(v.name)}">${esc(v.name)} (${v.capacity.toLocaleString()} cap, ${formatCurrency(v.base_gate)} base)</option>`
-    ).join('');
+    sel.innerHTML = venues.map(v => {
+      const locked = v.locked;
+      const label = locked
+        ? `[LOCKED] ${esc(v.name)} — ${esc(v.locked_reason)}`
+        : `${esc(v.name)} (${v.capacity.toLocaleString()} cap, ${formatCurrency(v.rental_cost)} rental)`;
+      return `<option value="${esc(v.name)}" ${locked ? 'disabled' : ''}>${label}</option>`;
+    }).join('');
   } catch (err) { /* silent */ }
   // Set min date to game date
   if (state.gameDate) {
@@ -1474,12 +1507,31 @@ async function showAnimatedResults(result) {
   if (skipRequested) {
     renderFinalResults(result, resultsView);
   } else {
+    // Sellout banner
+    if (result.is_sellout) {
+      const sellout = document.createElement('div');
+      sellout.className = 'sellout-banner anim-enter';
+      sellout.textContent = 'SELLOUT!';
+      container.parentElement.appendChild(sellout);
+      requestAnimationFrame(() => sellout.classList.add('entered'));
+      await sleep(600);
+    }
+    // Attendance
+    if (result.tickets_sold) {
+      const att = document.createElement('div');
+      att.className = 'event-attendance anim-enter';
+      att.textContent = `Attendance: ${result.tickets_sold.toLocaleString()} / ${result.venue_capacity.toLocaleString()} (${result.fill_pct}%)`;
+      container.parentElement.appendChild(att);
+      requestAnimationFrame(() => att.classList.add('entered'));
+    }
     // Add revenue summary
     const summary = document.createElement('div');
     summary.className = 'event-revenue-summary anim-enter';
     summary.innerHTML = `
       <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(result.gate_revenue)}</span></div>
       <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(result.ppv_revenue)}</span></div>
+      ${result.broadcast_revenue > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(result.broadcast_revenue)}</span></div>` : ''}
+      ${result.venue_rental_cost > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(result.venue_rental_cost)}</span></div>` : ''}
       <div class="rev-item"><span class="rev-label">Costs</span><span class="rev-value">${formatCurrency(result.total_costs)}</span></div>
       <div class="rev-item"><span class="rev-label">Profit</span><span class="rev-value ${result.profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(result.profit)}</span></div>
     `;
@@ -1516,10 +1568,18 @@ function renderFinalResults(result, container) {
     `;
   }
   html += '</div>';
+  if (result.is_sellout) {
+    html += '<div class="sellout-banner">SELLOUT!</div>';
+  }
+  if (result.tickets_sold) {
+    html += `<div class="event-attendance">Attendance: ${result.tickets_sold.toLocaleString()} / ${result.venue_capacity.toLocaleString()} (${result.fill_pct}%)</div>`;
+  }
   html += `
     <div class="event-revenue-summary entered">
       <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(result.gate_revenue)}</span></div>
       <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(result.ppv_revenue)}</span></div>
+      ${result.broadcast_revenue > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(result.broadcast_revenue)}</span></div>` : ''}
+      ${result.venue_rental_cost > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(result.venue_rental_cost)}</span></div>` : ''}
       <div class="rev-item"><span class="rev-label">Costs</span><span class="rev-value">${formatCurrency(result.total_costs)}</span></div>
       <div class="rev-item"><span class="rev-label">Profit</span><span class="rev-value ${result.profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(result.profit)}</span></div>
     </div>
@@ -1528,6 +1588,125 @@ function renderFinalResults(result, container) {
 }
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+// ---------------------------------------------------------------------------
+// Broadcast / TV Deals View
+// ---------------------------------------------------------------------------
+
+async function loadBroadcastView() {
+  try {
+    const [activeData, availData] = await Promise.all([
+      api('/api/broadcast/active'),
+      api('/api/broadcast/available'),
+    ]);
+
+    // Active deal section
+    const activeSection = document.getElementById('broadcast-active-section');
+    if (activeData.deal) {
+      const d = activeData.deal;
+      const warnClass = d.compliance_warnings > 0 ? 'broadcast-dash-warn' : '';
+      activeSection.innerHTML = `
+        <div class="deal-active-card">
+          <div class="deal-active-header">
+            <div class="deal-active-tier">${esc(d.tier)}</div>
+            <div class="deal-active-network">${esc(d.network_name)}</div>
+          </div>
+          <div class="deal-active-details">
+            <div class="deal-detail"><span class="deal-detail-label">Fee/Event</span><span>${formatCurrency(d.fee_per_event)}</span></div>
+            <div class="deal-detail"><span class="deal-detail-label">PPV Multiplier</span><span>${d.ppv_multiplier}x</span></div>
+            <div class="deal-detail"><span class="deal-detail-label">Months Left</span><span>${d.months_remaining}</span></div>
+            <div class="deal-detail"><span class="deal-detail-label">Events Delivered</span><span>${d.events_delivered}</span></div>
+            <div class="deal-detail"><span class="deal-detail-label">Prestige/Month</span><span>+${d.prestige_per_month}</span></div>
+            <div class="deal-detail"><span class="deal-detail-label">On Pace</span><span class="${d.on_pace ? 'positive' : 'negative'}">${d.on_pace ? 'Yes' : 'Behind!'}</span></div>
+            ${d.compliance_warnings > 0 ? `<div class="deal-detail ${warnClass}"><span class="deal-detail-label">Warnings</span><span>${d.compliance_warnings}/2</span></div>` : ''}
+          </div>
+        </div>
+      `;
+    } else {
+      activeSection.innerHTML = '<p class="muted" style="margin-bottom:8px">No active broadcast deal. Negotiate one below to earn extra revenue per event.</p>';
+    }
+
+    // Org stats
+    const statsEl = document.getElementById('broadcast-org-stats');
+    if (availData.tiers) {
+      statsEl.innerHTML = `
+        <span>Prestige: <strong>${availData.org_prestige}</strong></span>
+        <span>Events (12mo): <strong>${availData.events_last_year}</strong></span>
+        <span>Avg Card Quality: <strong>${availData.avg_card_quality}</strong></span>
+      `;
+    }
+
+    // Tier cards
+    const tiersEl = document.getElementById('broadcast-tiers');
+    if (availData.tiers) {
+      tiersEl.innerHTML = availData.tiers.map(t => `
+        <div class="deal-tier-card ${!t.eligible ? 'locked' : ''}">
+          <div class="deal-tier-name">${esc(t.tier)}</div>
+          <div class="deal-tier-details">
+            <div class="deal-tier-row"><span>Fee/Event</span><span>${formatCurrency(t.fee_per_event)}</span></div>
+            <div class="deal-tier-row"><span>PPV Mult</span><span>${t.ppv_multiplier}x</span></div>
+            <div class="deal-tier-row"><span>Duration</span><span>${t.duration_months} months</span></div>
+            <div class="deal-tier-row"><span>Prestige/Mo</span><span>+${t.prestige_per_month}</span></div>
+          </div>
+          <div class="deal-requirements">
+            <div class="${t.prestige_met ? 'met' : 'unmet'}">Prestige: ${t.min_prestige}+ ${t.prestige_met ? '\u2713' : '\u2717'}</div>
+            <div class="${t.events_met ? 'met' : 'unmet'}">Events/yr: ${t.min_events_per_year}+ ${t.events_met ? '\u2713' : '\u2717'}</div>
+            <div class="${t.quality_met ? 'met' : 'unmet'}">Card Quality: ${t.min_avg_card_quality}+ ${t.quality_met ? '\u2713' : '\u2717'}</div>
+            ${t.already_has_deal ? '<div class="unmet">Already have a deal</div>' : ''}
+          </div>
+          ${t.eligible ? `<button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="negotiateDeal('${esc(t.tier)}')">Negotiate</button>` : ''}
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    setStatus('Error loading broadcast deals: ' + err.message, true);
+  }
+}
+
+async function negotiateDeal(tier) {
+  try {
+    const result = await api('/api/broadcast/negotiate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier }),
+    });
+    if (result.success) {
+      setStatus(result.message);
+    } else {
+      setStatus(result.message, true);
+    }
+    loadBroadcastView();
+  } catch (err) {
+    try {
+      const errData = JSON.parse(err.message);
+      setStatus(errData.message || 'Negotiation failed.', true);
+    } catch (_) {
+      setStatus('Error: ' + err.message, true);
+    }
+    loadBroadcastView();
+  }
+}
+
+async function loadBroadcastWidget() {
+  try {
+    const data = await api('/api/broadcast/active');
+    const widget = document.getElementById('broadcast-widget');
+    const content = document.getElementById('broadcast-widget-content');
+    if (data.deal) {
+      widget.classList.remove('hidden');
+      const d = data.deal;
+      content.innerHTML = `
+        <div class="broadcast-widget-info">
+          <div><strong>${esc(d.network_name)}</strong> (${esc(d.tier)})</div>
+          <div class="muted">${d.months_remaining} months left &middot; ${formatCurrency(d.fee_per_event)}/event</div>
+          ${!d.on_pace ? '<div class="broadcast-dash-warn">Behind schedule on events!</div>' : ''}
+        </div>
+      `;
+    } else {
+      widget.classList.add('hidden');
+    }
+  } catch (err) { /* silent */ }
+}
 
 // ---------------------------------------------------------------------------
 // Development View

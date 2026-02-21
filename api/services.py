@@ -17,6 +17,7 @@ from models.models import (
     Fighter, Organization, Contract, Event, Fight,
     WeightClass, ContractStatus, EventStatus, Notification, GameState,
     TrainingCamp, FighterDevelopment,
+    BroadcastDeal, BroadcastDealStatus,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -815,14 +816,26 @@ def get_finances() -> dict:
         monthly_payroll = total_salaries / 12
         projected_fight_costs = sum(c.salary * c.fights_remaining for c in active_contracts)
 
-        return {
+        # Broadcast deal info
+        active_deal = session.execute(
+            select(BroadcastDeal).where(
+                BroadcastDeal.organization_id == player_org.id,
+                BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+
+        result = {
             "bank_balance": round(player_org.bank_balance, 2),
             "monthly_payroll": round(monthly_payroll, 2),
             "total_annual_salaries": round(total_salaries, 2),
             "projected_fight_costs": round(projected_fight_costs, 2),
             "roster_size": len(active_contracts),
             "prestige": round(player_org.prestige, 1),
+            "broadcast_deal": active_deal is not None,
+            "broadcast_tier": active_deal.tier if active_deal else None,
+            "broadcast_fee_per_event": active_deal.fee_per_event if active_deal else 0,
         }
+        return result
 
 
 def get_notifications() -> list[dict]:
@@ -860,13 +873,56 @@ def mark_notification_read(notification_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 VENUES = [
-    {"name": "Local Gym", "capacity": 500, "base_gate": 15000},
-    {"name": "Convention Center", "capacity": 2000, "base_gate": 60000},
-    {"name": "Municipal Arena", "capacity": 5000, "base_gate": 150000},
-    {"name": "Sports Complex", "capacity": 10000, "base_gate": 300000},
-    {"name": "Major Arena", "capacity": 18000, "base_gate": 550000},
-    {"name": "Stadium", "capacity": 45000, "base_gate": 1200000},
+    {"name": "Local Gym",         "capacity": 500,   "ticket_price": 30,  "rental_cost": 5000,    "min_prestige": 0,  "requires_tv_deal": False},
+    {"name": "Convention Center", "capacity": 2000,  "ticket_price": 40,  "rental_cost": 20000,   "min_prestige": 20, "requires_tv_deal": False},
+    {"name": "Municipal Arena",   "capacity": 5000,  "ticket_price": 50,  "rental_cost": 60000,   "min_prestige": 35, "requires_tv_deal": False},
+    {"name": "Sports Complex",    "capacity": 10000, "ticket_price": 55,  "rental_cost": 120000,  "min_prestige": 50, "requires_tv_deal": False},
+    {"name": "Major Arena",       "capacity": 18000, "ticket_price": 65,  "rental_cost": 250000,  "min_prestige": 65, "requires_tv_deal": True},
+    {"name": "Stadium",           "capacity": 45000, "ticket_price": 75,  "rental_cost": 500000,  "min_prestige": 80, "requires_tv_deal": True},
 ]
+
+BROADCAST_TIERS = {
+    "Regional Cable": {
+        "fee_per_event": 25000,
+        "ppv_multiplier": 1.0,
+        "duration_months": 6,
+        "min_prestige": 25,
+        "min_events_per_year": 4,
+        "min_avg_card_quality": 55,
+        "prestige_per_month": 0.15,
+        "networks": ["Regional Sports Plus", "Local Fight TV", "Metro Combat Channel"],
+    },
+    "National TV": {
+        "fee_per_event": 75000,
+        "ppv_multiplier": 1.3,
+        "duration_months": 8,
+        "min_prestige": 45,
+        "min_events_per_year": 6,
+        "min_avg_card_quality": 62,
+        "prestige_per_month": 0.3,
+        "networks": ["ESPN Fight Night", "Fox Sports Combat", "NBC Fight Series"],
+    },
+    "Major Streaming": {
+        "fee_per_event": 150000,
+        "ppv_multiplier": 1.6,
+        "duration_months": 10,
+        "min_prestige": 65,
+        "min_events_per_year": 8,
+        "min_avg_card_quality": 68,
+        "prestige_per_month": 0.5,
+        "networks": ["DAZN Exclusive", "Amazon Prime Fights", "Netflix Combat"],
+    },
+    "Premium PPV Network": {
+        "fee_per_event": 300000,
+        "ppv_multiplier": 2.0,
+        "duration_months": 12,
+        "min_prestige": 80,
+        "min_events_per_year": 10,
+        "min_avg_card_quality": 72,
+        "prestige_per_month": 0.8,
+        "networks": ["HBO Championship", "Showtime Ultimate", "PPV Global Elite"],
+    },
+}
 
 
 def _fight_dict(fight: Fight, session) -> dict:
@@ -900,6 +956,10 @@ def _event_dict(event: Event, session, include_fights=True) -> dict:
         "has_press_conference": event.has_press_conference,
         "gate_revenue": round(event.gate_revenue, 2),
         "ppv_buys": event.ppv_buys,
+        "broadcast_revenue": round(event.broadcast_revenue, 2),
+        "venue_rental_cost": round(event.venue_rental_cost, 2),
+        "tickets_sold": event.tickets_sold,
+        "venue_capacity": event.venue_capacity,
         "total_revenue": round(event.total_revenue, 2),
         "fight_count": len(event.fights),
     }
@@ -1223,24 +1283,60 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                 if fb:
                     card_fighters.append(fb)
 
-            # Find venue base_gate
             venue_info = next((v for v in VENUES if v["name"] == event.venue), VENUES[0])
             card_size = len(event.fights)
-            pop_sum = sum(f.popularity for f in card_fighters)
-            gate_revenue = venue_info["base_gate"] * (pop_sum / (card_size * 100)) if card_size > 0 else 0
+            capacity = venue_info["capacity"]
+            ticket_price = venue_info["ticket_price"]
+            rental_cost = venue_info["rental_cost"]
+
+            # Demand-based ticketing
+            avg_pop = sum(f.popularity for f in card_fighters) / len(card_fighters) if card_fighters else 0
+            avg_hype = sum(f.hype for f in card_fighters) / len(card_fighters) if card_fighters else 0
+            card_size_factor = min(1.5, 0.5 + card_size * 0.125)
+            demand = capacity * (avg_pop * 0.6 + avg_hype * 0.4) / 80 * card_size_factor
+            if event.has_press_conference:
+                demand *= 1.15
+            tickets_sold = min(int(demand), capacity)
+            gate_revenue = tickets_sold * ticket_price
 
             # PPV from top 2 hype fighters
             sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
             top_hype = sorted_by_hype[:2]
-            avg_hype = sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
-            ppv_buys = int(avg_hype * 800)
+            avg_top_hype = sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
+            ppv_buys = int(avg_top_hype * 800)
+
+            # Broadcast revenue
+            broadcast_revenue = 0.0
+            active_deal = session.execute(
+                select(BroadcastDeal).where(
+                    BroadcastDeal.organization_id == player_org.id,
+                    BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+                )
+            ).scalar_one_or_none()
+            if active_deal:
+                ppv_base = ppv_buys * 45.0
+                broadcast_revenue = active_deal.fee_per_event + ppv_base * (active_deal.ppv_multiplier - 1.0)
+                active_deal.events_delivered += 1
 
             event.gate_revenue = gate_revenue
             event.ppv_buys = ppv_buys
+            event.broadcast_revenue = broadcast_revenue
+            event.venue_rental_cost = rental_cost
+            event.tickets_sold = tickets_sold
+            event.venue_capacity = capacity
             event.status = EventStatus.COMPLETED
 
             total_revenue = event.total_revenue
-            player_org.bank_balance += total_revenue - total_fighter_salaries
+            total_costs = total_fighter_salaries + rental_cost
+            player_org.bank_balance += total_revenue - total_costs
+
+            # Sellout / underfill prestige effects
+            is_sellout = tickets_sold >= capacity
+            fill_pct = tickets_sold / capacity if capacity > 0 else 0
+            if is_sellout:
+                player_org.prestige = min(100.0, player_org.prestige + 1.5)
+            elif fill_pct < 0.5:
+                player_org.prestige = max(0.0, player_org.prestige - 2.0)
 
             # Narrative updates
             update_goat_scores(session)
@@ -1256,9 +1352,15 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                 "gate_revenue": round(gate_revenue, 2),
                 "ppv_buys": ppv_buys,
                 "ppv_revenue": round(ppv_buys * 45.0, 2),
+                "broadcast_revenue": round(broadcast_revenue, 2),
+                "venue_rental_cost": round(rental_cost, 2),
+                "tickets_sold": tickets_sold,
+                "venue_capacity": capacity,
+                "is_sellout": is_sellout,
+                "fill_pct": round(fill_pct * 100, 1),
                 "total_revenue": round(total_revenue, 2),
-                "total_costs": round(total_fighter_salaries, 2),
-                "profit": round(total_revenue - total_fighter_salaries, 2),
+                "total_costs": round(total_costs, 2),
+                "profit": round(total_revenue - total_costs, 2),
             })
     except Exception as e:
         _task_error(task_id, str(e))
@@ -1314,6 +1416,10 @@ def calculate_event_projection(event_id: int) -> dict:
         if not event:
             return {"error": "Event not found."}
 
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+
         card_fighters = []
         total_salaries = 0.0
         for fight in event.fights:
@@ -1323,7 +1429,6 @@ def calculate_event_projection(event_id: int) -> dict:
                 card_fighters.append(fa)
             if fb:
                 card_fighters.append(fb)
-            # Sum salaries
             for fid in (fight.fighter_a_id, fight.fighter_b_id):
                 contract = session.execute(
                     select(Contract).where(
@@ -1336,8 +1441,19 @@ def calculate_event_projection(event_id: int) -> dict:
 
         venue_info = next((v for v in VENUES if v["name"] == event.venue), VENUES[0])
         card_size = len(event.fights)
-        pop_sum = sum(f.popularity for f in card_fighters)
-        gate_projection = venue_info["base_gate"] * (pop_sum / (card_size * 100)) if card_size > 0 else 0
+        capacity = venue_info["capacity"]
+        ticket_price = venue_info["ticket_price"]
+        rental_cost = venue_info["rental_cost"]
+
+        # Demand-based gate projection
+        avg_pop = sum(f.popularity for f in card_fighters) / len(card_fighters) if card_fighters else 0
+        avg_hype_all = sum(f.hype for f in card_fighters) / len(card_fighters) if card_fighters else 0
+        card_size_factor = min(1.5, 0.5 + card_size * 0.125)
+        demand = capacity * (avg_pop * 0.6 + avg_hype_all * 0.4) / 80 * card_size_factor
+        if event.has_press_conference:
+            demand *= 1.15
+        est_tickets_sold = min(int(demand), capacity)
+        gate_projection = est_tickets_sold * ticket_price
 
         sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
         top_hype = sorted_by_hype[:2]
@@ -1354,24 +1470,74 @@ def calculate_event_projection(event_id: int) -> dict:
                     break
         ppv_projection = (ppv_buys + pc_ppv_boost) * 45.0
 
-        total_revenue = gate_projection + ppv_projection
-        profit = total_revenue - total_salaries
+        # Broadcast projection
+        broadcast_projection = 0.0
+        if player_org:
+            active_deal = session.execute(
+                select(BroadcastDeal).where(
+                    BroadcastDeal.organization_id == player_org.id,
+                    BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+                )
+            ).scalar_one_or_none()
+            if active_deal:
+                ppv_base = ppv_projection
+                broadcast_projection = active_deal.fee_per_event + ppv_base * (active_deal.ppv_multiplier - 1.0)
+
+        total_revenue = gate_projection + ppv_projection + broadcast_projection
+        total_costs = total_salaries + rental_cost
+        profit = total_revenue - total_costs
+        fill_pct = est_tickets_sold / capacity * 100 if capacity > 0 else 0
 
         return {
             "gate_projection": round(gate_projection, 2),
             "ppv_projection": round(ppv_projection, 2),
+            "broadcast_projection": round(broadcast_projection, 2),
+            "venue_rental_cost": round(rental_cost, 2),
             "total_revenue": round(total_revenue, 2),
-            "total_costs": round(total_salaries, 2),
+            "total_costs": round(total_costs, 2),
             "projected_profit": round(profit, 2),
             "fight_count": card_size,
             "venue": event.venue,
-            "venue_capacity": venue_info["capacity"],
+            "venue_capacity": capacity,
+            "est_tickets_sold": est_tickets_sold,
+            "fill_pct": round(fill_pct, 1),
             "has_press_conference": event.has_press_conference,
         }
 
 
 def get_venues() -> list[dict]:
-    return VENUES
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        prestige = player_org.prestige if player_org else 0.0
+
+        has_tv_deal = False
+        if player_org:
+            active_deal = session.execute(
+                select(BroadcastDeal).where(
+                    BroadcastDeal.organization_id == player_org.id,
+                    BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+                )
+            ).scalar_one_or_none()
+            has_tv_deal = active_deal is not None
+
+        results = []
+        for v in VENUES:
+            locked = False
+            locked_reason = None
+            if v["min_prestige"] > prestige:
+                locked = True
+                locked_reason = f"Requires {v['min_prestige']} prestige"
+            elif v["requires_tv_deal"] and not has_tv_deal:
+                locked = True
+                locked_reason = "Requires an active TV deal"
+            results.append({
+                **v,
+                "locked": locked,
+                "locked_reason": locked_reason,
+            })
+        return results
 
 
 def hold_press_conference(event_id: int) -> dict:
@@ -1485,6 +1651,215 @@ def get_cornerstones() -> list[dict]:
             )
         ).scalars().all()
         return [_fighter_dict(f) for f in fighters]
+
+
+# ---------------------------------------------------------------------------
+# Broadcast Deals
+# ---------------------------------------------------------------------------
+
+def get_available_deals() -> dict:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"error": "No player organization found."}
+
+        prestige = player_org.prestige
+
+        # Check if already has an active deal
+        active_deal = session.execute(
+            select(BroadcastDeal).where(
+                BroadcastDeal.organization_id == player_org.id,
+                BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+
+        # Count completed events in the last 12 months
+        game_date = _get_game_date(session)
+        from datetime import timedelta
+        year_ago = game_date - timedelta(days=365)
+        completed_events = session.execute(
+            select(Event).where(
+                Event.organization_id == player_org.id,
+                Event.status == EventStatus.COMPLETED,
+                Event.event_date >= year_ago,
+            )
+        ).scalars().all()
+        events_last_year = len(completed_events)
+
+        # Average card quality
+        avg_quality = 0.0
+        if completed_events:
+            total_overall = 0
+            total_fighters = 0
+            for ev in completed_events[-5:]:  # last 5 events
+                for fight in ev.fights:
+                    fa = session.get(Fighter, fight.fighter_a_id)
+                    fb = session.get(Fighter, fight.fighter_b_id)
+                    if fa:
+                        total_overall += fa.overall
+                        total_fighters += 1
+                    if fb:
+                        total_overall += fb.overall
+                        total_fighters += 1
+            avg_quality = total_overall / total_fighters if total_fighters > 0 else 0
+
+        tiers = []
+        for tier_name, tier_data in BROADCAST_TIERS.items():
+            prestige_met = prestige >= tier_data["min_prestige"]
+            events_met = events_last_year >= tier_data["min_events_per_year"]
+            quality_met = avg_quality >= tier_data["min_avg_card_quality"]
+            eligible = prestige_met and events_met and quality_met and not active_deal
+
+            tiers.append({
+                "tier": tier_name,
+                "fee_per_event": tier_data["fee_per_event"],
+                "ppv_multiplier": tier_data["ppv_multiplier"],
+                "duration_months": tier_data["duration_months"],
+                "min_prestige": tier_data["min_prestige"],
+                "min_events_per_year": tier_data["min_events_per_year"],
+                "min_avg_card_quality": tier_data["min_avg_card_quality"],
+                "prestige_per_month": tier_data["prestige_per_month"],
+                "networks": tier_data["networks"],
+                "prestige_met": prestige_met,
+                "events_met": events_met,
+                "quality_met": quality_met,
+                "already_has_deal": active_deal is not None,
+                "eligible": eligible,
+            })
+
+        return {
+            "tiers": tiers,
+            "org_prestige": round(prestige, 1),
+            "events_last_year": events_last_year,
+            "avg_card_quality": round(avg_quality, 1),
+        }
+
+
+def get_active_deal() -> dict:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"deal": None}
+
+        deal = session.execute(
+            select(BroadcastDeal).where(
+                BroadcastDeal.organization_id == player_org.id,
+                BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if not deal:
+            return {"deal": None}
+
+        game_date = _get_game_date(session)
+        months_remaining = max(0, (deal.expiry_date - game_date).days // 30)
+        months_elapsed = deal.duration_months - months_remaining
+
+        # Event pace check
+        expected_events = deal.min_events_per_year * months_elapsed / 12 if months_elapsed > 0 else 0
+        on_pace = deal.events_delivered >= expected_events
+
+        return {
+            "deal": {
+                "id": deal.id,
+                "tier": deal.tier,
+                "network_name": deal.network_name,
+                "fee_per_event": deal.fee_per_event,
+                "ppv_multiplier": deal.ppv_multiplier,
+                "duration_months": deal.duration_months,
+                "months_remaining": months_remaining,
+                "start_date": deal.start_date.isoformat(),
+                "expiry_date": deal.expiry_date.isoformat(),
+                "min_prestige": deal.min_prestige,
+                "min_events_per_year": deal.min_events_per_year,
+                "min_avg_card_quality": deal.min_avg_card_quality,
+                "events_delivered": deal.events_delivered,
+                "compliance_warnings": deal.compliance_warnings,
+                "prestige_per_month": deal.prestige_per_month,
+                "on_pace": on_pace,
+            }
+        }
+
+
+def negotiate_deal(tier: str) -> dict:
+    if tier not in BROADCAST_TIERS:
+        return {"success": False, "message": f"Unknown tier: {tier}"}
+
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"success": False, "message": "No player organization found."}
+
+        # Check no active deal
+        existing = session.execute(
+            select(BroadcastDeal).where(
+                BroadcastDeal.organization_id == player_org.id,
+                BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return {"success": False, "message": "You already have an active broadcast deal."}
+
+        tier_data = BROADCAST_TIERS[tier]
+        prestige = player_org.prestige
+
+        if prestige < tier_data["min_prestige"]:
+            return {"success": False, "message": f"Insufficient prestige ({prestige:.1f} < {tier_data['min_prestige']})."}
+
+        # Acceptance probability
+        prestige_surplus = prestige - tier_data["min_prestige"]
+        acceptance_prob = min(0.90, 0.50 + prestige_surplus / 30 * 0.40)
+
+        if random.random() >= acceptance_prob:
+            return {"success": False, "message": f"The network wasn't impressed enough to sign a deal. Try improving your prestige."}
+
+        from datetime import timedelta
+        game_date = _get_game_date(session)
+        network_name = random.choice(tier_data["networks"])
+        duration = tier_data["duration_months"]
+
+        deal = BroadcastDeal(
+            organization_id=player_org.id,
+            tier=tier,
+            network_name=network_name,
+            status=BroadcastDealStatus.ACTIVE,
+            fee_per_event=tier_data["fee_per_event"],
+            ppv_multiplier=tier_data["ppv_multiplier"],
+            duration_months=duration,
+            start_date=game_date,
+            expiry_date=game_date + timedelta(days=duration * 30),
+            min_prestige=tier_data["min_prestige"],
+            min_events_per_year=tier_data["min_events_per_year"],
+            min_avg_card_quality=tier_data["min_avg_card_quality"],
+            events_delivered=0,
+            compliance_warnings=0,
+            prestige_per_month=tier_data["prestige_per_month"],
+        )
+        session.add(deal)
+
+        session.add(Notification(
+            message=f"Broadcast deal signed with {network_name} ({tier})! ${tier_data['fee_per_event']:,.0f}/event for {duration} months.",
+            type="broadcast_deal",
+            created_date=game_date,
+        ))
+
+        session.commit()
+        return {
+            "success": True,
+            "message": f"Deal signed with {network_name}! {tier} tier — ${tier_data['fee_per_event']:,.0f} per event, {tier_data['ppv_multiplier']}x PPV multiplier for {duration} months.",
+            "deal": {
+                "tier": tier,
+                "network_name": network_name,
+                "fee_per_event": tier_data["fee_per_event"],
+                "ppv_multiplier": tier_data["ppv_multiplier"],
+                "duration_months": duration,
+            },
+        }
 
 
 # ---------------------------------------------------------------------------
