@@ -870,6 +870,7 @@ async function loadEventCard(eventId) {
       cardBuilder.querySelector('#event-fights-list').classList.add('hidden');
       cardBuilder.querySelector('#event-sim-area').classList.add('hidden');
       document.getElementById('event-projection').classList.add('hidden');
+      document.getElementById('pc-container').classList.add('hidden');
       resultsView.classList.remove('hidden');
       renderCompletedEvent(event, resultsView);
     } else {
@@ -880,12 +881,28 @@ async function loadEventCard(eventId) {
 
       const simArea = document.getElementById('event-sim-area');
       const simBtn = document.getElementById('btn-simulate-card');
+      const pcBtn = document.getElementById('btn-press-conference');
       if (event.fights.length >= 2) {
         simArea.classList.remove('hidden');
         simBtn.disabled = false;
+        pcBtn.classList.toggle('hidden', event.has_press_conference);
       } else {
         simArea.classList.remove('hidden');
         simBtn.disabled = true;
+        pcBtn.classList.add('hidden');
+      }
+
+      // Show existing press conference if present
+      const pcContainer = document.getElementById('pc-container');
+      if (event.has_press_conference) {
+        const mainFight = event.fights.reduce((a, b) => (a.card_position > b.card_position ? a : b), event.fights[0]);
+        if (mainFight && mainFight.press_conference) {
+          renderPressConference(mainFight.press_conference, mainFight.fighter_a, mainFight.fighter_b, false);
+        } else {
+          pcContainer.classList.add('hidden');
+        }
+      } else {
+        pcContainer.classList.add('hidden');
       }
     }
   } catch (err) {
@@ -1134,6 +1151,90 @@ async function createEvent() {
     setStatus(`Event "${name}" created.`);
   } catch (err) {
     setStatus('Error: ' + err.message, true);
+  }
+}
+
+// Press Conference
+async function holdPressConference() {
+  if (!state.selectedEventId) return;
+  const btn = document.getElementById('btn-press-conference');
+  btn.disabled = true;
+  btn.textContent = 'Setting up...';
+  try {
+    const result = await api(`/api/events/${state.selectedEventId}/press-conference`, { method: 'POST' });
+    if (result.error) {
+      setStatus(result.error, true);
+      btn.disabled = false;
+      btn.textContent = 'Hold Press Conference';
+      return;
+    }
+    btn.classList.add('hidden');
+    renderPressConference(result.press_conference, result.fighter_a, result.fighter_b, true);
+    loadEventProjection(state.selectedEventId);
+    setStatus('Press conference held! Hype generated.');
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+    btn.disabled = false;
+    btn.textContent = 'Hold Press Conference';
+  }
+}
+
+function renderPressConference(pc, fighterA, fighterB, animate) {
+  const container = document.getElementById('pc-container');
+  const exchangesEl = document.getElementById('pc-exchanges');
+  const hypeEl = document.getElementById('pc-hype-result');
+  container.classList.remove('hidden');
+  exchangesEl.innerHTML = '';
+
+  const exchanges = pc.exchanges || [];
+  const nameA = fighterA.name || 'Fighter A';
+  const nameB = fighterB.name || 'Fighter B';
+
+  if (animate) {
+    let i = 0;
+    const showNext = () => {
+      if (i >= exchanges.length) {
+        // Show hype results
+        hypeEl.classList.remove('hidden');
+        hypeEl.innerHTML = `
+          <div class="pc-hype-bar">
+            <span class="pc-hype-label">${esc(nameA)}</span>
+            <div class="pc-hype-fill" style="width:${Math.min(100, (fighterA.hype || 0))}%">${fighterA.hype || 0}</div>
+          </div>
+          <div class="pc-hype-bar">
+            <span class="pc-hype-label">${esc(nameB)}</span>
+            <div class="pc-hype-fill" style="width:${Math.min(100, (fighterB.hype || 0))}%">${fighterB.hype || 0}</div>
+          </div>
+          <div class="pc-ppv-boost">+${pc.ppv_boost || 0} PPV buys from press conference</div>
+        `;
+        return;
+      }
+      const ex = exchanges[i];
+      const div = document.createElement('div');
+      div.className = 'pc-exchange pc-fade-in';
+      div.innerHTML = `
+        <div class="pc-quote pc-quote-a"><strong>${esc(nameA)}:</strong> "${esc(ex.fighter_a)}"</div>
+        <div class="pc-quote pc-quote-b"><strong>${esc(nameB)}:</strong> "${esc(ex.fighter_b)}"</div>
+      `;
+      exchangesEl.appendChild(div);
+      i++;
+      setTimeout(showNext, 800);
+    };
+    showNext();
+  } else {
+    // Static render (loading existing press conference)
+    for (const ex of exchanges) {
+      exchangesEl.innerHTML += `
+        <div class="pc-exchange">
+          <div class="pc-quote pc-quote-a"><strong>${esc(nameA)}:</strong> "${esc(ex.fighter_a)}"</div>
+          <div class="pc-quote pc-quote-b"><strong>${esc(nameB)}:</strong> "${esc(ex.fighter_b)}"</div>
+        </div>
+      `;
+    }
+    hypeEl.classList.remove('hidden');
+    hypeEl.innerHTML = `
+      <div class="pc-ppv-boost">+${pc.ppv_boost || 0} PPV buys from press conference</div>
+    `;
   }
 }
 
@@ -1697,6 +1798,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-create-event').addEventListener('click', openCreateEventModal);
   document.getElementById('btn-modal-close').addEventListener('click', closeModal);
   document.getElementById('btn-modal-create').addEventListener('click', createEvent);
+  document.getElementById('btn-press-conference').addEventListener('click', holdPressConference);
   document.getElementById('btn-simulate-card').addEventListener('click', confirmSimulate);
   document.getElementById('btn-confirm-sim').addEventListener('click', simulateCard);
   document.getElementById('btn-cancel-sim').addEventListener('click', cancelSimulate);

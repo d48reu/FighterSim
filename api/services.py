@@ -24,6 +24,7 @@ from simulation.rankings import rebuild_rankings, get_rankings as _get_rankings,
 from simulation.narrative import (
     apply_fight_tags, update_goat_scores, update_rivalries,
     generate_fighter_bio, get_tags, display_archetype, suggest_nicknames,
+    generate_press_conference,
 )
 
 # ---------------------------------------------------------------------------
@@ -836,6 +837,7 @@ def _fight_dict(fight: Fight, session) -> dict:
         "round_ended": fight.round_ended,
         "time_ended": fight.time_ended,
         "narrative": fight.narrative,
+        "press_conference": json.loads(fight.press_conference) if fight.press_conference else None,
     }
     return d
 
@@ -847,6 +849,7 @@ def _event_dict(event: Event, session, include_fights=True) -> dict:
         "event_date": event.event_date.isoformat(),
         "venue": event.venue,
         "status": event.status.value if hasattr(event.status, "value") else event.status,
+        "has_press_conference": event.has_press_conference,
         "gate_revenue": round(event.gate_revenue, 2),
         "ppv_buys": event.ppv_buys,
         "total_revenue": round(event.total_revenue, 2),
@@ -1265,7 +1268,17 @@ def calculate_event_projection(event_id: int) -> dict:
         sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
         top_hype = sorted_by_hype[:2]
         avg_hype = sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
-        ppv_projection = int(avg_hype * 800) * 45.0
+        ppv_buys = int(avg_hype * 800)
+
+        # Press conference PPV boost
+        pc_ppv_boost = 0
+        if event.has_press_conference:
+            for fight in event.fights:
+                if fight.press_conference:
+                    pc_data = json.loads(fight.press_conference)
+                    pc_ppv_boost = pc_data.get("ppv_boost", 0)
+                    break
+        ppv_projection = (ppv_buys + pc_ppv_boost) * 45.0
 
         total_revenue = gate_projection + ppv_projection
         profit = total_revenue - total_salaries
@@ -1279,11 +1292,55 @@ def calculate_event_projection(event_id: int) -> dict:
             "fight_count": card_size,
             "venue": event.venue,
             "venue_capacity": venue_info["capacity"],
+            "has_press_conference": event.has_press_conference,
         }
 
 
 def get_venues() -> list[dict]:
     return VENUES
+
+
+def hold_press_conference(event_id: int) -> dict:
+    with _SessionFactory() as session:
+        event = session.get(Event, event_id)
+        if not event:
+            return {"error": "Event not found."}
+        if event.status != EventStatus.SCHEDULED:
+            return {"error": "Can only hold press conferences for scheduled events."}
+        if len(event.fights) < 2:
+            return {"error": "Need at least 2 fights on the card."}
+        if event.has_press_conference:
+            return {"error": "Press conference already held for this event."}
+
+        # Get main event (highest card_position)
+        main_event = max(event.fights, key=lambda f: f.card_position)
+        fa = session.get(Fighter, main_event.fighter_a_id)
+        fb = session.get(Fighter, main_event.fighter_b_id)
+        if not fa or not fb:
+            return {"error": "Main event fighters not found."}
+
+        # Check cornerstone status
+        is_cs_a = getattr(fa, "is_cornerstone", False)
+        is_cs_b = getattr(fb, "is_cornerstone", False)
+
+        pc_data = generate_press_conference(fa, fb, is_cornerstone_a=is_cs_a, is_cornerstone_b=is_cs_b)
+
+        # Store on main event fight
+        main_event.press_conference = json.dumps(pc_data)
+        event.has_press_conference = True
+
+        # Apply hype boosts
+        hype_boost = pc_data["hype_generated"]
+        fa.hype = min(100.0, fa.hype + hype_boost)
+        fb.hype = min(100.0, fb.hype + hype_boost)
+
+        session.commit()
+        return {
+            "success": True,
+            "press_conference": pc_data,
+            "fighter_a": {"name": fa.name, "hype": round(fa.hype, 1)},
+            "fighter_b": {"name": fb.name, "hype": round(fb.hype, 1)},
+        }
 
 
 # ---------------------------------------------------------------------------

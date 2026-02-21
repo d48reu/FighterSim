@@ -503,6 +503,172 @@ def decay_hype(session: Session, rng: random.Random) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Press Conference System
+# ---------------------------------------------------------------------------
+
+TONE_PROFILES: dict[str, str] = {
+    "Phenom": "confident",
+    "GOAT Candidate": "dominant",
+    "Gatekeeper": "measured",
+    "Journeyman": "workmanlike",
+    "Late Bloomer": "hungry",
+    "Shooting Star": "flashy",
+}
+
+TRAIT_TONE_MODS: dict[str, str] = {
+    "knockout_artist": "menacing",
+    "media_darling": "showman",
+    "iron_chin": "defiant",
+    "comeback_king": "resilient",
+    "fast_hands": "sharp",
+    "pressure_fighter": "aggressive",
+    "gas_tank": "relentless",
+    "veteran_iq": "cerebral",
+    "journeyman_heart": "gritty",
+    "slow_starter": "patient",
+    "ground_and_pound_specialist": "imposing",
+    "submission_magnet": "cautious",
+}
+
+_PRESS_QUOTES: dict[str, list[str]] = {
+    "confident": [
+        "I've been ready for this fight since day one. {opponent} is a good fighter, but I'm on another level right now.",
+        "People keep asking if I'm worried. I'm not. I know what I bring to the cage.",
+        "This is my moment. {opponent} is standing between me and where I'm supposed to be.",
+        "I respect {opponent}, but respect doesn't stop me from finishing this fight.",
+    ],
+    "dominant": [
+        "I've proven it over and over. {opponent} gets the same treatment everyone else has gotten.",
+        "When I'm in my best form, nobody in this division can touch me. I plan on being in my best form.",
+        "The record speaks. The performances speak. Saturday night, it speaks again.",
+        "{opponent} is a tough fight on paper. But paper doesn't fight back.",
+    ],
+    "measured": [
+        "I've been in this sport long enough to know that anything can happen. But I'm prepared for everything.",
+        "I respect {opponent}. I've studied the tape. I have a plan. That's all I can control.",
+        "Experience matters in these situations. I've been here before. That counts for something.",
+        "I'm not going to make predictions. I'll let my performance do the talking.",
+    ],
+    "workmanlike": [
+        "I'm here to work. That's what I do. {opponent} should expect a hard night.",
+        "Nobody gave me this opportunity. I earned it fight by fight. I plan on keeping it.",
+        "I don't do a lot of talking. I show up, I compete, and I give everything I have.",
+        "They can sleep on me all they want. I'll be wide awake Saturday night.",
+    ],
+    "hungry": [
+        "This is the fight I've been waiting for. Everything has been building to this moment.",
+        "People wrote me off. That's fine. {opponent} is going to find out what happens when you underestimate me.",
+        "I'm not the same fighter I was two years ago. I've evolved, and this fight is going to show it.",
+        "Timing is everything. My time is now, and I intend to make the most of it.",
+    ],
+    "flashy": [
+        "Saturday night is going to be spectacular. I promise the fans won't be disappointed.",
+        "I bring the show. {opponent} brings the fight. Together we're going to give people something to remember.",
+        "The highlight reel is about to get another entry. I hope {opponent} is ready for prime time.",
+        "This is what the people pay to see. And I always deliver.",
+    ],
+    "menacing": [
+        "I don't need three rounds. {opponent} knows what's coming, and there's nothing they can do about it.",
+        "When I hit people, they change. {opponent} is going to find that out Saturday.",
+        "I smell fear. It's fine. Most people are afraid before they fight me.",
+    ],
+    "showman": [
+        "The cameras are here for a reason. I make fights into events. Saturday is no different.",
+        "I'm the best thing that ever happened to {opponent}'s career. This is the biggest stage they'll ever stand on.",
+        "Entertainment and violence — I provide both. {opponent} only provides one.",
+    ],
+    "defiant": [
+        "You can hit me all night. I'll still be standing. Ask anyone who's tried.",
+        "People keep saying I should slow down. I keep saying: make me.",
+        "I've taken the best shots in this division and I'm still here. {opponent} won't change that.",
+    ],
+    "resilient": [
+        "I've been knocked down before. I get back up. That's the story, and it's not changing Saturday.",
+        "Adversity is nothing new to me. {opponent} is just the next chapter.",
+    ],
+    "aggressive": [
+        "I'm going to push the pace from the opening bell. {opponent} better be ready for five rounds of pressure.",
+        "When I start moving forward, the fight changes. Everybody knows it. {opponent} will know it soon.",
+    ],
+    "cerebral": [
+        "I've studied {opponent} for weeks. I see patterns most people miss. Saturday, I exploit them.",
+        "Fighting smart is an underrated skill. I plan on being the smartest person in the cage.",
+    ],
+    "gritty": [
+        "I'm not the most talented fighter in the world. But I'm the hardest to beat. Ask around.",
+        "Heart doesn't show up on the tale of the tape. But it shows up when it matters.",
+    ],
+}
+
+
+def _build_fighter_tone(fighter: Fighter) -> str:
+    """Combine archetype tone + first matching trait modifier + nationality tone."""
+    archetype_val = fighter.archetype.value if hasattr(fighter.archetype, "value") else (fighter.archetype or "Journeyman")
+    base = TONE_PROFILES.get(archetype_val, "measured")
+
+    traits = get_traits(fighter)
+    for trait in traits:
+        if trait in TRAIT_TONE_MODS:
+            return TRAIT_TONE_MODS[trait]
+
+    nat = fighter.nationality if hasattr(fighter, "nationality") else ""
+    nat_tone = NATIONALITY_TONE.get(nat, "")
+    if nat_tone and nat_tone in _PRESS_QUOTES:
+        return nat_tone
+
+    return base
+
+
+def generate_press_conference(fighter_a: Fighter, fighter_b: Fighter,
+                              is_cornerstone_a: bool = False,
+                              is_cornerstone_b: bool = False) -> dict:
+    """Generate pre-fight press conference dialogue between two fighters.
+
+    Returns dict with exchanges, hype_generated, and ppv_boost.
+    """
+    tone_a = _build_fighter_tone(fighter_a)
+    tone_b = _build_fighter_tone(fighter_b)
+
+    exchange_count = 7 if (is_cornerstone_a or is_cornerstone_b) else 5
+
+    exchanges = []
+    for i in range(exchange_count):
+        # Pick quotes for each fighter
+        quotes_a = _PRESS_QUOTES.get(tone_a, _PRESS_QUOTES["measured"])
+        quotes_b = _PRESS_QUOTES.get(tone_b, _PRESS_QUOTES["measured"])
+
+        quote_a = random.choice(quotes_a).format(opponent=fighter_b.name)
+        quote_b = random.choice(quotes_b).format(opponent=fighter_a.name)
+
+        exchanges.append({
+            "round": i + 1,
+            "fighter_a": {"name": fighter_a.name, "quote": quote_a, "tone": tone_a},
+            "fighter_b": {"name": fighter_b.name, "quote": quote_b, "tone": tone_b},
+        })
+
+    # Calculate hype based on tone clash diversity
+    unique_tones = len({tone_a, tone_b})
+    base_hype = 8.0 if unique_tones == 2 else 5.0
+    # Bonus for certain dramatic combos
+    dramatic_combos = [
+        {"menacing", "defiant"}, {"dominant", "hungry"}, {"flashy", "workmanlike"},
+        {"confident", "aggressive"}, {"showman", "gritty"},
+    ]
+    combo_bonus = 3.0 if {tone_a, tone_b} in dramatic_combos else 0.0
+    exchange_bonus = exchange_count * 0.5
+    hype_generated = min(15.0, base_hype + combo_bonus + exchange_bonus)
+    ppv_boost = int(hype_generated * 50)
+
+    return {
+        "exchanges": exchanges,
+        "hype_generated": round(hype_generated, 1),
+        "ppv_boost": ppv_boost,
+        "tone_a": tone_a,
+        "tone_b": tone_b,
+    }
+
+
+# ---------------------------------------------------------------------------
 # update_goat_scores
 # ---------------------------------------------------------------------------
 

@@ -185,6 +185,13 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
             return jsonify(result), 400
         return jsonify(result)
 
+    @app.route("/api/events/<int:event_id>/press-conference", methods=["POST"])
+    def press_conference(event_id: int):
+        result = services.hold_press_conference(event_id)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
     @app.route("/api/fighters/<int:fighter_id>/bio")
     def fighter_bio(fighter_id: int):
         bio = services.get_fighter_bio(fighter_id)
