@@ -20,6 +20,7 @@
       </div>
       <nav>
         <div class="nav-item active" data-view="dashboard">Dashboard</div>
+        <div class="nav-item" data-view="events">Events</div>
         <div class="nav-item" data-view="fighters">Fighters</div>
         <div class="nav-item" data-view="roster">Roster</div>
         <div class="nav-item" data-view="free-agents">Free Agents</div>
@@ -27,8 +28,8 @@
         <div class="nav-item" data-view="hof">Hall of Fame</div>
       </nav>
       <div class="sidebar-actions">
+        <div id="game-date-display" class="game-date-display">Game Date: Loading...</div>
         <button id="btn-advance-month" class="btn btn-primary">Advance Month</button>
-        <button id="btn-simulate-event" class="btn btn-secondary">Simulate Event</button>
       </div>
     </aside>
 
@@ -75,6 +76,21 @@
           </div>
         </div>
 
+        <div class="dash-widgets">
+          <div class="dash-widget">
+            <h3>Upcoming Events</h3>
+            <div id="dash-upcoming">
+              <p class="muted">No upcoming events. Go to Events to create one.</p>
+            </div>
+          </div>
+          <div class="dash-widget">
+            <h3>Recent Results</h3>
+            <div id="dash-recent-results">
+              <p class="muted">No completed events yet.</p>
+            </div>
+          </div>
+        </div>
+
         <div id="expiring-widget" class="expiring-widget hidden">
           <h3>Expiring Contracts</h3>
           <table>
@@ -88,11 +104,88 @@
             <tbody id="expiring-tbody"></tbody>
           </table>
         </div>
+      </div>
 
-        <div class="section">
-          <h2>Last Event Results</h2>
-          <div id="event-results">
-            <p class="muted">No events simulated yet. Click "Simulate Event" to run a fight card.</p>
+      <!-- Events -->
+      <div id="view-events" class="view hidden">
+        <div class="events-layout">
+          <!-- Left: Event List -->
+          <div class="events-left">
+            <button id="btn-create-event" class="btn btn-primary" style="width:100%;margin-bottom:12px">Create New Event</button>
+            <div class="events-section">
+              <h3>Scheduled</h3>
+              <div id="events-scheduled-list" class="events-list">
+                <p class="muted">No scheduled events.</p>
+              </div>
+            </div>
+            <div class="events-section" style="margin-top:16px">
+              <h3>Completed</h3>
+              <div id="events-completed-list" class="events-list">
+                <p class="muted">No completed events.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Center: Fight Card Builder / Results -->
+          <div class="events-center">
+            <div id="event-card-builder">
+              <div id="event-header" class="event-header hidden">
+                <div class="event-header-top">
+                  <h2 id="event-card-name">—</h2>
+                  <span id="event-card-status" class="event-status-badge">Scheduled</span>
+                </div>
+                <div class="event-header-meta">
+                  <span id="event-card-venue">—</span>
+                  <span id="event-card-date">—</span>
+                </div>
+              </div>
+              <div id="event-projection" class="event-projection hidden">
+                <div class="proj-item">
+                  <span class="proj-label">Gate</span>
+                  <span class="proj-value" id="proj-gate">$0</span>
+                </div>
+                <div class="proj-item">
+                  <span class="proj-label">PPV</span>
+                  <span class="proj-value" id="proj-ppv">$0</span>
+                </div>
+                <div class="proj-item">
+                  <span class="proj-label">Costs</span>
+                  <span class="proj-value" id="proj-costs">$0</span>
+                </div>
+                <div class="proj-item proj-profit">
+                  <span class="proj-label">Profit</span>
+                  <span class="proj-value" id="proj-profit">$0</span>
+                </div>
+              </div>
+              <div id="event-fights-list" class="event-fights-list">
+                <p class="muted" style="text-align:center;padding:40px 0">Select or create an event to start building a fight card.</p>
+              </div>
+              <div id="event-sim-area" class="event-sim-area hidden">
+                <button id="btn-simulate-card" class="btn btn-primary" disabled>Simulate Event</button>
+              </div>
+            </div>
+            <div id="event-results-view" class="hidden"></div>
+          </div>
+
+          <!-- Right: Fighter Pool -->
+          <div class="events-right">
+            <h3>Fighter Pool</h3>
+            <input type="text" id="pool-search" class="pool-search" placeholder="Search fighters...">
+            <div class="pool-wc-tabs" id="pool-wc-tabs">
+              <button class="pool-tab active" data-wc="">All</button>
+              <button class="pool-tab" data-wc="Flyweight">FLY</button>
+              <button class="pool-tab" data-wc="Lightweight">LW</button>
+              <button class="pool-tab" data-wc="Welterweight">WW</button>
+              <button class="pool-tab" data-wc="Middleweight">MW</button>
+              <button class="pool-tab" data-wc="Heavyweight">HW</button>
+            </div>
+            <div id="pool-fighters" class="pool-fighters"></div>
+            <div id="pool-matchup-area" class="pool-matchup-area hidden">
+              <button id="btn-add-matchup" class="btn btn-primary" style="width:100%">Add Matchup</button>
+              <label class="pool-title-label">
+                <input type="checkbox" id="pool-title-check"> Title Fight
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -348,6 +441,46 @@
       </div>
     </aside>
 
+  </div>
+
+  <!-- Create Event Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Create New Event</h3>
+        <button class="panel-close" id="btn-modal-close">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <div class="panel-form">
+          <label>Event Name
+            <input type="text" id="modal-event-name" placeholder="Fight Night 1">
+          </label>
+          <label>Venue
+            <select id="modal-event-venue"></select>
+          </label>
+          <label>Event Date
+            <input type="date" id="modal-event-date">
+          </label>
+          <button class="btn btn-primary" id="btn-modal-create" style="margin-top:8px">Create Event</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirm-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Confirm Simulation</h3>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom:16px">This will simulate all fights on the card. This cannot be undone.</p>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="btn-confirm-sim">Simulate</button>
+          <button class="btn btn-secondary" id="btn-cancel-sim">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="status-bar" class="status-bar">Ready.</div>

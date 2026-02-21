@@ -48,6 +48,12 @@ class ContractStatus(str, enum.Enum):
     TERMINATED = "Terminated"
 
 
+class EventStatus(str, enum.Enum):
+    SCHEDULED = "Scheduled"
+    COMPLETED = "Completed"
+    CANCELLED = "Cancelled"
+
+
 class Archetype(str, enum.Enum):
     PHENOM         = "Phenom"
     LATE_BLOOMER   = "Late Bloomer"
@@ -226,6 +232,7 @@ class Event(Base):
     event_date: Mapped[date] = Column(Date, nullable=False)
     venue: Mapped[str] = Column(String(120), nullable=False)
     organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    status: Mapped[str] = Column(Enum(EventStatus), default=EventStatus.COMPLETED)
     gate_revenue: Mapped[float] = Column(Float, default=0.0)
     ppv_buys: Mapped[int] = Column(Integer, default=0)
 
@@ -262,6 +269,8 @@ class Fight(Base):
     fighter_b_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
     weight_class: Mapped[str] = Column(Enum(WeightClass), nullable=False)
     card_position: Mapped[int] = Column(Integer, default=0)
+
+    is_title_fight: Mapped[bool] = Column(Boolean, default=False)
 
     # Result
     winner_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
@@ -323,3 +332,17 @@ class Notification(Base):
     type: Mapped[str] = Column(String(50), nullable=False)
     created_date: Mapped[date] = Column(Date, nullable=False)
     read: Mapped[bool] = Column(Boolean, default=False)
+
+
+# ---------------------------------------------------------------------------
+# Game State
+# ---------------------------------------------------------------------------
+
+class GameState(Base):
+    """Persistent game clock and player org reference."""
+
+    __tablename__ = "game_state"
+
+    id: Mapped[int] = Column(Integer, primary_key=True)
+    current_date: Mapped[date] = Column(Date, nullable=False)
+    player_org_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("organizations.id"), nullable=True)

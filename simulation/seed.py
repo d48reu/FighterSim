@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 
 from models.models import (
-    Fighter, Organization, Contract,
+    Fighter, Organization, Contract, GameState,
     WeightClass, FighterStyle, ContractStatus, Archetype,
 )
 from simulation.traits import TRAITS, contradicts
@@ -77,6 +77,17 @@ def seed_organizations(session: Session) -> list[Organization]:
     for org in orgs:
         session.add(org)
     session.flush()
+
+    # Initialize game state with game start date
+    player_org = next((o for o in orgs if o.is_player), None)
+    game_state = GameState(
+        id=1,
+        current_date=date(2026, 1, 1),
+        player_org_id=player_org.id if player_org else None,
+    )
+    session.add(game_state)
+    session.flush()
+
     return orgs
 
 
@@ -208,7 +219,9 @@ def seed_fighters(
     weight_classes = list(WeightClass)
     styles = list(FighterStyle)
     fighters: list[Fighter] = []
-    today = date.today()
+    # Use game start date, not real date
+    game_state = session.get(GameState, 1)
+    today = game_state.current_date if game_state else date(2026, 1, 1)
     goat_counts: dict[str, int] = {}
 
     for _ in range(count):

@@ -28,6 +28,14 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         return render_template("index.html")
 
     # ------------------------------------------------------------------
+    # Game State
+    # ------------------------------------------------------------------
+
+    @app.route("/api/gamestate")
+    def get_gamestate():
+        return jsonify(services.get_gamestate())
+
+    # ------------------------------------------------------------------
     # Fighters
     # ------------------------------------------------------------------
 
@@ -64,8 +72,76 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         return jsonify(services.get_rankings_for_class(weight_class))
 
     # ------------------------------------------------------------------
-    # Async: simulate event
+    # Event booking
     # ------------------------------------------------------------------
+
+    @app.route("/api/events/bookable-fighters")
+    def bookable_fighters():
+        return jsonify(services.get_bookable_fighters())
+
+    @app.route("/api/events/venues")
+    def list_venues():
+        return jsonify(services.get_venues())
+
+    @app.route("/api/events/create", methods=["POST"])
+    def create_event():
+        data = request.json
+        result = services.create_event(
+            name=data["name"],
+            venue=data["venue"],
+            event_date_str=data["event_date"],
+        )
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/events/scheduled")
+    def scheduled_events():
+        return jsonify(services.get_scheduled_events())
+
+    @app.route("/api/events/history")
+    def event_history():
+        limit = int(request.args.get("limit", 20))
+        return jsonify(services.get_event_history(limit))
+
+    @app.route("/api/events/<int:event_id>")
+    def get_event(event_id: int):
+        event = services.get_event(event_id)
+        if not event:
+            return jsonify({"error": "Event not found"}), 404
+        return jsonify(event)
+
+    @app.route("/api/events/<int:event_id>/add-fight", methods=["POST"])
+    def add_fight_to_event(event_id: int):
+        data = request.json
+        result = services.add_fight_to_event(
+            event_id=event_id,
+            fighter_a_id=data["fighter_a_id"],
+            fighter_b_id=data["fighter_b_id"],
+            is_title_fight=data.get("is_title_fight", False),
+        )
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/events/<int:event_id>/fights/<int:fight_id>", methods=["DELETE"])
+    def remove_fight_from_event(event_id: int, fight_id: int):
+        result = services.remove_fight_from_event(event_id, fight_id)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/events/<int:event_id>/projection")
+    def event_projection(event_id: int):
+        result = services.calculate_event_projection(event_id)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/events/<int:event_id>/simulate", methods=["POST"])
+    def simulate_player_event(event_id: int):
+        task_id = services.start_simulate_player_event(event_id)
+        return jsonify({"task_id": task_id, "status": "pending"})
 
     @app.route("/api/events/simulate", methods=["POST"])
     def simulate_event():

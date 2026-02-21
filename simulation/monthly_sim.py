@@ -17,7 +17,7 @@ from sqlalchemy import select, update
 
 from models.models import (
     Fighter, Organization, Contract, Event, Fight,
-    Ranking, WeightClass, ContractStatus, Notification
+    Ranking, WeightClass, ContractStatus, EventStatus, Notification, GameState
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
@@ -198,6 +198,7 @@ def _generate_ai_event(
         event_date=sim_date,
         venue=venue,
         organization_id=org.id,
+        status=EventStatus.COMPLETED,
         gate_revenue=rng.uniform(100_000, 800_000),
         ppv_buys=rng.randint(0, 50_000),
     )
@@ -301,16 +302,19 @@ def _fighter_to_stats(f: Fighter) -> FighterStats:
 
 def sim_month(
     session: Session,
-    sim_date: date,
+    sim_date: date | None = None,
     seed: Optional[int] = None,
     progress_callback: Optional[Callable[[str], None]] = None,
 ) -> dict:
     """
     Advance simulation by one month.
 
+    Reads current_date from GameState, uses it for all logic,
+    then advances it by one month and saves.
+
     Args:
         session: Active SQLAlchemy session.
-        sim_date: The month being simulated.
+        sim_date: Ignored if GameState exists (kept for test compat).
         seed: Optional RNG seed.
         progress_callback: Optional callable for progress updates.
 
@@ -318,6 +322,13 @@ def sim_month(
         Summary dict with actions taken.
     """
     from typing import Optional  # local to avoid circular at module level
+
+    # Read game clock — authoritative date source
+    game_state = session.get(GameState, 1)
+    if game_state:
+        sim_date = game_state.current_date
+    elif sim_date is None:
+        sim_date = date.today()
 
     rng = random.Random(seed)
     summary: dict = {
@@ -390,6 +401,15 @@ def sim_month(
     # Post-event narrative updates
     update_goat_scores(session)
     update_rivalries(session)
+
+    # Advance game clock by one month
+    if game_state:
+        month = sim_date.month
+        year = sim_date.year
+        if month == 12:
+            game_state.current_date = date(year + 1, 1, 1)
+        else:
+            game_state.current_date = date(year, month + 1, 1)
 
     session.commit()
 

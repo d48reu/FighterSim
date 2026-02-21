@@ -9,6 +9,14 @@ const state = {
   currentWeightClass: 'Middleweight',
   panelContext: null,  // 'fighters' | 'free-agents' | 'roster'
   notifications: [],
+  gameDate: null,
+  // Events state
+  selectedEventId: null,
+  selectedFighterA: null,
+  selectedFighterB: null,
+  poolFilter: '',
+  poolWc: '',
+  bookableFighters: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -63,6 +71,7 @@ function navigate(view) {
 
 function loadView(view) {
   if (view === 'dashboard')   loadDashboard();
+  if (view === 'events')      loadEventsView();
   if (view === 'fighters')    loadFighters();
   if (view === 'roster')      loadRoster();
   if (view === 'free-agents') loadFreeAgents();
@@ -86,6 +95,44 @@ async function loadDashboard() {
   }
   loadFinances();
   loadExpiringContracts();
+  loadDashUpcoming();
+  loadDashRecentResults();
+}
+
+async function loadDashUpcoming() {
+  try {
+    const events = await api('/api/events/scheduled');
+    const el = document.getElementById('dash-upcoming');
+    if (events.length === 0) {
+      el.innerHTML = '<p class="muted">No upcoming events. Go to Events to create one.</p>';
+      return;
+    }
+    const ev = events[0];
+    el.innerHTML = `
+      <div class="dash-event-card" onclick="navigate('events')">
+        <div class="dash-event-name">${esc(ev.name)}</div>
+        <div class="dash-event-meta">${esc(ev.venue)} &middot; ${ev.event_date} &middot; ${ev.fight_count} fights</div>
+      </div>
+    `;
+  } catch (err) { /* silent */ }
+}
+
+async function loadDashRecentResults() {
+  try {
+    const events = await api('/api/events/history?limit=3');
+    const el = document.getElementById('dash-recent-results');
+    if (events.length === 0) {
+      el.innerHTML = '<p class="muted">No completed events yet.</p>';
+      return;
+    }
+    el.innerHTML = events.map(ev => `
+      <div class="dash-result-card">
+        <div class="dash-event-name">${esc(ev.name)}</div>
+        <div class="dash-event-meta">${ev.event_date} &middot; ${ev.fight_count} fights &middot; ${formatCurrency(ev.total_revenue)}</div>
+        ${ev.main_event_result ? `<div class="dash-main-result">${esc(ev.main_event_result)}</div>` : ''}
+      </div>
+    `).join('');
+  } catch (err) { /* silent */ }
 }
 
 async function loadFinances() {
@@ -679,6 +726,542 @@ async function loadRivalries() {
 }
 
 // ---------------------------------------------------------------------------
+// Game Date
+// ---------------------------------------------------------------------------
+
+async function loadGameDate() {
+  try {
+    const gs = await api('/api/gamestate');
+    state.gameDate = gs.current_date;
+    const d = new Date(gs.current_date + 'T00:00:00');
+    const formatted = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+    document.getElementById('game-date-display').textContent = `Game Date: ${formatted}`;
+  } catch (err) { /* silent */ }
+}
+
+// ---------------------------------------------------------------------------
+// Events View
+// ---------------------------------------------------------------------------
+
+async function loadEventsView() {
+  state.selectedFighterA = null;
+  state.selectedFighterB = null;
+  await Promise.all([loadScheduledEvents(), loadCompletedEvents(), loadBookableFighters()]);
+  if (state.selectedEventId) loadEventCard(state.selectedEventId);
+}
+
+async function loadScheduledEvents() {
+  try {
+    const events = await api('/api/events/scheduled');
+    const el = document.getElementById('events-scheduled-list');
+    if (events.length === 0) {
+      el.innerHTML = '<p class="muted">No scheduled events.</p>';
+      return;
+    }
+    el.innerHTML = events.map(ev => `
+      <div class="event-list-item ${state.selectedEventId === ev.id ? 'selected' : ''}" data-event-id="${ev.id}">
+        <div class="event-list-name">${esc(ev.name)}</div>
+        <div class="event-list-meta">${ev.event_date} &middot; ${ev.fight_count} fights</div>
+      </div>
+    `).join('');
+    el.querySelectorAll('.event-list-item').forEach(item => {
+      item.addEventListener('click', () => {
+        state.selectedEventId = Number(item.dataset.eventId);
+        loadEventCard(state.selectedEventId);
+        loadScheduledEvents();
+      });
+    });
+  } catch (err) { /* silent */ }
+}
+
+async function loadCompletedEvents() {
+  try {
+    const events = await api('/api/events/history?limit=10');
+    const el = document.getElementById('events-completed-list');
+    if (events.length === 0) {
+      el.innerHTML = '<p class="muted">No completed events.</p>';
+      return;
+    }
+    el.innerHTML = events.map(ev => `
+      <div class="event-list-item completed ${state.selectedEventId === ev.id ? 'selected' : ''}" data-event-id="${ev.id}">
+        <div class="event-list-name">${esc(ev.name)}</div>
+        <div class="event-list-meta">${ev.event_date} &middot; ${ev.main_event_result || ''}</div>
+      </div>
+    `).join('');
+    el.querySelectorAll('.event-list-item').forEach(item => {
+      item.addEventListener('click', () => {
+        state.selectedEventId = Number(item.dataset.eventId);
+        loadEventCard(state.selectedEventId);
+        loadCompletedEvents();
+        loadScheduledEvents();
+      });
+    });
+  } catch (err) { /* silent */ }
+}
+
+async function loadEventCard(eventId) {
+  try {
+    const event = await api(`/api/events/${eventId}`);
+    const header = document.getElementById('event-header');
+    const resultsView = document.getElementById('event-results-view');
+    const cardBuilder = document.getElementById('event-card-builder');
+    header.classList.remove('hidden');
+
+    document.getElementById('event-card-name').textContent = event.name;
+    document.getElementById('event-card-venue').textContent = event.venue;
+    document.getElementById('event-card-date').textContent = event.event_date;
+    const statusBadge = document.getElementById('event-card-status');
+    statusBadge.textContent = event.status;
+    statusBadge.className = `event-status-badge ${event.status.toLowerCase()}`;
+
+    if (event.status === 'Completed') {
+      cardBuilder.querySelector('#event-fights-list').classList.add('hidden');
+      cardBuilder.querySelector('#event-sim-area').classList.add('hidden');
+      document.getElementById('event-projection').classList.add('hidden');
+      resultsView.classList.remove('hidden');
+      renderCompletedEvent(event, resultsView);
+    } else {
+      resultsView.classList.add('hidden');
+      cardBuilder.querySelector('#event-fights-list').classList.remove('hidden');
+      renderScheduledFights(event);
+      loadEventProjection(eventId);
+
+      const simArea = document.getElementById('event-sim-area');
+      const simBtn = document.getElementById('btn-simulate-card');
+      if (event.fights.length >= 2) {
+        simArea.classList.remove('hidden');
+        simBtn.disabled = false;
+      } else {
+        simArea.classList.remove('hidden');
+        simBtn.disabled = true;
+      }
+    }
+  } catch (err) {
+    setStatus('Error loading event: ' + err.message, true);
+  }
+}
+
+function renderScheduledFights(event) {
+  const el = document.getElementById('event-fights-list');
+  if (event.fights.length === 0) {
+    el.innerHTML = '<p class="muted" style="text-align:center;padding:40px 0">Add fights using the fighter panel &rarr;</p>';
+    return;
+  }
+  el.innerHTML = event.fights.map(f => `
+    <div class="event-fight-card ${f.is_title_fight ? 'title-fight' : ''}">
+      ${f.is_title_fight ? '<div class="title-banner">TITLE FIGHT</div>' : ''}
+      <div class="event-fight-matchup">
+        <span class="event-fighter-name">${esc(f.fighter_a.name)}</span>
+        <span class="event-vs">VS</span>
+        <span class="event-fighter-name">${esc(f.fighter_b.name)}</span>
+      </div>
+      <div class="event-fight-meta">
+        <span class="badge">${esc(f.weight_class)}</span>
+        <span class="muted">${esc(f.fighter_a.record)} vs ${esc(f.fighter_b.record)}</span>
+      </div>
+      <button class="event-fight-remove" data-fight-id="${f.id}" title="Remove fight">&times;</button>
+    </div>
+  `).join('');
+
+  el.querySelectorAll('.event-fight-remove').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const fightId = Number(btn.dataset.fightId);
+      try {
+        await api(`/api/events/${event.id}/fights/${fightId}`, { method: 'DELETE' });
+        loadEventCard(event.id);
+        loadBookableFighters();
+      } catch (err) {
+        setStatus('Error: ' + err.message, true);
+      }
+    });
+  });
+}
+
+function renderCompletedEvent(event, container) {
+  const fights = event.fights || [];
+  let html = '<div class="completed-fights">';
+  for (const f of fights) {
+    const isWinnerA = f.winner_id === f.fighter_a.id;
+    const winnerName = isWinnerA ? f.fighter_a.name : f.fighter_b.name;
+    const methodClass = (f.method || '').includes('KO') ? 'ko' : (f.method || '').includes('Sub') ? 'sub' : 'dec';
+    html += `
+      <div class="result-fight-card ${f.is_title_fight ? 'title-fight' : ''}">
+        ${f.is_title_fight ? '<div class="title-banner gold">TITLE FIGHT</div>' : ''}
+        <div class="result-matchup">
+          <span class="result-fighter ${isWinnerA ? 'winner' : 'loser'}">${esc(f.fighter_a.name)}</span>
+          <span class="result-vs">VS</span>
+          <span class="result-fighter ${!isWinnerA ? 'winner' : 'loser'}">${esc(f.fighter_b.name)}</span>
+        </div>
+        <div class="result-details">
+          <span class="method-badge ${methodClass}">${esc(f.method || '')}</span>
+          <span class="muted">R${f.round_ended || '?'} ${esc(f.time_ended || '')}</span>
+        </div>
+        ${f.narrative ? `<div class="result-narrative">${esc(f.narrative)}</div>` : ''}
+      </div>
+    `;
+  }
+  html += '</div>';
+
+  // Revenue summary
+  html += `
+    <div class="event-revenue-summary">
+      <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(event.gate_revenue)}</span></div>
+      <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(event.ppv_buys * 45)}</span></div>
+      <div class="rev-item"><span class="rev-label">Total</span><span class="rev-value">${formatCurrency(event.total_revenue)}</span></div>
+    </div>
+  `;
+  container.innerHTML = html;
+}
+
+async function loadEventProjection(eventId) {
+  try {
+    const proj = await api(`/api/events/${eventId}/projection`);
+    const el = document.getElementById('event-projection');
+    if (proj.fight_count === 0) {
+      el.classList.add('hidden');
+      return;
+    }
+    el.classList.remove('hidden');
+    document.getElementById('proj-gate').textContent = formatCurrency(proj.gate_projection);
+    document.getElementById('proj-ppv').textContent = formatCurrency(proj.ppv_projection);
+    document.getElementById('proj-costs').textContent = formatCurrency(proj.total_costs);
+    const profitEl = document.getElementById('proj-profit');
+    profitEl.textContent = formatCurrency(proj.projected_profit);
+    profitEl.className = 'proj-value ' + (proj.projected_profit >= 0 ? 'positive' : 'negative');
+  } catch (err) { /* silent */ }
+}
+
+// Fighter Pool
+async function loadBookableFighters() {
+  try {
+    state.bookableFighters = await api('/api/events/bookable-fighters');
+    renderFighterPool();
+  } catch (err) { /* silent */ }
+}
+
+function renderFighterPool() {
+  const el = document.getElementById('pool-fighters');
+  let fighters = state.bookableFighters;
+  if (state.poolWc) fighters = fighters.filter(f => f.weight_class === state.poolWc);
+  if (state.poolFilter) {
+    const q = state.poolFilter.toLowerCase();
+    fighters = fighters.filter(f => f.name.toLowerCase().includes(q));
+  }
+  if (fighters.length === 0) {
+    el.innerHTML = '<p class="muted" style="padding:12px">No available fighters.</p>';
+    return;
+  }
+  el.innerHTML = fighters.map(f => {
+    const isSelA = state.selectedFighterA === f.id;
+    const isSelB = state.selectedFighterB === f.id;
+    return `
+      <div class="pool-fighter-card ${isSelA || isSelB ? 'selected' : ''}" data-fighter-id="${f.id}" data-wc="${esc(f.weight_class)}">
+        <div class="pool-fighter-top">
+          <span class="pool-fighter-name">${esc(f.name)}</span>
+          <span class="pool-ovr-badge">${f.overall}</span>
+        </div>
+        <div class="pool-fighter-meta">
+          <span>${esc(f.record)}</span>
+          <span class="badge" style="font-size:10px">${esc(f.weight_class)}</span>
+          ${f.days_since_last_fight < 999 ? `<span class="muted">${f.days_since_last_fight}d ago</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  el.querySelectorAll('.pool-fighter-card').forEach(card => {
+    card.addEventListener('click', () => toggleFighterSelection(Number(card.dataset.fighterId)));
+  });
+}
+
+function toggleFighterSelection(fighterId) {
+  if (state.selectedFighterA === fighterId) {
+    state.selectedFighterA = null;
+  } else if (state.selectedFighterB === fighterId) {
+    state.selectedFighterB = null;
+  } else if (!state.selectedFighterA) {
+    state.selectedFighterA = fighterId;
+  } else if (!state.selectedFighterB) {
+    state.selectedFighterB = fighterId;
+  } else {
+    // Both selected, replace B
+    state.selectedFighterB = fighterId;
+  }
+  renderFighterPool();
+  updateMatchupButton();
+}
+
+function updateMatchupButton() {
+  const area = document.getElementById('pool-matchup-area');
+  if (state.selectedFighterA && state.selectedFighterB) {
+    const fa = state.bookableFighters.find(f => f.id === state.selectedFighterA);
+    const fb = state.bookableFighters.find(f => f.id === state.selectedFighterB);
+    if (fa && fb && fa.weight_class === fb.weight_class) {
+      area.classList.remove('hidden');
+      return;
+    }
+  }
+  area.classList.add('hidden');
+}
+
+async function addMatchup() {
+  if (!state.selectedEventId || !state.selectedFighterA || !state.selectedFighterB) return;
+  const isTitleFight = document.getElementById('pool-title-check').checked;
+  try {
+    const result = await api(`/api/events/${state.selectedEventId}/add-fight`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fighter_a_id: state.selectedFighterA,
+        fighter_b_id: state.selectedFighterB,
+        is_title_fight: isTitleFight,
+      }),
+    });
+    if (result.error) {
+      setStatus(result.error, true);
+      return;
+    }
+    state.selectedFighterA = null;
+    state.selectedFighterB = null;
+    document.getElementById('pool-title-check').checked = false;
+    document.getElementById('pool-matchup-area').classList.add('hidden');
+    loadEventCard(state.selectedEventId);
+    loadBookableFighters();
+    setStatus('Fight added to card.');
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+// Create Event Modal
+async function openCreateEventModal() {
+  const overlay = document.getElementById('modal-overlay');
+  overlay.classList.remove('hidden');
+  document.getElementById('modal-event-name').value = '';
+  // Populate venues
+  try {
+    const venues = await api('/api/events/venues');
+    const sel = document.getElementById('modal-event-venue');
+    sel.innerHTML = venues.map(v =>
+      `<option value="${esc(v.name)}">${esc(v.name)} (${v.capacity.toLocaleString()} cap, ${formatCurrency(v.base_gate)} base)</option>`
+    ).join('');
+  } catch (err) { /* silent */ }
+  // Set min date to game date
+  if (state.gameDate) {
+    const d = new Date(state.gameDate + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    document.getElementById('modal-event-date').min = d.toISOString().split('T')[0];
+    document.getElementById('modal-event-date').value = d.toISOString().split('T')[0];
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+async function createEvent() {
+  const name = document.getElementById('modal-event-name').value.trim();
+  const venue = document.getElementById('modal-event-venue').value;
+  const eventDate = document.getElementById('modal-event-date').value;
+  if (!name) { setStatus('Event name is required.', true); return; }
+  if (!eventDate) { setStatus('Event date is required.', true); return; }
+  try {
+    const result = await api('/api/events/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, venue, event_date: eventDate }),
+    });
+    if (result.error) {
+      setStatus(result.error, true);
+      return;
+    }
+    closeModal();
+    state.selectedEventId = result.id;
+    loadEventsView();
+    setStatus(`Event "${name}" created.`);
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+// Simulate Event
+function confirmSimulate() {
+  document.getElementById('confirm-overlay').classList.remove('hidden');
+}
+
+function cancelSimulate() {
+  document.getElementById('confirm-overlay').classList.add('hidden');
+}
+
+async function simulateCard() {
+  document.getElementById('confirm-overlay').classList.add('hidden');
+  if (!state.selectedEventId) return;
+
+  const btn = document.getElementById('btn-simulate-card');
+  btn.disabled = true;
+  btn.textContent = 'Simulating...';
+  setStatus('Simulating event...');
+
+  try {
+    const { task_id } = await api(`/api/events/${state.selectedEventId}/simulate`, { method: 'POST' });
+    pollTask(
+      task_id,
+      result => {
+        btn.textContent = 'Simulate Event';
+        setStatus(`${result.event_name} simulated \u2014 ${result.fights_simulated} fights.`);
+        showAnimatedResults(result);
+        loadScheduledEvents();
+        loadCompletedEvents();
+        loadBookableFighters();
+        loadGameDate();
+      },
+      error => {
+        btn.disabled = false;
+        btn.textContent = 'Simulate Event';
+        setStatus('Error: ' + error, true);
+      }
+    );
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Simulate Event';
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+async function showAnimatedResults(result) {
+  const header = document.getElementById('event-header');
+  const cardBuilder = document.getElementById('event-card-builder');
+  const resultsView = document.getElementById('event-results-view');
+
+  // Hide card builder parts
+  document.getElementById('event-fights-list').classList.add('hidden');
+  document.getElementById('event-sim-area').classList.add('hidden');
+  document.getElementById('event-projection').classList.add('hidden');
+
+  // Update status badge
+  const statusBadge = document.getElementById('event-card-status');
+  statusBadge.textContent = 'Completed';
+  statusBadge.className = 'event-status-badge completed';
+
+  resultsView.classList.remove('hidden');
+  resultsView.innerHTML = '<div class="sim-pulse">Simulating ' + esc(result.event_name) + '...</div>';
+
+  let skipRequested = false;
+  const skipHandler = () => { skipRequested = true; };
+  resultsView.addEventListener('click', skipHandler);
+
+  await sleep(1000);
+  if (skipRequested) { renderFinalResults(result, resultsView); resultsView.removeEventListener('click', skipHandler); return; }
+
+  let html = '';
+  resultsView.innerHTML = '<div class="completed-fights" id="anim-fights"></div>';
+  const container = document.getElementById('anim-fights');
+
+  for (let i = 0; i < result.fights.length; i++) {
+    if (skipRequested) break;
+    const f = result.fights[i];
+    const methodClass = (f.method || '').includes('KO') ? 'ko' : (f.method || '').includes('Sub') ? 'sub' : 'dec';
+    const isWinnerA = f.winner_id === f.fighter_a_id;
+
+    if (f.is_title_fight && !skipRequested) {
+      const banner = document.createElement('div');
+      banner.className = 'title-pulse';
+      banner.textContent = 'TITLE FIGHT';
+      container.appendChild(banner);
+      await sleep(2000);
+      if (skipRequested) break;
+      banner.remove();
+    }
+
+    const card = document.createElement('div');
+    card.className = 'result-fight-card anim-enter';
+    card.innerHTML = `
+      ${f.is_title_fight ? '<div class="title-banner gold">TITLE FIGHT</div>' : ''}
+      <div class="result-matchup">
+        <span class="result-fighter ${isWinnerA ? 'winner' : 'loser'}">${esc(f.fighter_a)}</span>
+        <span class="result-vs">VS</span>
+        <span class="result-fighter ${!isWinnerA ? 'winner' : 'loser'}">${esc(f.fighter_b)}</span>
+      </div>
+      <div class="result-details">
+        <span class="method-badge ${methodClass} fade-in">${esc(f.method || '')}</span>
+        <span class="muted">R${f.round || '?'} ${esc(f.time || '')}</span>
+      </div>
+      <div class="result-narrative typewriter" data-text="${esc(f.narrative || '')}"></div>
+    `;
+    container.appendChild(card);
+
+    // Trigger enter animation
+    requestAnimationFrame(() => card.classList.add('entered'));
+
+    // Typewriter effect
+    if (!skipRequested && f.narrative) {
+      const tw = card.querySelector('.typewriter');
+      const text = f.narrative;
+      for (let c = 0; c <= text.length && !skipRequested; c++) {
+        tw.textContent = text.slice(0, c);
+        await sleep(20);
+      }
+    }
+
+    if (!skipRequested) await sleep(1200);
+  }
+
+  if (skipRequested) {
+    renderFinalResults(result, resultsView);
+  } else {
+    // Add revenue summary
+    const summary = document.createElement('div');
+    summary.className = 'event-revenue-summary anim-enter';
+    summary.innerHTML = `
+      <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(result.gate_revenue)}</span></div>
+      <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(result.ppv_revenue)}</span></div>
+      <div class="rev-item"><span class="rev-label">Costs</span><span class="rev-value">${formatCurrency(result.total_costs)}</span></div>
+      <div class="rev-item"><span class="rev-label">Profit</span><span class="rev-value ${result.profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(result.profit)}</span></div>
+    `;
+    container.parentElement.appendChild(summary);
+    requestAnimationFrame(() => summary.classList.add('entered'));
+  }
+
+  resultsView.removeEventListener('click', skipHandler);
+}
+
+function renderFinalResults(result, container) {
+  let html = '<div class="completed-fights">';
+  for (const f of result.fights) {
+    const methodClass = (f.method || '').includes('KO') ? 'ko' : (f.method || '').includes('Sub') ? 'sub' : 'dec';
+    const isWinnerA = f.winner_id === f.fighter_a_id;
+    html += `
+      <div class="result-fight-card entered ${f.is_title_fight ? 'title-fight' : ''}">
+        ${f.is_title_fight ? '<div class="title-banner gold">TITLE FIGHT</div>' : ''}
+        <div class="result-matchup">
+          <span class="result-fighter ${isWinnerA ? 'winner' : 'loser'}">${esc(f.fighter_a)}</span>
+          <span class="result-vs">VS</span>
+          <span class="result-fighter ${!isWinnerA ? 'winner' : 'loser'}">${esc(f.fighter_b)}</span>
+        </div>
+        <div class="result-details">
+          <span class="method-badge ${methodClass}">${esc(f.method || '')}</span>
+          <span class="muted">R${f.round || '?'} ${esc(f.time || '')}</span>
+        </div>
+        ${f.narrative ? `<div class="result-narrative">${esc(f.narrative)}</div>` : ''}
+      </div>
+    `;
+  }
+  html += '</div>';
+  html += `
+    <div class="event-revenue-summary entered">
+      <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(result.gate_revenue)}</span></div>
+      <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(result.ppv_revenue)}</span></div>
+      <div class="rev-item"><span class="rev-label">Costs</span><span class="rev-value">${formatCurrency(result.total_costs)}</span></div>
+      <div class="rev-item"><span class="rev-label">Profit</span><span class="rev-value ${result.profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(result.profit)}</span></div>
+    </div>
+  `;
+  container.innerHTML = html;
+}
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+// ---------------------------------------------------------------------------
 // Advance Month
 // ---------------------------------------------------------------------------
 
@@ -700,8 +1283,10 @@ async function advanceMonth() {
           `${result.events_simulated} AI events simulated.`
         );
         loadNotifications();
+        loadGameDate();
         if (state.currentView === 'dashboard') loadDashboard();
         if (state.currentView === 'roster') loadRoster();
+        if (state.currentView === 'events') loadEventsView();
         if (state.currentView === 'hof') loadHallOfFame();
       },
       error => {
@@ -717,58 +1302,7 @@ async function advanceMonth() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Simulate Event
-// ---------------------------------------------------------------------------
-
-async function simulateEvent() {
-  const btn = document.getElementById('btn-simulate-event');
-  btn.disabled = true;
-  btn.textContent = 'Simulating\u2026';
-  setStatus('Simulating fight card\u2026');
-
-  try {
-    const { task_id } = await api('/api/events/simulate', { method: 'POST' });
-    pollTask(
-      task_id,
-      result => {
-        btn.disabled = false;
-        btn.textContent = 'Simulate Event';
-        setStatus(`${result.event_name} \u2014 ${result.fights_simulated} fights.`);
-        renderEventResults(result.fights);
-        if (state.currentView !== 'dashboard') navigate('dashboard');
-      },
-      error => {
-        btn.disabled = false;
-        btn.textContent = 'Simulate Event';
-        setStatus('Error: ' + error, true);
-      }
-    );
-  } catch (err) {
-    btn.disabled = false;
-    btn.textContent = 'Simulate Event';
-    setStatus('Error: ' + err.message, true);
-  }
-}
-
-function renderEventResults(fights) {
-  const container = document.getElementById('event-results');
-  if (!fights || fights.length === 0) {
-    container.innerHTML = '<p class="muted">No fights to display.</p>';
-    return;
-  }
-  container.innerHTML = fights.map(f => `
-    <div class="fight-card">
-      <div class="fight-matchup">${esc(f.fighter_a)} vs ${esc(f.fighter_b)}</div>
-      <div class="fight-result">
-        <span class="winner">${esc(f.winner)}</span>
-        <span class="method">${esc(f.method)}</span>
-        <span class="fight-time">R${f.round} ${esc(f.time)}</span>
-      </div>
-      <div class="fight-narrative">${esc(f.narrative)}</div>
-    </div>
-  `).join('');
-}
+// (old simulateEvent removed — events now handled via Events view)
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -825,12 +1359,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Actions
   document.getElementById('btn-advance-month').addEventListener('click', advanceMonth);
-  document.getElementById('btn-simulate-event').addEventListener('click', simulateEvent);
   document.getElementById('btn-close-panel').addEventListener('click', closeFighterPanel);
+
+  // Event booking
+  document.getElementById('btn-create-event').addEventListener('click', openCreateEventModal);
+  document.getElementById('btn-modal-close').addEventListener('click', closeModal);
+  document.getElementById('btn-modal-create').addEventListener('click', createEvent);
+  document.getElementById('btn-simulate-card').addEventListener('click', confirmSimulate);
+  document.getElementById('btn-confirm-sim').addEventListener('click', simulateCard);
+  document.getElementById('btn-cancel-sim').addEventListener('click', cancelSimulate);
+  document.getElementById('btn-add-matchup').addEventListener('click', addMatchup);
+
+  // Pool search and filter
+  document.getElementById('pool-search').addEventListener('input', e => {
+    state.poolFilter = e.target.value;
+    renderFighterPool();
+  });
+  document.querySelectorAll('#pool-wc-tabs .pool-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('#pool-wc-tabs .pool-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      state.poolWc = tab.dataset.wc;
+      renderFighterPool();
+    });
+  });
 
   // Notifications
   document.getElementById('notif-bell').addEventListener('click', toggleNotifDropdown);
-  // Close dropdown when clicking outside
   document.addEventListener('click', e => {
     const bell = document.getElementById('notif-bell');
     const dropdown = document.getElementById('notif-dropdown');
@@ -839,7 +1394,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Close modals on overlay click
+  document.getElementById('modal-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+  document.getElementById('confirm-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) cancelSimulate();
+  });
+
   // Initial load
+  loadGameDate();
   loadNotifications();
   setInterval(loadNotifications, 30000);
   navigate('dashboard');

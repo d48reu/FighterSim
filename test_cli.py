@@ -21,7 +21,7 @@ ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
 from models.database import create_db_engine, create_session_factory, Base
-from models.models import Fighter, WeightClass
+from models.models import Fighter, WeightClass, GameState
 from simulation.seed import seed_organizations, seed_fighters
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import rebuild_rankings, get_rankings
@@ -143,24 +143,35 @@ print("=" * 60)
 
 with SessionFactory() as session:
     total_time = 0.0
-    base_date = date.today()
-    
+
+    # Verify game state exists and show initial date
+    gs = session.get(GameState, 1)
+    print(f"  Game start date: {gs.current_date}")
+
     for i in range(1, 4):
-        sim_date = base_date + timedelta(days=30 * i)
         t0 = time.perf_counter()
-        summary = sim_month(session, sim_date, seed=i * 1000)
+        summary = sim_month(session, seed=i * 1000)
         elapsed = time.perf_counter() - t0
         total_time += elapsed
-        
+
+        # Re-read game state to see updated date
+        session.expire(gs)
         status = "✓" if elapsed < 2.0 else "✗ SLOW"
-        print(f"  Month {i} ({sim_date}): {elapsed:.3f}s {status}")
+        print(f"  Month {i} (game date now: {gs.current_date}): {elapsed:.3f}s {status}")
         print(f"    Fighters aged: {summary['fighters_aged']}, Events simulated: {summary['events_simulated']}")
-    
+
     print(f"\n  Total: {total_time:.3f}s | Average: {total_time/3:.3f}s")
     if total_time / 3 < 2.0:
         print("  ✓ All sim_month() calls within 2s limit")
     else:
         print("  ✗ Performance requirement not met")
+
+    # Verify game date advanced correctly (should be April 2026 after 3 months from Jan 2026)
+    expected_date = date(2026, 4, 1)
+    if gs.current_date == expected_date:
+        print(f"  ✓ Game date correctly advanced to {gs.current_date}")
+    else:
+        print(f"  ✗ Game date mismatch: expected {expected_date}, got {gs.current_date}")
 
 
 # ──────────────────────────────────────────────

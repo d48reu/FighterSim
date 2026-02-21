@@ -15,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 from models.database import Base
 from models.models import (
     Fighter, Organization, Contract, Event, Fight,
-    WeightClass, ContractStatus, Notification,
+    WeightClass, ContractStatus, EventStatus, Notification, GameState,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -69,6 +69,27 @@ def _task_error(task_id: str, error: str) -> None:
 def get_task(task_id: str) -> Optional[dict]:
     with _tasks_lock:
         return _tasks.get(task_id)
+
+
+# ---------------------------------------------------------------------------
+# Game State
+# ---------------------------------------------------------------------------
+
+def _get_game_date(session) -> date:
+    """Return current game date from GameState, falling back to today."""
+    gs = session.get(GameState, 1)
+    return gs.current_date if gs else date.today()
+
+
+def get_gamestate() -> dict:
+    with _SessionFactory() as session:
+        gs = session.get(GameState, 1)
+        if not gs:
+            return {"current_date": date.today().isoformat(), "player_org_id": None}
+        return {
+            "current_date": gs.current_date.isoformat(),
+            "player_org_id": gs.player_org_id,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -215,11 +236,13 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
             fighters = [f for _, f in available]
             rng.shuffle(fighters)
 
+            game_date = _get_game_date(session)
             event = Event(
-                name=f"Fight Night — {date.today().strftime('%B %Y')}",
-                event_date=date.today(),
+                name=f"Fight Night — {game_date.strftime('%B %Y')}",
+                event_date=game_date,
                 venue="Player Arena",
                 organization_id=player_org.id,
+                status=EventStatus.COMPLETED,
                 gate_revenue=rng.uniform(100_000, 500_000),
                 ppv_buys=rng.randint(0, 100_000),
             )
@@ -319,16 +342,16 @@ def start_advance_month() -> str:
     task_id = _new_task()
     threading.Thread(
         target=_run_advance_month,
-        args=(task_id, date.today(), random.randint(0, 999_999)),
+        args=(task_id, random.randint(0, 999_999)),
         daemon=True,
     ).start()
     return task_id
 
 
-def _run_advance_month(task_id: str, sim_date: date, seed: int) -> None:
+def _run_advance_month(task_id: str, seed: int) -> None:
     try:
         with _SessionFactory() as session:
-            summary = sim_month(session, sim_date, seed=seed)
+            summary = sim_month(session, seed=seed)
         _task_done(task_id, summary)
     except Exception as e:
         _task_error(task_id, str(e))
@@ -569,7 +592,8 @@ def make_contract_offer(fighter_id: int, salary: float, fight_count: int, length
 
         if random.random() < acceptance_prob:
             from datetime import timedelta
-            expiry = date.today() + timedelta(days=length_months * 30)
+            game_date = _get_game_date(session)
+            expiry = game_date + timedelta(days=length_months * 30)
             contract = Contract(
                 fighter_id=fighter_id,
                 organization_id=player_org.id,
@@ -609,10 +633,11 @@ def release_fighter(fighter_id: int) -> dict:
         fighter = session.get(Fighter, fighter_id)
         contract.status = ContractStatus.TERMINATED
 
+        game_date = _get_game_date(session)
         notif = Notification(
             message=f"{fighter.name} has been released from your roster.",
             type="fighter_released",
-            created_date=date.today(),
+            created_date=game_date,
         )
         session.add(notif)
         session.commit()
@@ -628,7 +653,8 @@ def get_expiring_contracts() -> list[dict]:
         if not player_org:
             return []
 
-        cutoff = date.today() + timedelta(days=60)
+        game_date = _get_game_date(session)
+        cutoff = game_date + timedelta(days=60)
         rows = session.execute(
             select(Contract, Fighter)
             .join(Fighter, Contract.fighter_id == Fighter.id)
@@ -682,7 +708,8 @@ def renew_contract(fighter_id: int, salary: float, fight_count: int, length_mont
 
         if random.random() < acceptance_prob:
             from datetime import timedelta
-            contract.expiry_date = date.today() + timedelta(days=length_months * 30)
+            game_date = _get_game_date(session)
+            contract.expiry_date = game_date + timedelta(days=length_months * 30)
             contract.salary = salary
             contract.fight_count_total = fight_count
             contract.fights_remaining = fight_count
@@ -751,3 +778,483 @@ def mark_notification_read(notification_id: int) -> dict:
         notif.read = True
         session.commit()
         return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Event Booking
+# ---------------------------------------------------------------------------
+
+VENUES = [
+    {"name": "Local Gym", "capacity": 500, "base_gate": 15000},
+    {"name": "Convention Center", "capacity": 2000, "base_gate": 60000},
+    {"name": "Municipal Arena", "capacity": 5000, "base_gate": 150000},
+    {"name": "Sports Complex", "capacity": 10000, "base_gate": 300000},
+    {"name": "Major Arena", "capacity": 18000, "base_gate": 550000},
+    {"name": "Stadium", "capacity": 45000, "base_gate": 1200000},
+]
+
+
+def _fight_dict(fight: Fight, session) -> dict:
+    fa = session.get(Fighter, fight.fighter_a_id)
+    fb = session.get(Fighter, fight.fighter_b_id)
+    wc = fight.weight_class.value if hasattr(fight.weight_class, "value") else fight.weight_class
+    d = {
+        "id": fight.id,
+        "fighter_a": _fighter_dict(fa) if fa else {"id": fight.fighter_a_id, "name": "Unknown"},
+        "fighter_b": _fighter_dict(fb) if fb else {"id": fight.fighter_b_id, "name": "Unknown"},
+        "weight_class": wc,
+        "card_position": fight.card_position,
+        "is_title_fight": fight.is_title_fight,
+        "winner_id": fight.winner_id,
+        "method": fight.method.value if hasattr(fight.method, "value") else fight.method,
+        "round_ended": fight.round_ended,
+        "time_ended": fight.time_ended,
+        "narrative": fight.narrative,
+    }
+    return d
+
+
+def _event_dict(event: Event, session, include_fights=True) -> dict:
+    d = {
+        "id": event.id,
+        "name": event.name,
+        "event_date": event.event_date.isoformat(),
+        "venue": event.venue,
+        "status": event.status.value if hasattr(event.status, "value") else event.status,
+        "gate_revenue": round(event.gate_revenue, 2),
+        "ppv_buys": event.ppv_buys,
+        "total_revenue": round(event.total_revenue, 2),
+        "fight_count": len(event.fights),
+    }
+    if include_fights:
+        d["fights"] = [_fight_dict(f, session) for f in event.fights]
+    if event.fights:
+        main_event = max(event.fights, key=lambda f: f.card_position)
+        if main_event.winner_id:
+            winner = session.get(Fighter, main_event.winner_id)
+            method = main_event.method.value if hasattr(main_event.method, "value") else main_event.method
+            d["main_event_result"] = f"{winner.name if winner else 'Unknown'} via {method}" if method else None
+        else:
+            d["main_event_result"] = None
+    else:
+        d["main_event_result"] = None
+    return d
+
+
+def get_bookable_fighters() -> list[dict]:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        # Fighters on active contracts with fights remaining, not injured
+        rows = session.execute(
+            select(Contract, Fighter)
+            .join(Fighter, Contract.fighter_id == Fighter.id)
+            .where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+                Contract.fights_remaining > 0,
+                Fighter.injury_months == 0,
+            )
+        ).all()
+
+        # Find fighter IDs already booked on scheduled events
+        scheduled_events = session.execute(
+            select(Event).where(
+                Event.organization_id == player_org.id,
+                Event.status == EventStatus.SCHEDULED,
+            )
+        ).scalars().all()
+        booked_ids = set()
+        for ev in scheduled_events:
+            for fight in ev.fights:
+                booked_ids.add(fight.fighter_a_id)
+                booked_ids.add(fight.fighter_b_id)
+
+        # Get last fight date for each fighter
+        game_date = _get_game_date(session)
+        results = []
+        for contract, fighter in rows:
+            if fighter.id in booked_ids:
+                continue
+            # Find most recent completed fight
+            last_fight = session.execute(
+                select(Fight)
+                .join(Event, Fight.event_id == Event.id)
+                .where(
+                    Event.status == EventStatus.COMPLETED,
+                    ((Fight.fighter_a_id == fighter.id) | (Fight.fighter_b_id == fighter.id)),
+                    Fight.winner_id.isnot(None),
+                )
+                .order_by(Event.event_date.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+
+            if last_fight:
+                last_event = session.get(Event, last_fight.event_id)
+                days_since = (game_date - last_event.event_date).days if last_event else 999
+            else:
+                days_since = 999
+
+            d = _fighter_dict(fighter)
+            d["days_since_last_fight"] = days_since
+            d["salary"] = contract.salary
+            d["fights_remaining"] = contract.fights_remaining
+            results.append(d)
+
+        results.sort(key=lambda x: x["overall"], reverse=True)
+        return results
+
+
+def create_event(name: str, venue: str, event_date_str: str) -> dict:
+    from datetime import datetime
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"error": "No player organization found."}
+
+        game_date = _get_game_date(session)
+        event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+        if event_date <= game_date:
+            return {"error": "Event date must be after the current game date."}
+
+        event = Event(
+            name=name,
+            event_date=event_date,
+            venue=venue,
+            organization_id=player_org.id,
+            status=EventStatus.SCHEDULED,
+        )
+        session.add(event)
+        session.commit()
+        return _event_dict(event, session)
+
+
+def add_fight_to_event(event_id: int, fighter_a_id: int, fighter_b_id: int, is_title_fight: bool = False) -> dict:
+    with _SessionFactory() as session:
+        event = session.get(Event, event_id)
+        if not event:
+            return {"error": "Event not found."}
+        if event.status != EventStatus.SCHEDULED:
+            return {"error": "Can only add fights to scheduled events."}
+
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org or event.organization_id != player_org.id:
+            return {"error": "Event does not belong to your organization."}
+
+        fa = session.get(Fighter, fighter_a_id)
+        fb = session.get(Fighter, fighter_b_id)
+        if not fa or not fb:
+            return {"error": "One or both fighters not found."}
+
+        # Check same weight class
+        fa_wc = fa.weight_class.value if hasattr(fa.weight_class, "value") else fa.weight_class
+        fb_wc = fb.weight_class.value if hasattr(fb.weight_class, "value") else fb.weight_class
+        if fa_wc != fb_wc:
+            return {"error": "Fighters must be in the same weight class."}
+
+        # Check not already booked on this event
+        for fight in event.fights:
+            if fighter_a_id in (fight.fighter_a_id, fight.fighter_b_id):
+                return {"error": f"{fa.name} is already booked on this event."}
+            if fighter_b_id in (fight.fighter_a_id, fight.fighter_b_id):
+                return {"error": f"{fb.name} is already booked on this event."}
+
+        # Validate both have active contracts with player org
+        for fid, fname in [(fighter_a_id, fa.name), (fighter_b_id, fb.name)]:
+            contract = session.execute(
+                select(Contract).where(
+                    Contract.fighter_id == fid,
+                    Contract.organization_id == player_org.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                    Contract.fights_remaining > 0,
+                )
+            ).scalar_one_or_none()
+            if not contract:
+                return {"error": f"{fname} does not have a valid contract with fights remaining."}
+
+        card_position = len(event.fights)
+        fight = Fight(
+            event_id=event.id,
+            fighter_a_id=fighter_a_id,
+            fighter_b_id=fighter_b_id,
+            weight_class=fa.weight_class,
+            card_position=card_position,
+            is_title_fight=is_title_fight,
+        )
+        session.add(fight)
+        session.commit()
+        # Refresh event fights
+        session.refresh(event)
+        return _event_dict(event, session)
+
+
+def remove_fight_from_event(event_id: int, fight_id: int) -> dict:
+    with _SessionFactory() as session:
+        event = session.get(Event, event_id)
+        if not event:
+            return {"error": "Event not found."}
+        if event.status != EventStatus.SCHEDULED:
+            return {"error": "Can only remove fights from scheduled events."}
+
+        fight = session.get(Fight, fight_id)
+        if not fight or fight.event_id != event_id:
+            return {"error": "Fight not found on this event."}
+        if fight.winner_id is not None:
+            return {"error": "Cannot remove a completed fight."}
+
+        session.delete(fight)
+        session.commit()
+        session.refresh(event)
+        return _event_dict(event, session)
+
+
+def start_simulate_player_event(event_id: int) -> str:
+    task_id = _new_task()
+    threading.Thread(
+        target=_run_simulate_player_event,
+        args=(task_id, event_id, random.randint(0, 999_999)),
+        daemon=True,
+    ).start()
+    return task_id
+
+
+def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
+    try:
+        with _SessionFactory() as session:
+            event = session.get(Event, event_id)
+            if not event:
+                _task_error(task_id, "Event not found.")
+                return
+            if event.status != EventStatus.SCHEDULED:
+                _task_error(task_id, "Event is not scheduled.")
+                return
+            if len(event.fights) < 2:
+                _task_error(task_id, "Need at least 2 fights on the card.")
+                return
+
+            player_org = session.execute(
+                select(Organization).where(Organization.is_player == True)
+            ).scalar_one_or_none()
+            if not player_org:
+                _task_error(task_id, "No player organization found.")
+                return
+
+            rng = random.Random(seed)
+            fight_results = []
+            total_fighter_salaries = 0.0
+
+            for fight in sorted(event.fights, key=lambda f: f.card_position):
+                fa = session.get(Fighter, fight.fighter_a_id)
+                fb = session.get(Fighter, fight.fighter_b_id)
+                if not fa or not fb:
+                    continue
+
+                result = simulate_fight(
+                    _to_stats(fa), _to_stats(fb),
+                    seed=rng.randint(0, 999_999),
+                )
+
+                fight.winner_id = result.winner_id
+                fight.method = result.method
+                fight.round_ended = result.round_ended
+                fight.time_ended = result.time_ended
+                fight.narrative = result.narrative
+
+                winner = fa if result.winner_id == fa.id else fb
+                loser = fb if winner is fa else fa
+                winner.wins += 1
+                loser.losses += 1
+                if result.method == "KO/TKO":
+                    winner.ko_wins += 1
+                elif result.method == "Submission":
+                    winner.sub_wins += 1
+
+                # Decrease fights remaining on contracts
+                for fid in (fa.id, fb.id):
+                    contract = session.execute(
+                        select(Contract).where(
+                            Contract.fighter_id == fid,
+                            Contract.organization_id == player_org.id,
+                            Contract.status == ContractStatus.ACTIVE,
+                        )
+                    ).scalar_one_or_none()
+                    if contract:
+                        contract.fights_remaining = max(0, contract.fights_remaining - 1)
+                        total_fighter_salaries += contract.salary
+
+                mark_rankings_dirty(session, WeightClass(fa.weight_class))
+                apply_fight_tags(winner, loser, fight, session)
+
+                fight_results.append({
+                    "fight_id": fight.id,
+                    "fighter_a": fa.name,
+                    "fighter_a_id": fa.id,
+                    "fighter_b": fb.name,
+                    "fighter_b_id": fb.id,
+                    "winner": winner.name,
+                    "winner_id": winner.id,
+                    "loser": loser.name,
+                    "method": result.method,
+                    "round": result.round_ended,
+                    "time": result.time_ended,
+                    "narrative": result.narrative,
+                    "is_title_fight": fight.is_title_fight,
+                    "weight_class": fa.weight_class.value if hasattr(fa.weight_class, "value") else fa.weight_class,
+                })
+
+            # Calculate revenue
+            card_fighters = []
+            for fight in event.fights:
+                fa = session.get(Fighter, fight.fighter_a_id)
+                fb = session.get(Fighter, fight.fighter_b_id)
+                if fa:
+                    card_fighters.append(fa)
+                if fb:
+                    card_fighters.append(fb)
+
+            # Find venue base_gate
+            venue_info = next((v for v in VENUES if v["name"] == event.venue), VENUES[0])
+            card_size = len(event.fights)
+            pop_sum = sum(f.popularity for f in card_fighters)
+            gate_revenue = venue_info["base_gate"] * (pop_sum / (card_size * 100)) if card_size > 0 else 0
+
+            # PPV from top 2 hype fighters
+            sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
+            top_hype = sorted_by_hype[:2]
+            avg_hype = sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
+            ppv_buys = int(avg_hype * 800)
+
+            event.gate_revenue = gate_revenue
+            event.ppv_buys = ppv_buys
+            event.status = EventStatus.COMPLETED
+
+            total_revenue = event.total_revenue
+            player_org.bank_balance += total_revenue - total_fighter_salaries
+
+            # Narrative updates
+            update_goat_scores(session)
+            update_rivalries(session)
+
+            session.commit()
+
+            _task_done(task_id, {
+                "event_id": event.id,
+                "event_name": event.name,
+                "fights_simulated": len(fight_results),
+                "fights": fight_results,
+                "gate_revenue": round(gate_revenue, 2),
+                "ppv_buys": ppv_buys,
+                "ppv_revenue": round(ppv_buys * 45.0, 2),
+                "total_revenue": round(total_revenue, 2),
+                "total_costs": round(total_fighter_salaries, 2),
+                "profit": round(total_revenue - total_fighter_salaries, 2),
+            })
+    except Exception as e:
+        _task_error(task_id, str(e))
+
+
+def get_scheduled_events() -> list[dict]:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        events = session.execute(
+            select(Event).where(
+                Event.organization_id == player_org.id,
+                Event.status == EventStatus.SCHEDULED,
+            ).order_by(Event.event_date.asc())
+        ).scalars().all()
+
+        return [_event_dict(e, session) for e in events]
+
+
+def get_event_history(limit: int = 20) -> list[dict]:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        events = session.execute(
+            select(Event).where(
+                Event.organization_id == player_org.id,
+                Event.status == EventStatus.COMPLETED,
+            ).order_by(Event.event_date.desc()).limit(limit)
+        ).scalars().all()
+
+        return [_event_dict(e, session, include_fights=False) for e in events]
+
+
+def get_event(event_id: int) -> Optional[dict]:
+    with _SessionFactory() as session:
+        event = session.get(Event, event_id)
+        if not event:
+            return None
+        return _event_dict(event, session)
+
+
+def calculate_event_projection(event_id: int) -> dict:
+    with _SessionFactory() as session:
+        event = session.get(Event, event_id)
+        if not event:
+            return {"error": "Event not found."}
+
+        card_fighters = []
+        total_salaries = 0.0
+        for fight in event.fights:
+            fa = session.get(Fighter, fight.fighter_a_id)
+            fb = session.get(Fighter, fight.fighter_b_id)
+            if fa:
+                card_fighters.append(fa)
+            if fb:
+                card_fighters.append(fb)
+            # Sum salaries
+            for fid in (fight.fighter_a_id, fight.fighter_b_id):
+                contract = session.execute(
+                    select(Contract).where(
+                        Contract.fighter_id == fid,
+                        Contract.status == ContractStatus.ACTIVE,
+                    )
+                ).scalar_one_or_none()
+                if contract:
+                    total_salaries += contract.salary
+
+        venue_info = next((v for v in VENUES if v["name"] == event.venue), VENUES[0])
+        card_size = len(event.fights)
+        pop_sum = sum(f.popularity for f in card_fighters)
+        gate_projection = venue_info["base_gate"] * (pop_sum / (card_size * 100)) if card_size > 0 else 0
+
+        sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
+        top_hype = sorted_by_hype[:2]
+        avg_hype = sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
+        ppv_projection = int(avg_hype * 800) * 45.0
+
+        total_revenue = gate_projection + ppv_projection
+        profit = total_revenue - total_salaries
+
+        return {
+            "gate_projection": round(gate_projection, 2),
+            "ppv_projection": round(ppv_projection, 2),
+            "total_revenue": round(total_revenue, 2),
+            "total_costs": round(total_salaries, 2),
+            "projected_profit": round(profit, 2),
+            "fight_count": card_size,
+            "venue": event.venue,
+            "venue_capacity": venue_info["capacity"],
+        }
+
+
+def get_venues() -> list[dict]:
+    return VENUES
