@@ -1320,8 +1320,8 @@ def hold_press_conference(event_id: int) -> dict:
         if event.has_press_conference:
             return {"error": "Press conference already held for this event."}
 
-        # Get main event (highest card_position)
-        main_event = max(event.fights, key=lambda f: f.card_position)
+        # Get main event (title fight first, then highest card_position)
+        main_event = max(event.fights, key=lambda f: (f.is_title_fight, f.card_position))
         fa = session.get(Fighter, main_event.fighter_a_id)
         fb = session.get(Fighter, main_event.fighter_b_id)
         if not fa or not fb:

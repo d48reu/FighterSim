@@ -647,8 +647,8 @@ def generate_press_conference(fighter_a: Fighter, fighter_b: Fighter,
 
         exchanges.append({
             "round": i + 1,
-            "fighter_a": {"name": fighter_a.name, "quote": quote_a, "tone": tone_a},
-            "fighter_b": {"name": fighter_b.name, "quote": quote_b, "tone": tone_b},
+            "fighter_a": quote_a,
+            "fighter_b": quote_b,
         })
 
     # Calculate hype based on tone clash diversity
