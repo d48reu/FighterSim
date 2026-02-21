@@ -346,3 +346,45 @@ class GameState(Base):
     id: Mapped[int] = Column(Integer, primary_key=True)
     current_date: Mapped[date] = Column(Date, nullable=False)
     player_org_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Training Camps & Fighter Development
+# ---------------------------------------------------------------------------
+
+class TrainingCamp(Base):
+    """A training facility where fighters develop their skills."""
+
+    __tablename__ = "training_camps"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = Column(String(100), nullable=False)
+    specialty: Mapped[str] = Column(String(50), nullable=False)
+    tier: Mapped[int] = Column(Integer, nullable=False)
+    cost_per_month: Mapped[float] = Column(Float, nullable=False)
+    prestige_required: Mapped[float] = Column(Float, default=0.0)
+    slots: Mapped[int] = Column(Integer, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<TrainingCamp {self.name} T{self.tier}>"
+
+
+class FighterDevelopment(Base):
+    """Tracks a fighter's training assignment and progress."""
+
+    __tablename__ = "fighter_development"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
+    camp_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("training_camps.id"), nullable=True)
+    focus: Mapped[str] = Column(String(50), nullable=False, default="Balanced")
+    months_at_camp: Mapped[int] = Column(Integer, default=0)
+    total_development_spend: Mapped[float] = Column(Float, default=0.0)
+    last_trained: Mapped[Optional[date]] = Column(Date, nullable=True)
+
+    fighter: Mapped["Fighter"] = relationship("Fighter")
+    camp: Mapped[Optional["TrainingCamp"]] = relationship("TrainingCamp")
+
+    __table_args__ = (
+        Index("ix_dev_fighter", "fighter_id"),
+    )

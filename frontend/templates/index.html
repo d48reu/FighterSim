@@ -23,6 +23,7 @@
         <div class="nav-item" data-view="events">Events</div>
         <div class="nav-item" data-view="fighters">Fighters</div>
         <div class="nav-item" data-view="roster">Roster</div>
+        <div class="nav-item" data-view="development">Development</div>
         <div class="nav-item" data-view="free-agents">Free Agents</div>
         <div class="nav-item" data-view="rankings">Rankings</div>
         <div class="nav-item" data-view="hof">Hall of Fame</div>
@@ -298,6 +299,89 @@
               <tr><td colspan="9" class="muted">Loading...</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Development -->
+      <div id="view-development" class="view hidden">
+        <div class="dev-layout">
+          <!-- Left: Fighter List -->
+          <div class="dev-left">
+            <h3>Roster</h3>
+            <div id="dev-fighter-list" class="dev-fighter-list">
+              <p class="muted">Loading...</p>
+            </div>
+          </div>
+
+          <!-- Right: Development Manager -->
+          <div class="dev-right">
+            <div id="dev-empty" class="dev-empty">
+              <p class="muted">Select a fighter to manage their development.</p>
+            </div>
+
+            <div id="dev-manager" class="dev-manager hidden">
+              <!-- Fighter header -->
+              <div class="dev-fighter-header">
+                <div class="dev-fighter-name" id="dev-name">—</div>
+                <div class="dev-fighter-meta" id="dev-meta">—</div>
+              </div>
+
+              <!-- Current assignment -->
+              <div class="dev-section">
+                <h4>Current Assignment</h4>
+                <div id="dev-current-assignment" class="dev-current-assignment">
+                  <p class="muted">No camp assigned</p>
+                </div>
+              </div>
+
+              <!-- Camp selector -->
+              <div class="dev-section">
+                <h4>Assign to Camp</h4>
+                <div id="dev-camp-grid" class="dev-camp-grid"></div>
+              </div>
+
+              <!-- Focus selector -->
+              <div class="dev-section">
+                <h4>Training Focus</h4>
+                <div id="dev-focus-selector" class="dev-focus-selector">
+                  <button class="focus-btn" data-focus="Striking">Striking</button>
+                  <button class="focus-btn" data-focus="Grappling">Grappling</button>
+                  <button class="focus-btn" data-focus="Wrestling">Wrestling</button>
+                  <button class="focus-btn" data-focus="Cardio">Cardio</button>
+                  <button class="focus-btn active" data-focus="Balanced">Balanced</button>
+                </div>
+                <div id="dev-focus-hint" class="dev-focus-hint"></div>
+              </div>
+
+              <!-- Projection table -->
+              <div class="dev-section" id="dev-projection-section" style="display:none">
+                <h4>Projection</h4>
+                <div class="dev-projection-table-wrap">
+                  <table class="dev-projection-table">
+                    <thead>
+                      <tr>
+                        <th></th>
+                        <th>Now</th>
+                        <th>3mo</th>
+                        <th>6mo</th>
+                        <th>12mo</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dev-projection-tbody"></tbody>
+                  </table>
+                </div>
+                <button class="btn btn-primary" id="btn-dev-assign" style="margin-top:12px;width:100%">Assign to Camp</button>
+              </div>
+
+              <!-- Development history -->
+              <div class="dev-section">
+                <h4>Development History</h4>
+                <div id="dev-history" class="dev-history">
+                  <p class="muted">No history yet.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

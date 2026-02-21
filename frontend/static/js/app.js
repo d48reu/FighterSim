@@ -70,13 +70,14 @@ function navigate(view) {
 }
 
 function loadView(view) {
-  if (view === 'dashboard')   loadDashboard();
-  if (view === 'events')      loadEventsView();
-  if (view === 'fighters')    loadFighters();
-  if (view === 'roster')      loadRoster();
-  if (view === 'free-agents') loadFreeAgents();
-  if (view === 'rankings')    loadRankings(state.currentWeightClass);
-  if (view === 'hof')         loadHallOfFame();
+  if (view === 'dashboard')    loadDashboard();
+  if (view === 'events')       loadEventsView();
+  if (view === 'fighters')     loadFighters();
+  if (view === 'roster')       loadRoster();
+  if (view === 'development')  loadDevelopmentView();
+  if (view === 'free-agents')  loadFreeAgents();
+  if (view === 'rankings')     loadRankings(state.currentWeightClass);
+  if (view === 'hof')          loadHallOfFame();
 }
 
 // ---------------------------------------------------------------------------
@@ -1262,6 +1263,285 @@ function renderFinalResults(result, container) {
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 // ---------------------------------------------------------------------------
+// Development View
+// ---------------------------------------------------------------------------
+
+const devState = {
+  selectedFighterId: null,
+  selectedCampId: null,
+  selectedFocus: 'Balanced',
+  rosterDev: [],
+  camps: [],
+};
+
+async function loadDevelopmentView() {
+  devState.selectedFighterId = null;
+  devState.selectedCampId = null;
+  devState.selectedFocus = 'Balanced';
+  document.getElementById('dev-manager').classList.add('hidden');
+  document.getElementById('dev-empty').classList.remove('hidden');
+
+  try {
+    const [roster, camps] = await Promise.all([
+      api('/api/development/roster'),
+      api('/api/development/camps'),
+    ]);
+    devState.rosterDev = roster;
+    devState.camps = camps;
+    renderDevFighterList();
+  } catch (err) {
+    setStatus('Error loading development: ' + err.message, true);
+  }
+}
+
+function renderDevFighterList() {
+  const el = document.getElementById('dev-fighter-list');
+  if (devState.rosterDev.length === 0) {
+    el.innerHTML = '<p class="muted">No fighters on roster.</p>';
+    return;
+  }
+  el.innerHTML = devState.rosterDev.map(f => {
+    let statusIcon, statusClass;
+    if (f.status === 'training') {
+      statusIcon = '\u25B2'; statusClass = 'dev-up';
+    } else if (f.status === 'declining') {
+      statusIcon = '\u25BC'; statusClass = 'dev-down';
+    } else {
+      statusIcon = '\u2014'; statusClass = 'dev-idle';
+    }
+    const isSelected = devState.selectedFighterId === f.id;
+    return `
+      <div class="dev-fighter-card ${isSelected ? 'selected' : ''}" data-fighter-id="${f.id}">
+        <div class="dev-card-top">
+          <span class="dev-card-name">${esc(f.name)}</span>
+          <span class="dev-card-ovr">${f.overall}</span>
+        </div>
+        <div class="dev-card-mid">
+          <span>${f.age}y</span>
+          <span class="badge" style="font-size:10px">${esc(f.weight_class)}</span>
+          <span class="dev-status ${statusClass}">${statusIcon}</span>
+        </div>
+        <div class="dev-card-bottom">
+          ${f.camp_name
+            ? `<span class="dev-camp-tag">${esc(f.camp_name)}</span><span class="muted">${esc(f.focus)} \xB7 ${f.months_at_camp}mo</span>`
+            : '<span class="muted">Unassigned</span>'
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  el.querySelectorAll('.dev-fighter-card').forEach(card => {
+    card.addEventListener('click', () => selectDevFighter(Number(card.dataset.fighterId)));
+  });
+}
+
+function selectDevFighter(fighterId) {
+  devState.selectedFighterId = fighterId;
+  devState.selectedCampId = null;
+  devState.selectedFocus = 'Balanced';
+  renderDevFighterList();
+
+  const f = devState.rosterDev.find(r => r.id === fighterId);
+  if (!f) return;
+
+  document.getElementById('dev-empty').classList.add('hidden');
+  document.getElementById('dev-manager').classList.remove('hidden');
+
+  // Header
+  document.getElementById('dev-name').textContent = f.name;
+  document.getElementById('dev-meta').textContent = `${f.weight_class} \xB7 ${f.style} \xB7 Age ${f.age} \xB7 OVR ${f.overall} \xB7 ${f.record}`;
+
+  // Current assignment
+  const assignEl = document.getElementById('dev-current-assignment');
+  if (f.camp_name) {
+    devState.selectedCampId = devState.camps.find(c => c.name === f.camp_name)?.id || null;
+    devState.selectedFocus = f.focus || 'Balanced';
+    assignEl.innerHTML = `
+      <div class="dev-assign-info">
+        <div class="dev-assign-row"><span class="dev-assign-label">Camp</span><span>${esc(f.camp_name)} ${'&#9733;'.repeat(f.camp_tier)}</span></div>
+        <div class="dev-assign-row"><span class="dev-assign-label">Focus</span><span>${esc(f.focus)}</span></div>
+        <div class="dev-assign-row"><span class="dev-assign-label">Months</span><span>${f.months_at_camp}</span></div>
+        <div class="dev-assign-row"><span class="dev-assign-label">Monthly Cost</span><span>${formatCurrency(f.camp_cost)}</span></div>
+        <div class="dev-assign-row"><span class="dev-assign-label">Total Spent</span><span>${formatCurrency(f.total_development_spend)}</span></div>
+      </div>
+      <button class="btn-danger" id="btn-dev-remove" style="margin-top:8px">Remove from Camp</button>
+    `;
+    document.getElementById('btn-dev-remove').addEventListener('click', () => removeFromCamp(fighterId));
+  } else {
+    assignEl.innerHTML = '<p class="muted">No camp assigned</p>';
+  }
+
+  // Render camps
+  renderDevCamps(f);
+
+  // Set focus buttons
+  document.querySelectorAll('.focus-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.focus === devState.selectedFocus);
+  });
+
+  // Focus hint
+  updateFocusHint(f);
+
+  // Load projection if camp selected
+  if (devState.selectedCampId) {
+    loadDevProjection(fighterId, devState.selectedCampId, devState.selectedFocus);
+  } else {
+    document.getElementById('dev-projection-section').style.display = 'none';
+  }
+
+  // Development history
+  const histEl = document.getElementById('dev-history');
+  histEl.innerHTML = `
+    <div class="dev-assign-info">
+      <div class="dev-assign-row"><span class="dev-assign-label">Total Spend</span><span>${formatCurrency(f.total_development_spend)}</span></div>
+    </div>
+  `;
+}
+
+function renderDevCamps(fighter) {
+  const el = document.getElementById('dev-camp-grid');
+  el.innerHTML = devState.camps.map(c => {
+    const isSelected = devState.selectedCampId === c.id;
+    const locked = c.locked;
+    return `
+      <div class="dev-camp-card ${isSelected ? 'selected' : ''} ${locked ? 'locked' : ''}" data-camp-id="${c.id}">
+        <div class="dev-camp-top">
+          <span class="dev-camp-name">${esc(c.name)}</span>
+          <span class="dev-camp-tier">${'&#9733;'.repeat(c.tier)}</span>
+        </div>
+        <div class="dev-camp-specialty"><span class="badge">${esc(c.specialty)}</span></div>
+        <div class="dev-camp-info">
+          <span>${formatCurrency(c.cost_per_month)}/mo</span>
+          <span>${c.available}/${c.slots} slots</span>
+        </div>
+        ${locked ? `<div class="dev-camp-lock">Requires ${c.prestige_required} prestige</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  el.querySelectorAll('.dev-camp-card:not(.locked)').forEach(card => {
+    card.addEventListener('click', () => {
+      devState.selectedCampId = Number(card.dataset.campId);
+      renderDevCamps(fighter);
+      loadDevProjection(devState.selectedFighterId, devState.selectedCampId, devState.selectedFocus);
+    });
+  });
+}
+
+function updateFocusHint(fighter) {
+  const hintEl = document.getElementById('dev-focus-hint');
+  const attrs = [
+    { name: 'Striking', val: fighter.striking },
+    { name: 'Grappling', val: fighter.grappling },
+    { name: 'Wrestling', val: fighter.wrestling },
+    { name: 'Cardio', val: fighter.cardio },
+  ];
+  attrs.sort((a, b) => a.val - b.val);
+  hintEl.textContent = `Recommended: ${attrs[0].name} (lowest at ${attrs[0].val})`;
+}
+
+async function loadDevProjection(fighterId, campId, focus) {
+  const section = document.getElementById('dev-projection-section');
+  const tbody = document.getElementById('dev-projection-tbody');
+
+  try {
+    const data = await api(`/api/development/projection?fighter_id=${fighterId}&camp_id=${campId}&focus=${focus}&months=12`);
+    if (data.error) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = '';
+    const now = data.now;
+    const p3 = data.projections['3'] || {};
+    const p6 = data.projections['6'] || {};
+    const p12 = data.projections['12'] || {};
+
+    const labels = { striking: 'STR', grappling: 'GRP', wrestling: 'WR', cardio: 'CRD', chin: 'CHN', speed: 'SPD', overall: 'OVR' };
+    const keys = ['striking', 'grappling', 'wrestling', 'cardio', 'chin', 'speed', 'overall'];
+
+    tbody.innerHTML = keys.map(k => {
+      const n = now[k];
+      const v3 = p3[k] ?? n;
+      const v6 = p6[k] ?? n;
+      const v12 = p12[k] ?? n;
+      return `
+        <tr class="${k === 'overall' ? 'dev-proj-ovr' : ''}">
+          <td>${labels[k]}</td>
+          <td>${n}</td>
+          <td class="${v3 > n ? 'dev-gain' : ''}">${v3}</td>
+          <td class="${v6 > n ? 'dev-gain' : ''}">${v6}</td>
+          <td class="${v12 > n ? 'dev-gain' : ''}">${v12}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    section.style.display = 'none';
+  }
+}
+
+async function assignToCamp() {
+  if (!devState.selectedFighterId || !devState.selectedCampId) {
+    setStatus('Select a camp first.', true);
+    return;
+  }
+  try {
+    const result = await api('/api/development/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fighter_id: devState.selectedFighterId,
+        camp_id: devState.selectedCampId,
+        focus: devState.selectedFocus,
+      }),
+    });
+    if (result.error) {
+      setStatus(result.error, true);
+      return;
+    }
+    setStatus(result.message);
+    // Reload development view
+    const fighterId = devState.selectedFighterId;
+    const [roster, camps] = await Promise.all([
+      api('/api/development/roster'),
+      api('/api/development/camps'),
+    ]);
+    devState.rosterDev = roster;
+    devState.camps = camps;
+    renderDevFighterList();
+    selectDevFighter(fighterId);
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+async function removeFromCamp(fighterId) {
+  try {
+    const result = await api('/api/development/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fighter_id: fighterId }),
+    });
+    if (result.error) {
+      setStatus(result.error, true);
+      return;
+    }
+    setStatus(result.message);
+    const [roster, camps] = await Promise.all([
+      api('/api/development/roster'),
+      api('/api/development/camps'),
+    ]);
+    devState.rosterDev = roster;
+    devState.camps = camps;
+    renderDevFighterList();
+    selectDevFighter(fighterId);
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Advance Month
 // ---------------------------------------------------------------------------
 
@@ -1286,6 +1566,7 @@ async function advanceMonth() {
         loadGameDate();
         if (state.currentView === 'dashboard') loadDashboard();
         if (state.currentView === 'roster') loadRoster();
+        if (state.currentView === 'development') loadDevelopmentView();
         if (state.currentView === 'events') loadEventsView();
         if (state.currentView === 'hof') loadHallOfFame();
       },
@@ -1383,6 +1664,18 @@ document.addEventListener('DOMContentLoaded', () => {
       renderFighterPool();
     });
   });
+
+  // Development
+  document.querySelectorAll('.focus-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      devState.selectedFocus = btn.dataset.focus;
+      document.querySelectorAll('.focus-btn').forEach(b => b.classList.toggle('active', b.dataset.focus === devState.selectedFocus));
+      if (devState.selectedFighterId && devState.selectedCampId) {
+        loadDevProjection(devState.selectedFighterId, devState.selectedCampId, devState.selectedFocus);
+      }
+    });
+  });
+  document.getElementById('btn-dev-assign').addEventListener('click', assignToCamp);
 
   // Notifications
   document.getElementById('notif-bell').addEventListener('click', toggleNotifDropdown);

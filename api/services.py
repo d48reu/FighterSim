@@ -16,6 +16,7 @@ from models.database import Base
 from models.models import (
     Fighter, Organization, Contract, Event, Fight,
     WeightClass, ContractStatus, EventStatus, Notification, GameState,
+    TrainingCamp, FighterDevelopment,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -1258,3 +1259,407 @@ def calculate_event_projection(event_id: int) -> dict:
 
 def get_venues() -> list[dict]:
     return VENUES
+
+
+# ---------------------------------------------------------------------------
+# Fighter Development
+# ---------------------------------------------------------------------------
+
+_FOCUS_MULTIPLIERS = {
+    "Striking":  {"striking": 2.0, "speed": 1.2, "grappling": 0.5, "wrestling": 0.5, "cardio": 0.8, "chin": 1.0},
+    "Grappling": {"grappling": 2.0, "wrestling": 1.3, "striking": 0.5, "speed": 0.7, "cardio": 0.8, "chin": 1.0},
+    "Wrestling": {"wrestling": 2.0, "cardio": 1.3, "striking": 0.6, "grappling": 1.2, "speed": 0.8, "chin": 1.0},
+    "Cardio":    {"cardio": 2.5, "wrestling": 1.0, "striking": 0.7, "grappling": 0.7, "speed": 1.2, "chin": 1.0},
+    "Balanced":  {"striking": 1.0, "grappling": 1.0, "wrestling": 1.0, "cardio": 1.0, "speed": 1.0, "chin": 1.0},
+}
+
+_BASE_GAIN = {1: 0.3, 2: 0.6, 3: 1.0}
+
+_ATTR_FIELDS = ("striking", "grappling", "wrestling", "cardio", "chin", "speed")
+
+
+def get_training_camps(org_prestige: Optional[float] = None) -> list[dict]:
+    with _SessionFactory() as session:
+        if org_prestige is None:
+            player_org = session.execute(
+                select(Organization).where(Organization.is_player == True)
+            ).scalar_one_or_none()
+            org_prestige = player_org.prestige if player_org else 0.0
+
+        camps = session.execute(
+            select(TrainingCamp).order_by(TrainingCamp.tier, TrainingCamp.name)
+        ).scalars().all()
+
+        results = []
+        for camp in camps:
+            enrolled = session.execute(
+                select(FighterDevelopment).where(
+                    FighterDevelopment.camp_id == camp.id
+                )
+            ).scalars().all()
+            results.append({
+                "id": camp.id,
+                "name": camp.name,
+                "specialty": camp.specialty,
+                "tier": camp.tier,
+                "cost_per_month": camp.cost_per_month,
+                "prestige_required": camp.prestige_required,
+                "slots": camp.slots,
+                "enrolled": len(enrolled),
+                "available": camp.slots - len(enrolled),
+                "locked": camp.prestige_required > org_prestige,
+            })
+        return results
+
+
+def assign_fighter_to_camp(fighter_id: int, camp_id: int, focus: str) -> dict:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"error": "No player organization found."}
+
+        # Validate fighter is on player roster
+        contract = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter_id,
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if not contract:
+            return {"error": "Fighter is not on your roster."}
+
+        camp = session.get(TrainingCamp, camp_id)
+        if not camp:
+            return {"error": "Training camp not found."}
+
+        # Validate prestige
+        if camp.prestige_required > player_org.prestige:
+            return {"error": f"Your organization needs {camp.prestige_required} prestige to access this camp."}
+
+        # Validate slots
+        enrolled = session.execute(
+            select(FighterDevelopment).where(
+                FighterDevelopment.camp_id == camp_id
+            )
+        ).scalars().all()
+        # Exclude this fighter if already at this camp
+        enrolled_ids = [d.fighter_id for d in enrolled]
+        if fighter_id not in enrolled_ids and len(enrolled) >= camp.slots:
+            return {"error": "This camp is full."}
+
+        # Validate focus
+        if focus not in _FOCUS_MULTIPLIERS:
+            return {"error": f"Invalid focus. Choose from: {', '.join(_FOCUS_MULTIPLIERS.keys())}"}
+
+        # Validate affordability
+        if player_org.bank_balance < camp.cost_per_month:
+            return {"error": "You can't afford this camp's monthly cost."}
+
+        # Create or update development record
+        dev = session.execute(
+            select(FighterDevelopment).where(
+                FighterDevelopment.fighter_id == fighter_id
+            )
+        ).scalar_one_or_none()
+
+        if dev:
+            if dev.camp_id != camp_id:
+                dev.months_at_camp = 0  # Reset consistency when changing camps
+            dev.camp_id = camp_id
+            dev.focus = focus
+        else:
+            dev = FighterDevelopment(
+                fighter_id=fighter_id,
+                camp_id=camp_id,
+                focus=focus,
+                months_at_camp=0,
+                total_development_spend=0.0,
+            )
+            session.add(dev)
+
+        session.commit()
+        fighter = session.get(Fighter, fighter_id)
+        return {
+            "success": True,
+            "message": f"{fighter.name} assigned to {camp.name} with {focus} focus.",
+            "development": _development_dict(dev, session),
+        }
+
+
+def remove_fighter_from_camp(fighter_id: int) -> dict:
+    with _SessionFactory() as session:
+        dev = session.execute(
+            select(FighterDevelopment).where(
+                FighterDevelopment.fighter_id == fighter_id
+            )
+        ).scalar_one_or_none()
+        if not dev or not dev.camp_id:
+            return {"error": "Fighter is not assigned to any camp."}
+
+        fighter = session.get(Fighter, fighter_id)
+        dev.camp_id = None
+        dev.months_at_camp = 0
+        dev.focus = "Balanced"
+        session.commit()
+        return {"success": True, "message": f"{fighter.name} removed from camp."}
+
+
+def get_roster_development() -> list[dict]:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        rows = session.execute(
+            select(Contract, Fighter)
+            .join(Fighter, Contract.fighter_id == Fighter.id)
+            .where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).all()
+
+        results = []
+        for contract, fighter in rows:
+            dev = session.execute(
+                select(FighterDevelopment).where(
+                    FighterDevelopment.fighter_id == fighter.id
+                )
+            ).scalar_one_or_none()
+
+            d = _fighter_dict(fighter)
+            d["salary"] = contract.salary
+
+            if dev and dev.camp_id:
+                camp = session.get(TrainingCamp, dev.camp_id)
+                d["camp_name"] = camp.name if camp else None
+                d["camp_tier"] = camp.tier if camp else None
+                d["camp_specialty"] = camp.specialty if camp else None
+                d["camp_cost"] = camp.cost_per_month if camp else 0
+                d["focus"] = dev.focus
+                d["months_at_camp"] = dev.months_at_camp
+                d["total_development_spend"] = dev.total_development_spend
+                d["status"] = "training"
+            else:
+                d["camp_name"] = None
+                d["camp_tier"] = None
+                d["camp_specialty"] = None
+                d["camp_cost"] = 0
+                d["focus"] = None
+                d["months_at_camp"] = 0
+                d["total_development_spend"] = dev.total_development_spend if dev else 0
+                # Determine status based on age / prime
+                past_prime = fighter.age > fighter.prime_end
+                d["status"] = "declining" if past_prime else "idle"
+
+            results.append(d)
+        return results
+
+
+def _development_dict(dev: FighterDevelopment, session) -> dict:
+    camp = session.get(TrainingCamp, dev.camp_id) if dev.camp_id else None
+    return {
+        "fighter_id": dev.fighter_id,
+        "camp_id": dev.camp_id,
+        "camp_name": camp.name if camp else None,
+        "camp_tier": camp.tier if camp else None,
+        "focus": dev.focus,
+        "months_at_camp": dev.months_at_camp,
+        "total_development_spend": dev.total_development_spend,
+        "last_trained": dev.last_trained.isoformat() if dev.last_trained else None,
+    }
+
+
+def _calc_projected_gain(fighter: Fighter, camp: TrainingCamp, focus: str,
+                         months: int, dev_months_at_camp: int = 0) -> dict:
+    """Calculate projected attribute gains over N months."""
+    rng = random.Random(fighter.id)  # deterministic for projection
+    projected = {attr: getattr(fighter, attr) for attr in _ATTR_FIELDS}
+    monthly_snapshots = {}
+
+    focus_mults = _FOCUS_MULTIPLIERS.get(focus, _FOCUS_MULTIPLIERS["Balanced"])
+    base_gain = _BASE_GAIN.get(camp.tier, 0.3)
+    specialty_bonus = 1.3 if camp.specialty == focus or camp.specialty == "Well-Rounded" else 1.0
+
+    if fighter.age < 24:
+        age_modifier = 1.4
+    elif fighter.age < 27:
+        age_modifier = 1.2
+    elif fighter.age < 30:
+        age_modifier = 1.0
+    elif fighter.age < 33:
+        age_modifier = 0.7
+    else:
+        age_modifier = 0.4
+
+    prime_modifier = 1.1 if fighter.prime_start <= fighter.age <= fighter.prime_end else 0.9
+
+    for m in range(1, months + 1):
+        camp_months = dev_months_at_camp + m
+        consistency_bonus = min(1.2, 1.0 + camp_months * 0.02)
+
+        for attr in _ATTR_FIELDS:
+            multiplier = focus_mults[attr]
+            gain = base_gain * multiplier * specialty_bonus * age_modifier * prime_modifier * consistency_bonus
+            # Use average randomness for projections (1.0 instead of random)
+            current = projected[attr]
+            if current >= 85:
+                gain *= 0.4
+            elif current >= 75:
+                gain *= 0.7
+            projected[attr] = min(99, current + gain)
+
+        if m in (3, 6, 12):
+            monthly_snapshots[m] = {attr: round(projected[attr]) for attr in _ATTR_FIELDS}
+            monthly_snapshots[m]["overall"] = round(
+                projected["striking"] * 0.2 + projected["grappling"] * 0.2
+                + projected["wrestling"] * 0.15 + projected["cardio"] * 0.15
+                + projected["chin"] * 0.15 + projected["speed"] * 0.15
+            )
+
+    return monthly_snapshots
+
+
+def get_development_projections(fighter_id: int, camp_id: int, focus: str, months: int = 12) -> dict:
+    with _SessionFactory() as session:
+        fighter = session.get(Fighter, fighter_id)
+        if not fighter:
+            return {"error": "Fighter not found."}
+
+        camp = session.get(TrainingCamp, camp_id)
+        if not camp:
+            return {"error": "Camp not found."}
+
+        if focus not in _FOCUS_MULTIPLIERS:
+            return {"error": "Invalid focus."}
+
+        dev = session.execute(
+            select(FighterDevelopment).where(
+                FighterDevelopment.fighter_id == fighter_id
+            )
+        ).scalar_one_or_none()
+        dev_months = dev.months_at_camp if dev and dev.camp_id == camp_id else 0
+
+        now = {attr: getattr(fighter, attr) for attr in _ATTR_FIELDS}
+        now["overall"] = fighter.overall
+
+        projections = _calc_projected_gain(fighter, camp, focus, months, dev_months)
+
+        return {
+            "now": now,
+            "projections": projections,
+        }
+
+
+def process_fighter_development(session, org_id: int, sim_date) -> list[dict]:
+    """Process monthly development for all player roster fighters.
+
+    Called from sim_month(). Returns list of notification messages.
+    """
+    rng = random.Random()
+    notifications = []
+
+    # Get all player roster fighters
+    rows = session.execute(
+        select(Contract, Fighter)
+        .join(Fighter, Contract.fighter_id == Fighter.id)
+        .where(
+            Contract.organization_id == org_id,
+            Contract.status == ContractStatus.ACTIVE,
+        )
+    ).all()
+
+    org = session.get(Organization, org_id)
+
+    for contract, fighter in rows:
+        dev = session.execute(
+            select(FighterDevelopment).where(
+                FighterDevelopment.fighter_id == fighter.id
+            )
+        ).scalar_one_or_none()
+
+        old_overall = fighter.overall
+
+        if dev and dev.camp_id:
+            camp = session.get(TrainingCamp, dev.camp_id)
+            if not camp:
+                continue
+
+            focus = dev.focus if dev.focus in _FOCUS_MULTIPLIERS else "Balanced"
+            focus_mults = _FOCUS_MULTIPLIERS[focus]
+            base_gain = _BASE_GAIN.get(camp.tier, 0.3)
+            specialty_bonus = 1.3 if camp.specialty == focus or camp.specialty == "Well-Rounded" else 1.0
+
+            if fighter.age < 24:
+                age_modifier = 1.4
+            elif fighter.age < 27:
+                age_modifier = 1.2
+            elif fighter.age < 30:
+                age_modifier = 1.0
+            elif fighter.age < 33:
+                age_modifier = 0.7
+            else:
+                age_modifier = 0.4
+
+            prime_modifier = 1.1 if fighter.prime_start <= fighter.age <= fighter.prime_end else 0.9
+            consistency_bonus = min(1.2, 1.0 + dev.months_at_camp * 0.02)
+
+            for attr in _ATTR_FIELDS:
+                multiplier = focus_mults[attr]
+                gain = base_gain * multiplier * specialty_bonus * age_modifier * prime_modifier * consistency_bonus
+                gain *= rng.uniform(0.7, 1.3)
+
+                current = getattr(fighter, attr)
+                if current >= 85:
+                    gain *= 0.4
+                elif current >= 75:
+                    gain *= 0.7
+
+                new_val = min(99, current + gain)
+                setattr(fighter, attr, round(new_val))
+
+            # Deduct camp cost
+            if org:
+                org.bank_balance -= camp.cost_per_month
+
+            dev.months_at_camp += 1
+            dev.total_development_spend += camp.cost_per_month
+            dev.last_trained = sim_date
+
+            # Consistency notification at 6 months
+            if dev.months_at_camp == 6:
+                msg = f"{fighter.name} has been at {camp.name} for 6 months — consistency bonus active"
+                notifications.append(msg)
+
+        else:
+            # No camp assigned — natural decay/growth
+            past_prime = fighter.age > fighter.prime_end
+            young = fighter.age < fighter.prime_start
+
+            if past_prime:
+                # Decay for cardio and speed
+                for attr in ("cardio", "speed"):
+                    decay = rng.uniform(0.2, 0.5)
+                    current = getattr(fighter, attr)
+                    setattr(fighter, attr, max(1, round(current - decay)))
+            elif young:
+                # Small natural growth
+                for attr in _ATTR_FIELDS:
+                    gain = rng.uniform(0.1, 0.2)
+                    current = getattr(fighter, attr)
+                    setattr(fighter, attr, min(99, round(current + gain)))
+
+        # Check milestone notifications
+        new_overall = fighter.overall
+        for threshold in (70, 75, 80, 85):
+            if old_overall < threshold <= new_overall:
+                notifications.append(f"{fighter.name} reached Overall {threshold}")
+            if old_overall >= threshold > new_overall:
+                notifications.append(f"{fighter.name} is declining — consider adjusting training")
+
+    return notifications

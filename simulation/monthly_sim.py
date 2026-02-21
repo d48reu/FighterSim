@@ -374,6 +374,17 @@ def sim_month(
     if progress_callback:
         progress_callback(f"Aged {summary['fighters_aged']} fighters")
 
+    # 1b. Fighter development (player org only)
+    if player_org:
+        from api.services import process_fighter_development
+        dev_notifications = process_fighter_development(session, player_org.id, sim_date)
+        for msg in dev_notifications:
+            session.add(Notification(
+                message=msg,
+                type="development",
+                created_date=sim_date,
+            ))
+
     # 2. Recover injuries
     _recover_injuries(session)
 

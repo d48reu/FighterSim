@@ -6,10 +6,11 @@ import json
 import random
 from datetime import date, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models.models import (
-    Fighter, Organization, Contract, GameState,
+    Fighter, Organization, Contract, GameState, TrainingCamp,
     WeightClass, FighterStyle, ContractStatus, Archetype,
 )
 from simulation.traits import TRAITS, contradicts
@@ -324,5 +325,46 @@ def seed_fighters(
         session.add(contract)
         fighters.append(f)
 
+    # Seed training camps
+    _seed_training_camps(session)
+
     session.commit()
     return fighters
+
+
+TRAINING_CAMPS = [
+    # Tier 1
+    {"name": "Local Gym", "specialty": "Well-Rounded", "tier": 1, "cost": 2000, "prestige_required": 0, "slots": 10},
+    {"name": "City Boxing Club", "specialty": "Striking", "tier": 1, "cost": 2500, "prestige_required": 0, "slots": 8},
+    {"name": "Community Wrestling Center", "specialty": "Wrestling", "tier": 1, "cost": 2000, "prestige_required": 0, "slots": 8},
+    {"name": "BJJ Academy", "specialty": "Grappling", "tier": 1, "cost": 2500, "prestige_required": 0, "slots": 8},
+    {"name": "Conditioning Lab", "specialty": "Conditioning", "tier": 1, "cost": 3000, "prestige_required": 0, "slots": 6},
+    # Tier 2
+    {"name": "Elite Striking Academy", "specialty": "Striking", "tier": 2, "cost": 6000, "prestige_required": 40, "slots": 6},
+    {"name": "Championship Wrestling Room", "specialty": "Wrestling", "tier": 2, "cost": 6000, "prestige_required": 40, "slots": 6},
+    {"name": "World-Class BJJ", "specialty": "Grappling", "tier": 2, "cost": 7000, "prestige_required": 40, "slots": 5},
+    {"name": "Performance Institute", "specialty": "Conditioning", "tier": 2, "cost": 8000, "prestige_required": 40, "slots": 5},
+    {"name": "MMA Combine", "specialty": "Well-Rounded", "tier": 2, "cost": 7000, "prestige_required": 40, "slots": 6},
+    # Tier 3
+    {"name": "The Factory", "specialty": "Well-Rounded", "tier": 3, "cost": 15000, "prestige_required": 70, "slots": 4},
+    {"name": "Apex Striking", "specialty": "Striking", "tier": 3, "cost": 14000, "prestige_required": 70, "slots": 4},
+    {"name": "Elite Wrestling Institute", "specialty": "Wrestling", "tier": 3, "cost": 14000, "prestige_required": 70, "slots": 4},
+    {"name": "Submission Lab", "specialty": "Grappling", "tier": 3, "cost": 16000, "prestige_required": 70, "slots": 3},
+    {"name": "Human Performance Center", "specialty": "Conditioning", "tier": 3, "cost": 18000, "prestige_required": 70, "slots": 3},
+]
+
+
+def _seed_training_camps(session: Session) -> None:
+    """Create all training camps if they don't already exist."""
+    existing = session.execute(select(TrainingCamp)).scalars().first()
+    if existing:
+        return
+    for camp_data in TRAINING_CAMPS:
+        session.add(TrainingCamp(
+            name=camp_data["name"],
+            specialty=camp_data["specialty"],
+            tier=camp_data["tier"],
+            cost_per_month=camp_data["cost"],
+            prestige_required=camp_data["prestige_required"],
+            slots=camp_data["slots"],
+        ))

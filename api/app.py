@@ -255,4 +255,49 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     def mark_notification_read(notif_id: int):
         return jsonify(services.mark_notification_read(notif_id))
 
+    # ------------------------------------------------------------------
+    # Fighter Development
+    # ------------------------------------------------------------------
+
+    @app.route("/api/development/camps")
+    def development_camps():
+        return jsonify(services.get_training_camps())
+
+    @app.route("/api/development/roster")
+    def development_roster():
+        return jsonify(services.get_roster_development())
+
+    @app.route("/api/development/assign", methods=["POST"])
+    def development_assign():
+        data = request.json
+        result = services.assign_fighter_to_camp(
+            fighter_id=data["fighter_id"],
+            camp_id=data["camp_id"],
+            focus=data["focus"],
+        )
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/development/remove", methods=["POST"])
+    def development_remove():
+        data = request.json
+        result = services.remove_fighter_from_camp(data["fighter_id"])
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/development/projection")
+    def development_projection():
+        fighter_id = request.args.get("fighter_id", type=int)
+        camp_id = request.args.get("camp_id", type=int)
+        focus = request.args.get("focus", "Balanced")
+        months = request.args.get("months", 12, type=int)
+        if not fighter_id or not camp_id:
+            return jsonify({"error": "fighter_id and camp_id are required."}), 400
+        result = services.get_development_projections(fighter_id, camp_id, focus, months)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
     return app
