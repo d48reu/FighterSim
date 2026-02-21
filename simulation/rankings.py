@@ -58,6 +58,7 @@ def get_rankings(session: Session, weight_class: WeightClass, top_n: int = 10) -
         {
             "rank": ranking.rank,
             "name": fighter.name,
+            "nickname": fighter.nickname,
             "record": fighter.record,
             "overall": fighter.overall,
             "score": round(ranking.score, 2),

@@ -74,6 +74,7 @@ class Fighter(Base):
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = Column(String(100), nullable=False)
+    nickname: Mapped[Optional[str]] = Column(String(30), nullable=True)
     age: Mapped[int] = Column(Integer, nullable=False)
     nationality: Mapped[str] = Column(String(60), nullable=False)
     weight_class: Mapped[str] = Column(Enum(WeightClass), nullable=False)

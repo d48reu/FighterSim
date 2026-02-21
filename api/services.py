@@ -23,7 +23,7 @@ from simulation.monthly_sim import sim_month
 from simulation.rankings import rebuild_rankings, get_rankings as _get_rankings, mark_rankings_dirty
 from simulation.narrative import (
     apply_fight_tags, update_goat_scores, update_rivalries,
-    generate_fighter_bio, get_tags, display_archetype,
+    generate_fighter_bio, get_tags, display_archetype, suggest_nicknames,
 )
 
 # ---------------------------------------------------------------------------
@@ -116,6 +116,7 @@ def _fighter_dict(f: Fighter) -> dict:
     return {
         "id": f.id,
         "name": f.name,
+        "nickname": f.nickname,
         "age": f.age,
         "nationality": f.nationality,
         "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
@@ -429,6 +430,30 @@ def get_fighter_tags(fighter_id: int) -> Optional[list[str]]:
         if not f:
             return None
         return get_tags(f)
+
+
+# ---------------------------------------------------------------------------
+# Nickname system
+# ---------------------------------------------------------------------------
+
+def get_nickname_suggestions(fighter_id: int) -> list[str]:
+    with _SessionFactory() as session:
+        f = session.get(Fighter, fighter_id)
+        if not f:
+            return []
+        return suggest_nicknames(f, session)
+
+
+def set_nickname(fighter_id: int, nickname: str) -> dict:
+    with _SessionFactory() as session:
+        f = session.get(Fighter, fighter_id)
+        if not f:
+            return {"success": False, "message": "Fighter not found."}
+        if len(nickname) > 30:
+            return {"success": False, "message": "Nickname must be 30 characters or less."}
+        f.nickname = nickname.strip() if nickname.strip() else None
+        session.commit()
+        return {"success": True, "message": f"Nickname set to \"{f.nickname}\".", "fighter": _fighter_dict(f)}
 
 
 # ---------------------------------------------------------------------------

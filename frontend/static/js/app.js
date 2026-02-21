@@ -228,6 +228,7 @@ async function showFighterPanel(fighterId, extraData) {
 
   // Reset content
   document.getElementById('panel-name').textContent    = 'Loading\u2026';
+  document.getElementById('panel-nickname').innerHTML   = '';
   document.getElementById('panel-subtitle').textContent = '';
   document.getElementById('panel-archetype').textContent = '';
   document.getElementById('panel-record').textContent  = '\u2014';
@@ -252,6 +253,14 @@ async function showFighterPanel(fighterId, extraData) {
     ]);
 
     document.getElementById('panel-name').textContent     = fighter.name;
+    // Nickname display with edit pencil
+    const nickEl = document.getElementById('panel-nickname');
+    if (fighter.nickname) {
+      nickEl.innerHTML = `<span class="nick-display">"${esc(fighter.nickname)}"</span> <button class="nick-edit" title="Edit nickname">&#9998;</button>`;
+    } else {
+      nickEl.innerHTML = `<button class="nick-edit" title="Set nickname">&#9998; Set Nickname</button>`;
+    }
+    nickEl.querySelector('.nick-edit').addEventListener('click', () => openNicknameEditor(fighterId));
     document.getElementById('panel-subtitle').textContent = `${fighter.weight_class} \xB7 ${fighter.style} \xB7 Age ${fighter.age}`;
     document.getElementById('panel-archetype').textContent = fighter.archetype || '';
     document.getElementById('panel-record').textContent   = fighter.record;
@@ -382,6 +391,48 @@ async function showFighterPanel(fighterId, extraData) {
   } catch (err) {
     document.getElementById('panel-name').textContent = 'Error';
     document.getElementById('panel-bio').textContent  = err.message;
+  }
+}
+
+async function openNicknameEditor(fighterId) {
+  const nickEl = document.getElementById('panel-nickname');
+  nickEl.innerHTML = '<span class="muted" style="font-size:12px">Loading suggestions...</span>';
+  try {
+    const data = await api(`/api/fighters/${fighterId}/nickname-suggestions`);
+    const suggestions = data.suggestions || [];
+    let html = '<div class="nick-editor">';
+    html += suggestions.map(s => `<span class="nick-chip" data-nick="${esc(s)}">${esc(s)}</span>`).join('');
+    html += '<div class="nick-custom"><input type="text" class="nick-input" placeholder="Custom nickname..." maxlength="30"><button class="btn btn-primary nick-save-btn">Save</button></div>';
+    html += '</div>';
+    nickEl.innerHTML = html;
+    nickEl.querySelectorAll('.nick-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        nickEl.querySelector('.nick-input').value = chip.dataset.nick;
+        nickEl.querySelectorAll('.nick-chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+      });
+    });
+    nickEl.querySelector('.nick-save-btn').addEventListener('click', async () => {
+      const val = nickEl.querySelector('.nick-input').value.trim();
+      if (!val) return;
+      try {
+        const result = await api(`/api/fighters/${fighterId}/nickname`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname: val }),
+        });
+        if (result.success) {
+          setStatus(result.message);
+          showFighterPanel(fighterId);
+        } else {
+          setStatus(result.message, true);
+        }
+      } catch (err) {
+        setStatus('Error: ' + err.message, true);
+      }
+    });
+  } catch (err) {
+    nickEl.innerHTML = `<span class="muted" style="font-size:12px">Error loading suggestions</span>`;
   }
 }
 
@@ -660,7 +711,7 @@ async function loadRankings(weightClass) {
     tbody.innerHTML = rankings.map(r => `
       <tr>
         <td><strong>#${r.rank}</strong></td>
-        <td>${esc(r.name)}</td>
+        <td>${esc(r.name)}${r.nickname ? ' <span class="nick-inline">"' + esc(r.nickname) + '"</span>' : ''}</td>
         <td>${esc(r.record)}</td>
         <td>${r.overall}</td>
         <td>${r.score.toFixed(1)}</td>
@@ -852,9 +903,9 @@ function renderScheduledFights(event) {
     <div class="event-fight-card ${f.is_title_fight ? 'title-fight' : ''}">
       ${f.is_title_fight ? '<div class="title-banner">TITLE FIGHT</div>' : ''}
       <div class="event-fight-matchup">
-        <span class="event-fighter-name">${esc(f.fighter_a.name)}</span>
+        <span class="event-fighter-name">${esc(f.fighter_a.name)}${f.fighter_a.nickname ? ' <span class="nick-inline">"' + esc(f.fighter_a.nickname) + '"</span>' : ''}</span>
         <span class="event-vs">VS</span>
-        <span class="event-fighter-name">${esc(f.fighter_b.name)}</span>
+        <span class="event-fighter-name">${esc(f.fighter_b.name)}${f.fighter_b.nickname ? ' <span class="nick-inline">"' + esc(f.fighter_b.nickname) + '"</span>' : ''}</span>
       </div>
       <div class="event-fight-meta">
         <span class="badge">${esc(f.weight_class)}</span>

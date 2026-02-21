@@ -148,6 +148,131 @@ def _nationality_flavor(fighter: Fighter) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Nickname system
+# ---------------------------------------------------------------------------
+
+NICKNAME_POOLS: dict[str, list[str]] = {
+    "Phenom": [
+        "The Prodigy", "Wunderkind", "The Natural", "Young Gun", "The Future",
+        "Next Level", "The Chosen One", "Gifted", "The Marvel", "Born Ready",
+        "The Phenom", "Fast Track", "Lightning", "The Heir", "Showtime",
+        "Prime Time", "The Kid", "Wonderboy", "The Ace", "Golden Boy",
+    ],
+    "GOAT Candidate": [
+        "The Greatest", "All-Time", "The Legend", "Immortal", "The King",
+        "Supreme", "The Standard", "Undeniable", "The One", "Final Boss",
+        "The GOAT", "Untouchable", "The Master", "Colossus", "The Apex",
+        "Invincible", "The Ruler", "Champion Eternal", "The Pinnacle", "The Crown",
+    ],
+    "Gatekeeper": [
+        "The Wall", "No Shortcuts", "The Test", "Ironside", "The Guard",
+        "The Gatekeeper", "Roadblock", "Fortress", "The Barrier", "Stone Cold",
+        "The Sentinel", "Hard Road", "The Bouncer", "The Lock", "Checkpoint",
+        "The Toll", "Full Stop", "The Blocker", "Brick Wall", "The Exam",
+    ],
+    "Journeyman": [
+        "Tough Luck", "Hard Miles", "The Grinder", "Blue Collar", "Workhorse",
+        "Iron Will", "All Heart", "The Survivor", "Steady Hand", "Never Quit",
+        "The Journeyman", "Road Warrior", "The Mule", "Punchclock", "Everyman",
+        "The Scrapper", "No Frills", "The Worker", "Grit", "Steel Jaw",
+    ],
+    "Late Bloomer": [
+        "The Late Show", "Second Wind", "Better Late", "The Sleeper", "Dark Horse",
+        "The Surprise", "Slow Burn", "Patient Zero", "The Awakening", "Night Shift",
+        "The Bloom", "Old New Thing", "The Reveal", "Rising Tide", "Late Surge",
+        "The Emergence", "Quiet Storm", "Undercooked", "The Long Game", "Afterburner",
+    ],
+    "Shooting Star": [
+        "Supernova", "Meteor", "Flash", "Blaze", "The Comet",
+        "Fireball", "Rocket", "The Spark", "Wildfire", "Stardust",
+        "The Flash", "Blazing", "Sky High", "Fuse", "The Streak",
+        "Nova", "The Burst", "Dynamite", "Flashpoint", "The Explosion",
+    ],
+}
+
+TRAIT_NICKNAME_BOOSTS: dict[str, list[str]] = {
+    "iron_chin": ["Iron Chin", "Granite", "The Tank", "Unbreakable", "Steel"],
+    "knockout_artist": ["One Punch", "Lights Out", "The Hammer", "TNT", "Knockout"],
+    "fast_hands": ["Quick Draw", "Lightning Hands", "The Blur", "Rapid Fire"],
+    "gas_tank": ["The Machine", "Engine", "Cardio King", "Marathon Man"],
+    "comeback_king": ["Comeback Kid", "The Resurrection", "Never Dead", "Lazarus"],
+    "pressure_fighter": ["The Pressure", "Relentless", "The Shark", "No Mercy"],
+    "ground_and_pound_specialist": ["Ground Zero", "The Smasher", "Sledgehammer"],
+    "submission_magnet": ["The Escape Artist", "Slippery", "Houdini"],
+    "veteran_iq": ["The Professor", "Old Wise One", "Chess Master", "The Brain"],
+    "slow_starter": ["The Finisher", "Late Bloomer", "Round Three"],
+    "journeyman_heart": ["All Heart", "Never Say Die", "The Warrior", "Lion Heart"],
+    "media_darling": ["The Star", "Camera Ready", "Showtime", "The Draw"],
+}
+
+
+def suggest_nicknames(fighter: Fighter, session: Optional[Session] = None) -> list[str]:
+    """Return 3 distinct nickname suggestions based on archetype, traits, and nationality."""
+    archetype_val = fighter.archetype.value if hasattr(fighter.archetype, "value") else (fighter.archetype or "Journeyman")
+    pool_items: list[tuple[str, float]] = []
+
+    # Archetype pool
+    archetype_pool = NICKNAME_POOLS.get(archetype_val, NICKNAME_POOLS["Journeyman"])
+    for nick in archetype_pool:
+        pool_items.append((nick, 1.0))
+
+    # Trait boosts
+    traits = get_traits(fighter)
+    for trait in traits:
+        boosts = TRAIT_NICKNAME_BOOSTS.get(trait, [])
+        for nick in boosts:
+            pool_items.append((nick, 2.5))
+
+    # Nationality nicknames
+    nat = fighter.nationality if hasattr(fighter, "nationality") else ""
+    nat_nicks = NATIONALITY_NICKNAMES.get(nat, [])
+    for nick in nat_nicks:
+        pool_items.append((nick, 1.8))
+
+    if not pool_items:
+        return ["The Fighter", "Unknown", "Mystery"]
+
+    # Deduplicate — keep highest weight for each nickname
+    best_weight: dict[str, float] = {}
+    for nick, weight in pool_items:
+        if nick not in best_weight or weight > best_weight[nick]:
+            best_weight[nick] = weight
+
+    # Filter out already-used nicknames
+    if session:
+        existing = session.execute(
+            select(Fighter.nickname).where(Fighter.nickname.isnot(None))
+        ).scalars().all()
+        used = set(existing)
+        best_weight = {k: v for k, v in best_weight.items() if k not in used}
+
+    if len(best_weight) < 3:
+        # Pad with generic fallbacks
+        for fallback in ["The Fighter", "The Contender", "The Challenger", "The Warrior"]:
+            if fallback not in best_weight:
+                best_weight[fallback] = 0.5
+            if len(best_weight) >= 3:
+                break
+
+    names = list(best_weight.keys())
+    weights = list(best_weight.values())
+
+    # Pick 3 distinct
+    chosen = []
+    for _ in range(3):
+        if not names:
+            break
+        picks = random.choices(names, weights=weights, k=1)
+        pick = picks[0]
+        chosen.append(pick)
+        idx = names.index(pick)
+        names.pop(idx)
+        weights.pop(idx)
+
+    return chosen
+
+
+# ---------------------------------------------------------------------------
 # Tag helpers
 # ---------------------------------------------------------------------------
 

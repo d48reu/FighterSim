@@ -172,6 +172,19 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     # Narrative
     # ------------------------------------------------------------------
 
+    @app.route("/api/fighters/<int:fighter_id>/nickname-suggestions")
+    def nickname_suggestions(fighter_id: int):
+        suggestions = services.get_nickname_suggestions(fighter_id)
+        return jsonify({"suggestions": suggestions})
+
+    @app.route("/api/fighters/<int:fighter_id>/nickname", methods=["POST"])
+    def set_nickname(fighter_id: int):
+        data = request.json
+        result = services.set_nickname(fighter_id, data.get("nickname", ""))
+        if not result.get("success"):
+            return jsonify(result), 400
+        return jsonify(result)
+
     @app.route("/api/fighters/<int:fighter_id>/bio")
     def fighter_bio(fighter_id: int):
         bio = services.get_fighter_bio(fighter_id)

@@ -1445,3 +1445,80 @@ tbody td { padding: 9px 10px; }
   border-radius: 8px;
   padding: 14px;
 }
+
+/* ── Nickname styles ──────────────────────────── */
+
+.panel-nickname {
+  margin: 4px 0 2px;
+  min-height: 22px;
+}
+
+.nick-display {
+  font-size: 13px;
+  font-style: italic;
+  color: #4cc9f0;
+}
+
+.nick-edit {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.12s;
+}
+.nick-edit:hover { color: var(--text); }
+
+.nick-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.nick-chip {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(76,201,240,0.12);
+  border: 1px solid rgba(76,201,240,0.3);
+  color: #4cc9f0;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.nick-chip:hover { background: rgba(76,201,240,0.25); }
+.nick-chip.selected { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.nick-custom {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.nick-input {
+  flex: 1;
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+}
+.nick-input:focus { border-color: var(--accent); }
+
+.nick-save-btn {
+  padding: 5px 12px !important;
+  font-size: 11px !important;
+}
+
+.nick-inline {
+  font-style: italic;
+  color: #4cc9f0;
+  font-size: 12px;
+  font-weight: 400;
+}
