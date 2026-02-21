@@ -17,6 +17,7 @@
         <div class="nav-item active" data-view="dashboard">Dashboard</div>
         <div class="nav-item" data-view="fighters">Fighters</div>
         <div class="nav-item" data-view="rankings">Rankings</div>
+        <div class="nav-item" data-view="hof">Hall of Fame</div>
       </nav>
       <div class="sidebar-actions">
         <button id="btn-advance-month" class="btn btn-primary">Advance Month</button>
@@ -76,7 +77,7 @@
                 <th>Name</th>
                 <th>Age</th>
                 <th>Class</th>
-                <th>Style</th>
+                <th>Archetype</th>
                 <th>STR</th>
                 <th>GRP</th>
                 <th>WR</th>
@@ -85,10 +86,11 @@
                 <th>SPD</th>
                 <th>OVR</th>
                 <th>Record</th>
+                <th>GOAT</th>
               </tr>
             </thead>
             <tbody id="fighters-tbody">
-              <tr><td colspan="12" class="muted">Loading...</td></tr>
+              <tr><td colspan="13" class="muted">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -122,7 +124,87 @@
         </div>
       </div>
 
+      <!-- Hall of Fame -->
+      <div id="view-hof" class="view hidden">
+        <h1>Hall of Fame</h1>
+
+        <div class="section">
+          <h2>GOAT Leaderboard</h2>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Fighter</th>
+                  <th>Class</th>
+                  <th>Archetype</th>
+                  <th>Record</th>
+                  <th>Overall</th>
+                  <th>GOAT Score</th>
+                </tr>
+              </thead>
+              <tbody id="goat-tbody">
+                <tr><td colspan="7" class="muted">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section" style="margin-top: 32px;">
+          <h2>Active Rivalries</h2>
+          <div id="rivalries-list">
+            <p class="muted">Loading...</p>
+          </div>
+        </div>
+      </div>
+
     </main>
+
+    <!-- Fighter side panel -->
+    <aside id="fighter-panel" class="fighter-panel hidden">
+      <div class="panel-header">
+        <button class="panel-close" id="btn-close-panel" aria-label="Close">&times;</button>
+        <div class="panel-name" id="panel-name">—</div>
+        <div class="panel-subtitle" id="panel-subtitle">—</div>
+      </div>
+      <div class="panel-body">
+        <div id="panel-archetype" class="panel-archetype"></div>
+
+        <div class="panel-stats">
+          <div class="panel-stat-row">
+            <span class="panel-stat-label">Record</span>
+            <span class="panel-stat-value" id="panel-record">—</span>
+          </div>
+          <div class="panel-stat-row">
+            <span class="panel-stat-label">Overall</span>
+            <span class="panel-stat-value" id="panel-overall">—</span>
+          </div>
+          <div class="panel-stat-row">
+            <span class="panel-stat-label">GOAT Score</span>
+            <span class="panel-stat-value" id="panel-goat">—</span>
+          </div>
+        </div>
+
+        <div class="panel-bars">
+          <div class="panel-bar-label">Popularity <span id="val-popularity"></span></div>
+          <div class="panel-bar">
+            <div class="panel-bar-fill pop" id="bar-popularity" style="width:0%"></div>
+          </div>
+          <div class="panel-bar-label" style="margin-top:10px">Hype <span id="val-hype"></span></div>
+          <div class="panel-bar">
+            <div class="panel-bar-fill hype" id="bar-hype" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div id="panel-tags" class="panel-tags"></div>
+
+        <div class="panel-bio-section">
+          <div class="panel-bio-label">Fighter Profile</div>
+          <div id="panel-bio" class="panel-bio">—</div>
+        </div>
+      </div>
+    </aside>
+
   </div>
 
   <div id="status-bar" class="status-bar">Ready.</div>

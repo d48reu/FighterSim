@@ -48,6 +48,15 @@ class ContractStatus(str, enum.Enum):
     TERMINATED = "Terminated"
 
 
+class Archetype(str, enum.Enum):
+    PHENOM         = "Phenom"
+    LATE_BLOOMER   = "Late Bloomer"
+    GATEKEEPER     = "Gatekeeper"
+    JOURNEYMAN     = "Journeyman"
+    GOAT_CANDIDATE = "GOAT Candidate"
+    SHOOTING_STAR  = "Shooting Star"
+
+
 # ---------------------------------------------------------------------------
 # Fighter
 # ---------------------------------------------------------------------------
@@ -89,6 +98,14 @@ class Fighter(Base):
 
     # Rankings score (cached)
     ranking_score: Mapped[float] = Column(Float, default=0.0)
+
+    # Narrative engine fields
+    archetype: Mapped[Optional[str]] = Column(Enum(Archetype), nullable=True)
+    narrative_tags: Mapped[Optional[str]] = Column(Text, default="[]")
+    popularity: Mapped[float] = Column(Float, default=10.0)
+    hype: Mapped[float] = Column(Float, default=10.0)
+    rivalry_with: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
+    goat_score: Mapped[float] = Column(Float, default=0.0)
 
     # Relationships
     contracts: Mapped[List["Contract"]] = relationship(

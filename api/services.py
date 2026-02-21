@@ -19,6 +19,10 @@ from models.models import (
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
 from simulation.rankings import rebuild_rankings, get_rankings as _get_rankings, mark_rankings_dirty
+from simulation.narrative import (
+    apply_fight_tags, update_goat_scores, update_rivalries,
+    generate_fighter_bio, get_tags,
+)
 
 # ---------------------------------------------------------------------------
 # Module-level DB state
@@ -86,6 +90,7 @@ def get_fighter(fighter_id: int) -> Optional[dict]:
 
 
 def _fighter_dict(f: Fighter) -> dict:
+    archetype = f.archetype
     return {
         "id": f.id,
         "name": f.name,
@@ -108,6 +113,10 @@ def _fighter_dict(f: Fighter) -> dict:
         "sub_wins": f.sub_wins,
         "condition": round(f.condition, 1),
         "injury_months": f.injury_months,
+        "archetype": archetype.value if archetype and hasattr(archetype, "value") else archetype,
+        "popularity": round(f.popularity, 1),
+        "hype": round(f.hype, 1),
+        "goat_score": round(f.goat_score, 1),
     }
 
 
@@ -251,6 +260,7 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
                             contract.fights_remaining = max(0, contract.fights_remaining - 1)
 
                     mark_rankings_dirty(session, WeightClass(fa.weight_class))
+                    apply_fight_tags(winner, loser, fight, session)
 
                     fight_results.append({
                         "fighter_a": fa.name,
@@ -310,3 +320,76 @@ def _run_advance_month(task_id: str, sim_date: date, seed: int) -> None:
         _task_done(task_id, summary)
     except Exception as e:
         _task_error(task_id, str(e))
+
+
+# ---------------------------------------------------------------------------
+# Narrative: fighter bio, GOAT scores, rivalries, tags
+# ---------------------------------------------------------------------------
+
+def get_fighter_bio(fighter_id: int) -> Optional[str]:
+    with _SessionFactory() as session:
+        f = session.get(Fighter, fighter_id)
+        if not f:
+            return None
+        return generate_fighter_bio(f)
+
+
+def get_goat_scores(top_n: int = 10) -> list[dict]:
+    with _SessionFactory() as session:
+        fighters = (
+            session.execute(
+                select(Fighter).order_by(Fighter.goat_score.desc()).limit(top_n)
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            {
+                "rank": i + 1,
+                "id": f.id,
+                "name": f.name,
+                "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
+                "archetype": f.archetype.value if f.archetype and hasattr(f.archetype, "value") else f.archetype,
+                "record": f.record,
+                "overall": f.overall,
+                "goat_score": round(f.goat_score, 1),
+                "tags": get_tags(f),
+            }
+            for i, f in enumerate(fighters)
+        ]
+
+
+def get_rivalries() -> list[dict]:
+    with _SessionFactory() as session:
+        # Find fighters who have a rivalry_with set
+        rivals = (
+            session.execute(
+                select(Fighter).where(Fighter.rivalry_with.isnot(None))
+            )
+            .scalars()
+            .all()
+        )
+        seen: set[tuple] = set()
+        result = []
+        for f in rivals:
+            other = session.get(Fighter, f.rivalry_with)
+            if not other:
+                continue
+            pair = tuple(sorted([f.id, other.id]))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            result.append({
+                "fighter_a": {"id": f.id, "name": f.name, "record": f.record},
+                "fighter_b": {"id": other.id, "name": other.name, "record": other.record},
+                "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
+            })
+        return result
+
+
+def get_fighter_tags(fighter_id: int) -> Optional[list[str]]:
+    with _SessionFactory() as session:
+        f = session.get(Fighter, fighter_id)
+        if not f:
+            return None
+        return get_tags(f)

@@ -92,4 +92,31 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
             return jsonify({"error": "Task not found"}), 404
         return jsonify(task)
 
+    # ------------------------------------------------------------------
+    # Narrative
+    # ------------------------------------------------------------------
+
+    @app.route("/api/fighters/<int:fighter_id>/bio")
+    def fighter_bio(fighter_id: int):
+        bio = services.get_fighter_bio(fighter_id)
+        if bio is None:
+            return jsonify({"error": "Fighter not found"}), 404
+        return jsonify({"bio": bio})
+
+    @app.route("/api/fighters/<int:fighter_id>/tags")
+    def fighter_tags(fighter_id: int):
+        tags = services.get_fighter_tags(fighter_id)
+        if tags is None:
+            return jsonify({"error": "Fighter not found"}), 404
+        return jsonify({"tags": tags})
+
+    @app.route("/api/goat")
+    def goat_scores():
+        top_n = int(request.args.get("top", 10))
+        return jsonify(services.get_goat_scores(top_n))
+
+    @app.route("/api/rivalries")
+    def rivalries():
+        return jsonify(services.get_rivalries())
+
     return app

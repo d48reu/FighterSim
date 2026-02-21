@@ -239,3 +239,145 @@ tbody td { padding: 9px 10px; }
 }
 
 .status-bar.error { color: var(--accent); }
+
+/* ── Fighter side panel ──────────────────────────── */
+
+.fighter-panel {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--sidebar-bg);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.panel-header {
+  padding: 20px 18px 14px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+
+.panel-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.panel-close:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+
+.panel-name     { font-size: 16px; font-weight: 700; margin-bottom: 4px; padding-right: 28px; }
+.panel-subtitle { font-size: 12px; color: var(--muted); }
+
+.panel-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 18px; }
+
+.panel-archetype {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(230,57,70,0.18);
+  color: var(--accent);
+  border: 1px solid rgba(230,57,70,0.35);
+}
+
+.panel-stats { display: flex; flex-direction: column; gap: 6px; }
+
+.panel-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.panel-stat-label { font-size: 12px; color: var(--muted); }
+.panel-stat-value { font-size: 13px; font-weight: 600; }
+
+/* Popularity / Hype bars */
+.panel-bars { display: flex; flex-direction: column; gap: 4px; }
+
+.panel-bar-label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+.panel-bar-label span { color: var(--text); font-weight: 600; }
+
+.panel-bar {
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.panel-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.panel-bar-fill.pop  { background: #4cc9f0; }
+.panel-bar-fill.hype { background: var(--accent); }
+
+/* Narrative tags */
+.panel-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.tag-chip {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Bio section */
+.panel-bio-section { border-top: 1px solid var(--border); padding-top: 14px; }
+
+.panel-bio-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.panel-bio {
+  font-size: 12px;
+  color: #bbb;
+  line-height: 1.65;
+}
+
+/* ── Fighters table: clickable rows ──────────────── */
+
+#fighters-tbody tr { cursor: pointer; }
+
+/* ── Hall of Fame ────────────────────────────────── */
+
+.rivalry-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.rivalry-vs {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.rivalry-names { font-weight: 600; }
+.rivalry-wc    { font-size: 11px; color: var(--muted); margin-left: auto; }

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from models.models import (
     Fighter, Organization, Contract,
-    WeightClass, FighterStyle, ContractStatus,
+    WeightClass, FighterStyle, ContractStatus, Archetype,
 )
 
 _FIRST_NAMES = [
@@ -78,6 +78,54 @@ def seed_organizations(session: Session) -> list[Organization]:
     return orgs
 
 
+def _assign_archetype(
+    f: Fighter,
+    goat_counts: dict[str, int],
+    rng: random.Random,
+) -> Archetype:
+    """Assign archetype based on fighter attributes. GOAT Candidate capped at 2/wc."""
+    wc = f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class
+
+    if (
+        f.overall >= 75
+        and 22 <= f.age <= 26
+        and (f.prime_end - f.prime_start) >= 8
+        and goat_counts.get(wc, 0) < 2
+    ):
+        goat_counts[wc] = goat_counts.get(wc, 0) + 1
+        return Archetype.GOAT_CANDIDATE
+
+    if f.overall >= 70 and 19 <= f.age <= 24 and f.losses <= 2:
+        return Archetype.PHENOM
+
+    if f.overall >= 68 and f.prime_end <= 29 and f.cardio < 60:
+        return Archetype.SHOOTING_STAR
+
+    if f.overall < 62 and 29 <= f.prime_start <= 31:
+        return Archetype.LATE_BLOOMER
+
+    if 28 <= f.age <= 34 and 60 <= f.overall <= 68 and f.losses >= f.wins:
+        return Archetype.GATEKEEPER
+
+    if f.losses > f.wins:
+        return Archetype.JOURNEYMAN
+
+    return rng.choice([Archetype.PHENOM, Archetype.GATEKEEPER, Archetype.JOURNEYMAN])
+
+
+def _starting_popularity_hype(archetype: Archetype, rng: random.Random) -> tuple[float, float]:
+    ranges = {
+        Archetype.GOAT_CANDIDATE: ((40, 60), (60, 80)),
+        Archetype.PHENOM:         ((20, 40), (50, 70)),
+        Archetype.GATEKEEPER:     ((30, 50), (10, 20)),
+        Archetype.JOURNEYMAN:     ((5,  20), (5,  15)),
+        Archetype.LATE_BLOOMER:   ((10, 30), (20, 40)),
+        Archetype.SHOOTING_STAR:  ((10, 30), (20, 40)),
+    }
+    (plo, phi), (hlo, hhi) = ranges[archetype]
+    return round(rng.uniform(plo, phi), 1), round(rng.uniform(hlo, hhi), 1)
+
+
 def seed_fighters(
     session: Session,
     orgs: list[Organization],
@@ -90,6 +138,7 @@ def seed_fighters(
     styles = list(FighterStyle)
     fighters: list[Fighter] = []
     today = date.today()
+    goat_counts: dict[str, int] = {}
 
     for _ in range(count):
         age = rng.randint(20, 37)
@@ -115,6 +164,14 @@ def seed_fighters(
         )
         session.add(f)
         session.flush()
+
+        archetype = _assign_archetype(f, goat_counts, rng)
+        popularity, hype = _starting_popularity_hype(archetype, rng)
+        f.archetype = archetype
+        f.popularity = popularity
+        f.hype = hype
+        f.narrative_tags = "[]"
+        f.goat_score = 0.0
 
         org = rng.choice(ai_orgs)
         contract = Contract(

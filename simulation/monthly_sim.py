@@ -20,6 +20,7 @@ from models.models import (
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
+from simulation.narrative import apply_fight_tags, decay_hype, update_goat_scores, update_rivalries
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +224,9 @@ def _generate_ai_event(
             # Mark rankings dirty
             mark_rankings_dirty(session, WeightClass(fa.weight_class))
 
+            # Narrative tags and hype
+            apply_fight_tags(winner, loser, fight, session)
+
             paired.add(fa.id)
             paired.add(fb.id)
             card_position += 1
@@ -312,10 +316,17 @@ def sim_month(
         .all()
     )
 
+    # 3b. Decay hype before events (fights will restore it via apply_fight_tags)
+    decay_hype(session, rng)
+
     for org in ai_orgs:
         if rng.random() < 0.4:
             _generate_ai_event(session, org, sim_date, rng)
             summary["events_simulated"] += 1
+
+    # Post-event narrative updates
+    update_goat_scores(session)
+    update_rivalries(session)
 
     session.commit()
 
