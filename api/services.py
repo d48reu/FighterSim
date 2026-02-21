@@ -22,7 +22,7 @@ from simulation.monthly_sim import sim_month
 from simulation.rankings import rebuild_rankings, get_rankings as _get_rankings, mark_rankings_dirty
 from simulation.narrative import (
     apply_fight_tags, update_goat_scores, update_rivalries,
-    generate_fighter_bio, get_tags,
+    generate_fighter_bio, get_tags, display_archetype,
 )
 
 # ---------------------------------------------------------------------------
@@ -91,7 +91,6 @@ def get_fighter(fighter_id: int) -> Optional[dict]:
 
 
 def _fighter_dict(f: Fighter) -> dict:
-    archetype = f.archetype
     return {
         "id": f.id,
         "name": f.name,
@@ -114,7 +113,7 @@ def _fighter_dict(f: Fighter) -> dict:
         "sub_wins": f.sub_wins,
         "condition": round(f.condition, 1),
         "injury_months": f.injury_months,
-        "archetype": archetype.value if archetype and hasattr(archetype, "value") else archetype,
+        "archetype": display_archetype(f),
         "popularity": round(f.popularity, 1),
         "hype": round(f.hype, 1),
         "goat_score": round(f.goat_score, 1),
@@ -359,7 +358,7 @@ def get_goat_scores(top_n: int = 10) -> list[dict]:
                 "id": f.id,
                 "name": f.name,
                 "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
-                "archetype": f.archetype.value if f.archetype and hasattr(f.archetype, "value") else f.archetype,
+                "archetype": display_archetype(f),
                 "record": f.record,
                 "overall": f.overall,
                 "goat_score": round(f.goat_score, 1),

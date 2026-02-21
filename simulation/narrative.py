@@ -322,6 +322,27 @@ def update_rivalries(session: Session) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# display_archetype — age-adjusted label for UI display
+# ---------------------------------------------------------------------------
+
+def display_archetype(fighter: Fighter) -> str:
+    """Return the archetype label for display purposes.
+
+    If the fighter's age is more than 4 years past their prime_end,
+    display 'Veteran' regardless of stored archetype.  The underlying
+    archetype in the database is never modified.
+    """
+    if fighter.age > fighter.prime_end + 4:
+        return "Veteran"
+    archetype_val = (
+        fighter.archetype.value
+        if hasattr(fighter.archetype, "value")
+        else (fighter.archetype or "Journeyman")
+    )
+    return archetype_val
+
+
+# ---------------------------------------------------------------------------
 # generate_fighter_bio — no archetype names ever appear in output text
 # ---------------------------------------------------------------------------
 
@@ -464,7 +485,7 @@ _TEMPLATES: dict[tuple[str, Optional[str]], list[str]] = {
     ("Gatekeeper", None): [
         "Some fighters test champions on the way up. {name} has been that test in {division} more than once — and made them work for every second of it.",
         "The {record} record understates what {name} brings into a {division} cage. He's been in there with the best in the world. That experience isn't nothing.",
-        "The {division} division is full of rising stars. {name} is the fighter who tells you which ones are real — a walking litmus test for contenders.",
+        "The {division} division is full of hungry contenders. {name} is the fighter who tells you which ones are real — a walking litmus test at the top of the division.",
         "Veterans don't get enough credit. {name} has been in the {division} trenches long enough to have seen every trick in the book — and a few that haven't been invented yet.",
     ],
 
@@ -522,7 +543,7 @@ _TEMPLATES: dict[tuple[str, Optional[str]], list[str]] = {
         "The {division} debut was memorable. The trajectory since has been harder to read. {name} still has the tools — the question is whether they're assembling correctly.",
     ],
     ("Shooting Star", "on_a_tear"): [
-        "Explosive, dangerous, and producing results that are hard to contextualize at {age}. {name} is in the middle of a {division} run that isn't supposed to happen this early.",
+        "Explosive, dangerous, and producing results that are hard to argue with. {name} is in the middle of a {division} run that the rest of the weight class hasn't been able to interrupt.",
         "{name} arrived in {division} and immediately turned the volume up. Nothing has changed since — the {wins}-fight run is evidence.",
     ],
     ("Shooting Star", "unstoppable"): [
@@ -533,6 +554,35 @@ _TEMPLATES: dict[tuple[str, Optional[str]], list[str]] = {
         "The {division} division has a new variable. Unpredictable, explosive, dangerous. The ceiling is real and the floor is hard to locate.",
         "Some fighters burn bright from the first bell. {name} is one of them — and the {division} weight class has felt that heat since the opening appearance.",
         "Athleticism like {name}'s in {division} doesn't come along often. The talent is exceptional. The consistency question will define what this career actually becomes.",
+    ],
+
+    # ── Aged Phenom (Phenom archetype at age 30+) ────────────────────────────
+    ("Aged Phenom", "goat_watch"): [
+        "There was a time when {name} was the next big thing in {division}. At {age}, the conversation has moved past potential — {wins} wins against quality opposition makes the case on its own merits.",
+    ],
+    ("Aged Phenom", "champion"): [
+        "{name} was supposed to have arrived years ago in {division}. At {age}, the belt says he finally did — though the path was longer and harder than anyone originally predicted.",
+    ],
+    ("Aged Phenom", "ageless_wonder"): [
+        "The early hype around {name} in {division} was deafening. At {age}, the noise has quieted, but the results haven't — and that might be more impressive than anything the earlier version of this fighter ever promised.",
+    ],
+    ("Aged Phenom", "unstoppable"): [
+        "{name} was once the most anticipated talent in {division}. At {age}, he's stopped being anticipated and started being unavoidable — {wins} wins deep and still accelerating.",
+    ],
+    ("Aged Phenom", "on_a_tear"): [
+        "The early chapter of {name}'s {division} career wrote itself. At {age}, the current chapter is more interesting — a veteran run that the division's newer names haven't been able to interrupt.",
+    ],
+    ("Aged Phenom", "fading"): [
+        "There was a time when {name} was the most anticipated fighter in {division}. At {age}, the conversation is different now — recent results have raised questions that the earlier version of this fighter never had to answer.",
+    ],
+    ("Aged Phenom", "at_the_crossroads"): [
+        "{name} arrived in {division} with expectations most fighters never carry. At {age}, those expectations have been replaced by a simpler question: what's next?",
+    ],
+    ("Aged Phenom", None): [
+        "There was a time when {name} was the most talked-about fighter in {division}. At {age}, he's still here — which tells its own story.",
+        "The tools that made {name} special at the start of his {division} career are still there. At {age}, it's experience and intelligence doing the work the athleticism used to handle alone.",
+        "{name} came into {division} with expectations that most fighters never face. At {age}, those expectations look different — but the competitiveness hasn't changed.",
+        "Once the most talked-about name in {division}, {name} at {age} has settled into something more sustainable. The spectacular has given way to the effective — and the results keep coming.",
     ],
 }
 
@@ -556,15 +606,25 @@ def _build_bio_from_traits(fighter: Fighter, division: str) -> str:
 
 
 def generate_fighter_bio(fighter: Fighter) -> str:
-    """Return a 2-4 sentence bio based on situation and narrative tags.
+    """Return a single coherent bio paragraph based on archetype, age, and tags.
 
-    NEVER references archetype names in output text.
+    Rules enforced:
+    - Never uses 'youth/young/prospect/future/rising' for fighters age 30+.
+    - Phenom fighters aged 30+ are routed to veteran-flavoured 'Aged Phenom' templates.
+    - Picks the single best matching template — no concatenation of multiple blocks.
+    - fighter.age drives template selection before any language is chosen.
+    - NEVER references archetype names in output text.
     """
     archetype_val = (
         fighter.archetype.value
         if hasattr(fighter.archetype, "value")
         else (fighter.archetype or "Journeyman")
     )
+
+    # Phenom fighters aged 30+ get veteran narrative treatment
+    if archetype_val == "Phenom" and fighter.age >= 30:
+        archetype_val = "Aged Phenom"
+
     tags = get_tags(fighter)
     division = (
         fighter.weight_class.value
@@ -579,7 +639,7 @@ def generate_fighter_bio(fighter: Fighter) -> str:
             key_tag = t
             break
 
-    # Select template
+    # Select single best template — no joining multiple blocks
     templates = (
         _TEMPLATES.get((archetype_val, key_tag))
         or _TEMPLATES.get((archetype_val, None))
@@ -587,7 +647,7 @@ def generate_fighter_bio(fighter: Fighter) -> str:
     )
 
     template = random.choice(templates)
-    main_bio = template.format(
+    return template.format(
         name=fighter.name,
         division=division,
         record=fighter.record,
@@ -595,9 +655,3 @@ def generate_fighter_bio(fighter: Fighter) -> str:
         losses=fighter.losses,
         age=fighter.age,
     )
-
-    # Append trait flavour sentences
-    trait_text = _build_bio_from_traits(fighter, division)
-    if trait_text:
-        return f"{main_bio} {trait_text}"
-    return main_bio
