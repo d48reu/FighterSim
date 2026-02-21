@@ -13,6 +13,141 @@ from models.models import Fighter, Fight, Ranking, WeightClass, Archetype
 
 
 # ---------------------------------------------------------------------------
+# Nationality data structures (consumed by Tasks 2-4)
+# ---------------------------------------------------------------------------
+
+NATIONALITY_STYLE_MAP: dict[str, str] = {
+    "Brazilian": "Grappler",
+    "Russian": "Wrestler",
+    "Dagestani": "Wrestler",
+    "Georgian": "Wrestler",
+    "Irish": "Striker",
+    "British": "Striker",
+    "Dutch": "Striker",
+    "Japanese": "Striker",
+    "Swedish": "Wrestler",
+    "Norwegian": "Wrestler",
+    "Mexican": "Striker",
+    "South Korean": "Striker",
+    "Nigerian": "Striker",
+    "Cameroonian": "Wrestler",
+    "New Zealander": "Grappler",
+    "French": "Grappler",
+}
+
+_NATIONALITY_FLAVOR_LINES: dict[str, list[str]] = {
+    "Brazilian": [
+        "Trained in the grappling tradition that Brazilian fighters have brought to the sport, {name} carries that pedigree into every exchange on the mat.",
+        "The Brazilian jiu-jitsu roots run deep. {name} fights with the technical confidence that comes from a lifetime on the mats.",
+    ],
+    "Russian": [
+        "The wrestling base that Russian fighters are known for gives {name} a positional advantage most opponents struggle to overcome.",
+        "{name} brings the relentless pressure and iron discipline that Russian combat sports programs produce.",
+    ],
+    "Dagestani": [
+        "Dagestani wrestling is a different breed. {name} carries that chain-wrestling pressure that has redefined grappling in the sport.",
+        "The mountains produce fighters differently. {name} fights with the grinding, suffocating style that Dagestan is known for.",
+    ],
+    "Georgian": [
+        "Georgian wrestling traditions have shaped {name} into a fighter whose takedowns come from a place opponents rarely expect.",
+        "{name} brings the explosive clinch work and heavy hips that Georgian wrestling demands.",
+    ],
+    "Irish": [
+        "There is a certain directness to Irish strikers. {name} embodies that willingness to stand and trade with absolute conviction.",
+        "{name} carries the confidence of a fighter from a country that has punched well above its weight in combat sports.",
+    ],
+    "Dutch": [
+        "The Dutch kickboxing lineage shows in everything {name} does on the feet. The combinations are crisp and the intent is clear.",
+        "{name} fights with the technical striking precision that has made Dutch fighters a force in the sport.",
+    ],
+    "Japanese": [
+        "Japanese martial arts tradition emphasizes discipline and precision. {name} brings both into the cage with quiet intensity.",
+        "{name} fights with the kind of technical sharpness and composure that Japanese combat sports culture demands.",
+    ],
+    "Mexican": [
+        "Mexican fighters carry a reputation for toughness and forward pressure. {name} honors that tradition every time the cage door closes.",
+        "The warrior spirit that Mexican combat sports are built on runs through {name}'s approach to every fight.",
+    ],
+    "Swedish": [
+        "The Scandinavian wrestling tradition gives {name} a grappling base that translates directly to control in the cage.",
+        "{name} brings the methodical, technically sound wrestling that Swedish programs are known for developing.",
+    ],
+    "Nigerian": [
+        "The raw athleticism and striking power that Nigerian fighters bring to the sport are on full display with {name}.",
+        "{name} carries explosive speed and the kind of natural power that changes fights in a single exchange.",
+    ],
+    "New Zealander": [
+        "{name} comes from a grappling culture influenced by rugby and ground-based martial arts that translates uniquely into the cage.",
+        "New Zealand produces fighters with a blend of toughness and technical ground skills. {name} is a product of that tradition.",
+    ],
+    "French": [
+        "French grappling has quietly produced some of the best submission artists in the sport. {name} carries that legacy forward.",
+        "{name} fights with the technical sophistication that French martial arts schools have become known for developing.",
+    ],
+}
+
+NATIONALITY_NICKNAMES: dict[str, list[str]] = {
+    "Brazilian": ["The Brazilian", "Carioca", "Favela Born", "Jungle Cat", "Samba"],
+    "Russian": ["The Russian Bear", "Siberian", "Red Machine", "Moscow Mauler", "Tsar"],
+    "Dagestani": ["The Eagle", "Mountain Wolf", "Dagestani Machine", "The Wrestler"],
+    "Georgian": ["The Georgian", "Tbilisi Thunder", "Caucasus King"],
+    "Irish": ["Celtic Warrior", "Dublin Brawler", "The Irishman", "Green Machine"],
+    "British": ["The Brit", "Bulldog", "London Calling", "The Governor"],
+    "Dutch": ["Dutch Destroyer", "Windmill", "Orange Crush"],
+    "Japanese": ["Samurai", "Rising Sun", "The Ronin", "Bushido"],
+    "Mexican": ["El Guerrero", "Aztec Warrior", "El Diablo", "La Bestia"],
+    "Swedish": ["Viking", "Nordic Thunder", "The Swede", "Ice Cold"],
+    "Norwegian": ["Norse Hammer", "Viking Warrior", "Nordic Storm"],
+    "South Korean": ["Korean Tiger", "Seoul Fighter", "The Dragon"],
+    "Nigerian": ["African Thunder", "Lagos Lightning", "The Lion"],
+    "Cameroonian": ["African Giant", "Cameroon Power", "The Panther"],
+    "New Zealander": ["Kiwi Crusher", "Maori Warrior", "Southern Cross"],
+    "French": ["Le Magnifique", "French Connection", "The Parisian"],
+}
+
+NATIONALITY_TONE: dict[str, str] = {
+    "Brazilian": "passionate",
+    "Russian": "stoic",
+    "Dagestani": "intense",
+    "Georgian": "fierce",
+    "Irish": "brash",
+    "British": "composed",
+    "Dutch": "direct",
+    "Japanese": "respectful",
+    "Mexican": "fiery",
+    "Swedish": "calm",
+    "Norwegian": "calm",
+    "South Korean": "focused",
+    "Nigerian": "confident",
+    "Cameroonian": "proud",
+    "New Zealander": "relaxed",
+    "French": "eloquent",
+    "American": "confident",
+    "Canadian": "measured",
+    "Australian": "brash",
+    "Polish": "determined",
+    "German": "direct",
+}
+
+
+def _nationality_flavor(fighter: Fighter) -> str:
+    """Return a nationality-themed flavor sentence if the fighter's style matches
+    their nationality's stereotype. Returns empty string for Americans or mismatches."""
+    nat = fighter.nationality if hasattr(fighter, "nationality") else ""
+    if not nat or nat == "American" or nat not in NATIONALITY_STYLE_MAP:
+        return ""
+    expected_style = NATIONALITY_STYLE_MAP[nat]
+    actual_style = fighter.style.value if hasattr(fighter.style, "value") else str(fighter.style)
+    if actual_style != expected_style:
+        return ""
+    lines = _NATIONALITY_FLAVOR_LINES.get(nat, [])
+    if not lines:
+        return ""
+    name = fighter.name
+    return random.choice(lines).format(name=name)
+
+
+# ---------------------------------------------------------------------------
 # Tag helpers
 # ---------------------------------------------------------------------------
 
@@ -799,5 +934,15 @@ def generate_fighter_bio(fighter: Fighter) -> str:
     passed, red_flags = _validate_bio(bio, fighter, ctx)
     if not passed:
         bio = f"{fighter.name} is a {division} fighter with a {fighter.record} record at {fighter.age} years old."
+
+    # Append nationality flavor if applicable
+    nat_flavor = _nationality_flavor(fighter)
+    if nat_flavor:
+        bio = bio + " " + nat_flavor
+
+    # Append trait-based sentences
+    trait_bio = _build_bio_from_traits(fighter, division)
+    if trait_bio:
+        bio = bio + " " + trait_bio
 
     return bio
