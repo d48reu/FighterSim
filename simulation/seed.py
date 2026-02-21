@@ -91,6 +91,43 @@ def seed_organizations(session: Session) -> list[Organization]:
     return orgs
 
 
+def _gen_record(age: int, rng: random.Random) -> dict:
+    """Generate age-appropriate fight record (assumes pro debut at 18-20)."""
+    max_fights_by_age = {
+        19: 3, 20: 5, 21: 7, 22: 9, 23: 12, 24: 15,
+        25: 18, 26: 22, 27: 26, 28: 30,
+    }
+    max_fights = max_fights_by_age.get(age, min(40, (age - 18) * 3))
+
+    if age <= 21:
+        total = rng.randint(0, min(6, max_fights))
+    elif age <= 23:
+        total = rng.randint(2, min(10, max_fights))
+    elif age <= 25:
+        total = rng.randint(4, min(16, max_fights))
+    elif age <= 28:
+        total = rng.randint(8, min(24, max_fights))
+    elif age <= 32:
+        total = rng.randint(12, min(32, max_fights))
+    else:
+        total = rng.randint(16, min(40, max_fights))
+
+    wins = rng.randint(int(total * 0.4), int(total * 0.75))
+    losses = total - wins
+    draws = rng.randint(0, 1) if total > 5 else 0
+    wins = max(0, wins - draws)
+
+    ko_wins = int(wins * rng.uniform(0.1, 0.45))
+    sub_wins = int((wins - ko_wins) * rng.uniform(0.1, 0.4))
+    ko_wins = min(ko_wins, wins)
+    sub_wins = min(sub_wins, wins - ko_wins)
+
+    return {
+        "wins": wins, "losses": losses, "draws": draws,
+        "ko_wins": ko_wins, "sub_wins": sub_wins,
+    }
+
+
 def _assign_archetype(
     f: Fighter,
     goat_counts: dict[str, int],
@@ -122,10 +159,10 @@ def _assign_archetype(
     if gk_age_ok and 60 <= f.overall <= 68 and f.losses >= f.wins:
         return Archetype.GATEKEEPER
 
-    if f.losses > f.wins:
+    if f.losses >= f.wins:
         return Archetype.JOURNEYMAN
 
-    return rng.choice([Archetype.PHENOM, Archetype.JOURNEYMAN])
+    return Archetype.PHENOM
 
 
 def _starting_popularity_hype(archetype: Archetype, rng: random.Random) -> tuple[float, float]:
@@ -241,6 +278,7 @@ def seed_fighters(
         prime_start = rng.randint(24, 27)
         prime_end = prime_start + rng.randint(4, 8)
 
+        record = _gen_record(age, rng)
         f = Fighter(
             name=_random_name(rng),
             age=age,
@@ -255,8 +293,11 @@ def seed_fighters(
             speed=rng.randint(40, 92),
             prime_start=prime_start,
             prime_end=prime_end,
-            wins=rng.randint(0, 15),
-            losses=rng.randint(0, 8),
+            wins=record["wins"],
+            losses=record["losses"],
+            draws=record["draws"],
+            ko_wins=record["ko_wins"],
+            sub_wins=record["sub_wins"],
         )
         session.add(f)
         session.flush()
