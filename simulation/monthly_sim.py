@@ -33,12 +33,11 @@ _ATTR_FIELDS = ("striking", "grappling", "wrestling", "cardio", "chin", "speed")
 
 def _age_fighter(fighter: Fighter, rng: random.Random) -> None:
     """Increment age and adjust attributes based on career stage."""
-    fighter.age += 1  # One month = 1/12 year — but we age by year in annual pass
-
-    # Only apply attribute changes on full year boundary (simplified: each call = 1 month)
-    # Probabilistic: 1/12 chance of meaningful attribute shift per month call
+    # 1/12 chance to age by 1 year (one month tick = 1/12 of a year)
     if rng.random() > (1 / 12):
         return
+
+    fighter.age += 1
 
     in_prime = fighter.prime_start <= fighter.age <= fighter.prime_end
     past_prime = fighter.age > fighter.prime_end
