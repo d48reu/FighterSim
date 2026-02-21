@@ -473,6 +473,11 @@ def apply_fight_tags(winner: Fighter, loser: Fighter, fight: Fight, session: Ses
         if "journeyman_heart" not in loser_traits:
             add_tag(loser, "chin_concerns")
 
+    # ── Cornerstone fall from grace ───────────────────────────────────────────
+    if getattr(loser, "is_cornerstone", False) and ls >= 3:
+        loser.is_cornerstone = False
+        add_tag(loser, "fall_from_grace")
+
     # ── Hype updates ─────────────────────────────────────────────────────────
 
     hype_gain = 30 if is_upset else (25 if is_finish else 15)
@@ -1235,5 +1240,9 @@ def generate_fighter_bio(fighter: Fighter) -> str:
     trait_bio = _build_bio_from_traits(fighter, division)
     if trait_bio:
         bio = bio + " " + trait_bio
+
+    # Cornerstone bio paragraph for established cornerstone fighters
+    if getattr(fighter, "is_cornerstone", False) and ctx["career_fights"] >= 5:
+        bio = bio + f" As a cornerstone of the organization, {fighter.name} carries the weight of the franchise on their shoulders and headlines the biggest events."
 
     return bio

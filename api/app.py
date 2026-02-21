@@ -192,6 +192,30 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
             return jsonify(result), 400
         return jsonify(result)
 
+    # ------------------------------------------------------------------
+    # Cornerstone Fighters
+    # ------------------------------------------------------------------
+
+    @app.route("/api/cornerstones")
+    def list_cornerstones():
+        return jsonify(services.get_cornerstones())
+
+    @app.route("/api/cornerstones/designate", methods=["POST"])
+    def designate_cornerstone():
+        data = request.json
+        result = services.designate_cornerstone(data["fighter_id"])
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/cornerstones/remove", methods=["POST"])
+    def remove_cornerstone():
+        data = request.json
+        result = services.remove_cornerstone(data["fighter_id"])
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
     @app.route("/api/fighters/<int:fighter_id>/bio")
     def fighter_bio(fighter_id: int):
         bio = services.get_fighter_bio(fighter_id)

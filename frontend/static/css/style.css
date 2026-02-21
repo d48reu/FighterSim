@@ -1594,3 +1594,87 @@ tbody td { padding: 9px 10px; }
   font-size: 12px;
   font-weight: 400;
 }
+
+/* Cornerstone Fighters */
+
+.cornerstone-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #ffd700, #ff8c00);
+  color: #1a1a2e;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+.btn-cs {
+  background: linear-gradient(135deg, #ffd700, #ff8c00);
+  color: #1a1a2e;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-cs:hover { opacity: 0.85; }
+.cs-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 215, 0, 0.03);
+}
+.cs-section h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #ffd700;
+}
+.cs-count {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.cs-cards {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.cs-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--card-bg);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  min-width: 200px;
+}
+.cs-card:hover { border-color: #ffd700; }
+.cs-crown { font-size: 20px; }
+.cs-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.cs-card-info .muted { font-size: 11px; }
+.cs-widget {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 215, 0, 0.03);
+}
+.cs-widget h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #ffd700;
+}
+.cs-widget-list {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}

@@ -98,6 +98,7 @@ async function loadDashboard() {
   loadExpiringContracts();
   loadDashUpcoming();
   loadDashRecentResults();
+  loadCornerstones();
 }
 
 async function loadDashUpcoming() {
@@ -225,6 +226,7 @@ async function loadFighters(weightClass = null) {
 async function showFighterPanel(fighterId, extraData) {
   const panel = document.getElementById('fighter-panel');
   panel.classList.remove('hidden');
+  state.panelExtraData = extraData;
 
   // Reset content
   document.getElementById('panel-name').textContent    = 'Loading\u2026';
@@ -239,6 +241,7 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('panel-stat-bars').innerHTML = '';
   document.getElementById('panel-actions').innerHTML   = '';
   document.getElementById('panel-actions').classList.add('hidden');
+  document.getElementById('panel-cs-badge').classList.add('hidden');
   document.getElementById('panel-offer-result').innerHTML = '';
   document.getElementById('bar-popularity').style.width = '0%';
   document.getElementById('bar-hype').style.width       = '0%';
@@ -253,6 +256,8 @@ async function showFighterPanel(fighterId, extraData) {
     ]);
 
     document.getElementById('panel-name').textContent     = fighter.name;
+    // Cornerstone badge
+    document.getElementById('panel-cs-badge').classList.toggle('hidden', !fighter.is_cornerstone);
     // Nickname display with edit pencil
     const nickEl = document.getElementById('panel-nickname');
     if (fighter.nickname) {
@@ -355,10 +360,14 @@ async function showFighterPanel(fighterId, extraData) {
         <div class="panel-actions-row" style="margin-top:10px">
           <button class="btn-danger" id="btn-release">Release Fighter</button>
           <button class="btn-success" id="btn-show-renew">Renew Contract</button>
+          <button class="${fighter.is_cornerstone ? 'btn-secondary' : 'btn-cs'}" id="btn-cs-toggle">
+            ${fighter.is_cornerstone ? 'Remove Cornerstone' : '\u{1F451} Designate Cornerstone'}
+          </button>
         </div>
         <div id="renew-form-area"></div>
       `;
       document.getElementById('btn-release').addEventListener('click', () => releaseFighter(fighterId));
+      document.getElementById('btn-cs-toggle').addEventListener('click', () => toggleCornerstone(fighterId, fighter.is_cornerstone));
       document.getElementById('btn-show-renew').addEventListener('click', () => {
         const area = document.getElementById('renew-form-area');
         if (area.innerHTML) { area.innerHTML = ''; return; }
@@ -583,6 +592,7 @@ async function loadRoster() {
         });
       });
     });
+    loadCornerstones();
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="9" class="muted">Error: ${esc(err.message)}</td></tr>`;
   }
@@ -606,6 +616,83 @@ async function releaseFighter(fighterId) {
   } catch (err) {
     setStatus('Error: ' + err.message, true);
   }
+}
+
+async function toggleCornerstone(fighterId, isCurrentlyCornerstone) {
+  try {
+    const endpoint = isCurrentlyCornerstone ? '/api/cornerstones/remove' : '/api/cornerstones/designate';
+    const result = await api(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fighter_id: fighterId }),
+    });
+    if (result.error) {
+      setStatus(result.error, true);
+      return;
+    }
+    setStatus(isCurrentlyCornerstone ? 'Cornerstone removed.' : 'Fighter designated as cornerstone!');
+    showFighterPanel(fighterId, state.panelExtraData);
+    loadRoster();
+    loadCornerstones();
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+async function loadCornerstones() {
+  try {
+    const cornerstones = await api('/api/cornerstones');
+    // Dashboard widget
+    const widget = document.getElementById('cs-widget');
+    const widgetList = document.getElementById('cs-widget-list');
+    if (cornerstones.length > 0) {
+      widget.classList.remove('hidden');
+      widgetList.innerHTML = cornerstones.map(f => `
+        <div class="cs-card" data-id="${f.id}">
+          <span class="cs-crown">&#128081;</span>
+          <div class="cs-card-info">
+            <strong>${esc(f.name)}</strong>
+            ${f.nickname ? `<span class="nick-inline">"${esc(f.nickname)}"</span>` : ''}
+            <span class="muted">${esc(f.weight_class)} &middot; ${esc(f.record)} &middot; OVR ${f.overall}</span>
+          </div>
+        </div>
+      `).join('');
+      widgetList.querySelectorAll('.cs-card').forEach(card => {
+        card.addEventListener('click', () => showFighterPanel(Number(card.dataset.id)));
+      });
+    } else {
+      widget.classList.add('hidden');
+    }
+
+    // Roster cornerstone section
+    const section = document.getElementById('cs-section');
+    const cards = document.getElementById('cs-cards');
+    const countEl = document.getElementById('cs-count');
+    if (section) {
+      if (cornerstones.length > 0) {
+        section.classList.remove('hidden');
+        countEl.textContent = `${cornerstones.length}/3`;
+        cards.innerHTML = cornerstones.map(f => `
+          <div class="cs-card" data-id="${f.id}">
+            <span class="cs-crown">&#128081;</span>
+            <div class="cs-card-info">
+              <strong>${esc(f.name)}</strong>
+              ${f.nickname ? `<span class="nick-inline">"${esc(f.nickname)}"</span>` : ''}
+              <span class="muted">${esc(f.weight_class)} &middot; ${esc(f.record)}</span>
+            </div>
+          </div>
+        `).join('');
+        cards.querySelectorAll('.cs-card').forEach(card => {
+          card.addEventListener('click', () => {
+            state.panelContext = 'roster';
+            showFighterPanel(Number(card.dataset.id));
+          });
+        });
+      } else {
+        section.classList.add('hidden');
+      }
+    }
+  } catch (err) { /* silent */ }
 }
 
 async function renewContract(fighterId) {

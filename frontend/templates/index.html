@@ -105,6 +105,11 @@
             <tbody id="expiring-tbody"></tbody>
           </table>
         </div>
+
+        <div id="cs-widget" class="cs-widget hidden">
+          <h3>&#128081; Cornerstones</h3>
+          <div id="cs-widget-list" class="cs-widget-list"></div>
+        </div>
       </div>
 
       <!-- Events -->
@@ -269,6 +274,10 @@
       <!-- Roster -->
       <div id="view-roster" class="view hidden">
         <h1>Roster</h1>
+        <div id="cs-section" class="cs-section hidden">
+          <h3>&#128081; Cornerstones <span class="cs-count" id="cs-count">0/3</span></h3>
+          <div id="cs-cards" class="cs-cards"></div>
+        </div>
         <div id="roster-payroll-bar" class="payroll-bar">
           <div class="payroll-item">
             <div class="payroll-item-label">Fighters</div>
@@ -485,6 +494,7 @@
       <div class="panel-header">
         <button class="panel-close" id="btn-close-panel" aria-label="Close">&times;</button>
         <div class="panel-name" id="panel-name">—</div>
+        <span id="panel-cs-badge" class="cornerstone-badge hidden">&#128081; Cornerstone</span>
         <div class="panel-nickname" id="panel-nickname"></div>
         <div class="panel-subtitle" id="panel-subtitle">—</div>
       </div>

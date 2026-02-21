@@ -114,6 +114,7 @@ class Fighter(Base):
     rivalry_with: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
     goat_score: Mapped[float] = Column(Float, default=0.0)
     traits: Mapped[Optional[str]] = Column(Text, default="[]")
+    is_cornerstone: Mapped[bool] = Column(Boolean, default=False)
 
     # Relationships
     contracts: Mapped[List["Contract"]] = relationship(

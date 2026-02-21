@@ -142,6 +142,7 @@ def _fighter_dict(f: Fighter) -> dict:
         "hype": round(f.hype, 1),
         "goat_score": round(f.goat_score, 1),
         "traits": _get_traits_list(f),
+        "is_cornerstone": f.is_cornerstone,
     }
 
 
@@ -659,6 +660,8 @@ def release_fighter(fighter_id: int) -> dict:
 
         fighter = session.get(Fighter, fighter_id)
         contract.status = ContractStatus.TERMINATED
+        if fighter.is_cornerstone:
+            fighter.is_cornerstone = False
 
         game_date = _get_game_date(session)
         notif = Notification(
@@ -1122,6 +1125,11 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                 mark_rankings_dirty(session, WeightClass(fa.weight_class))
                 apply_fight_tags(winner, loser, fight, session)
 
+                # Cornerstone win bonuses
+                if winner.is_cornerstone:
+                    winner.hype = min(100.0, winner.hype + 5.0)
+                    player_org.prestige = min(100.0, player_org.prestige + 2.0)
+
                 fight_results.append({
                     "fight_id": fight.id,
                     "fighter_a": fa.name,
@@ -1320,8 +1328,8 @@ def hold_press_conference(event_id: int) -> dict:
             return {"error": "Main event fighters not found."}
 
         # Check cornerstone status
-        is_cs_a = getattr(fa, "is_cornerstone", False)
-        is_cs_b = getattr(fb, "is_cornerstone", False)
+        is_cs_a = fa.is_cornerstone
+        is_cs_b = fb.is_cornerstone
 
         pc_data = generate_press_conference(fa, fb, is_cornerstone_a=is_cs_a, is_cornerstone_b=is_cs_b)
 
@@ -1341,6 +1349,76 @@ def hold_press_conference(event_id: int) -> dict:
             "fighter_a": {"name": fa.name, "hype": round(fa.hype, 1)},
             "fighter_b": {"name": fb.name, "hype": round(fb.hype, 1)},
         }
+
+
+# ---------------------------------------------------------------------------
+# Cornerstone Fighters
+# ---------------------------------------------------------------------------
+
+def designate_cornerstone(fighter_id: int) -> dict:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"error": "No player organization found."}
+
+        # Verify fighter is on player roster
+        contract = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter_id,
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if not contract:
+            return {"error": "Fighter is not on your roster."}
+
+        fighter = session.get(Fighter, fighter_id)
+        if fighter.is_cornerstone:
+            return {"error": "Fighter is already a cornerstone."}
+
+        # Check max 3 cornerstones
+        cs_count = session.execute(
+            select(Fighter).join(Contract).where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+                Fighter.is_cornerstone == True,
+            )
+        ).scalars().all()
+        if len(cs_count) >= 3:
+            return {"error": "Maximum 3 cornerstones allowed. Remove one first."}
+
+        fighter.is_cornerstone = True
+        session.commit()
+        return {"success": True, "fighter": _fighter_dict(fighter)}
+
+
+def remove_cornerstone(fighter_id: int) -> dict:
+    with _SessionFactory() as session:
+        fighter = session.get(Fighter, fighter_id)
+        if not fighter:
+            return {"error": "Fighter not found."}
+        fighter.is_cornerstone = False
+        session.commit()
+        return {"success": True, "fighter": _fighter_dict(fighter)}
+
+
+def get_cornerstones() -> list[dict]:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+        fighters = session.execute(
+            select(Fighter).join(Contract).where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+                Fighter.is_cornerstone == True,
+            )
+        ).scalars().all()
+        return [_fighter_dict(f) for f in fighters]
 
 
 # ---------------------------------------------------------------------------
