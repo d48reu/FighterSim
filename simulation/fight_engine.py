@@ -33,6 +33,9 @@ class FighterStats:
     # Style — used for style matchup system
     style: str = "Well-Rounded"
 
+    # Confidence (0-100) — affects fight performance
+    confidence: float = 70.0
+
     # Runtime state — set at fight start
     stamina: float = 100.0
     damage: float = 0.0
@@ -161,6 +164,7 @@ class FightResult:
     narrative: str
     is_draw: bool = False
     total_knockdowns: dict[int, int] = field(default_factory=dict)
+    judge_breakdown: Optional[list[dict]] = None  # per-judge scorecards for decisions
 
 
 # ---------------------------------------------------------------------------
@@ -232,11 +236,25 @@ MAX_ROUNDS_STANDARD = 3
 # Core engine
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Weight cut severity penalties
+# ---------------------------------------------------------------------------
+
+CUT_PENALTIES: dict[str, dict[str, int]] = {
+    "easy":     {"stamina": 0,   "chin": 0},
+    "moderate": {"stamina": -3,  "chin": -2},
+    "severe":   {"stamina": -7,  "chin": -5},
+    "extreme":  {"stamina": -12, "chin": -8},
+}
+
+
 def simulate_fight(
     a: FighterStats,
     b: FighterStats,
     max_rounds: int = 3,
     seed: Optional[int] = None,
+    cut_severity_a: str = "easy",
+    cut_severity_b: str = "easy",
 ) -> FightResult:
     rng = random.Random(seed)
 
@@ -253,6 +271,28 @@ def simulate_fight(
         f.momentum = 0.0
         f.strikes_landed_this_round = 0
         f.current_round = 1
+
+    # Apply weight cut penalties
+    pen_a = CUT_PENALTIES.get(cut_severity_a, CUT_PENALTIES["easy"])
+    pen_b = CUT_PENALTIES.get(cut_severity_b, CUT_PENALTIES["easy"])
+    a.stamina = max(0, a.stamina + pen_a["stamina"])
+    a.chin = max(1, a.chin + pen_a["chin"])
+    b.stamina = max(0, b.stamina + pen_b["stamina"])
+    b.chin = max(1, b.chin + pen_b["chin"])
+
+    # Apply confidence modifiers
+    for f in (a, b):
+        if f.confidence >= 85:
+            f.stamina = min(100, f.stamina + 5)
+            f.chin = min(100, f.chin + 3)
+        elif f.confidence >= 75:
+            f.stamina = min(100, f.stamina + 2)
+        elif f.confidence <= 30:
+            f.stamina = max(0, f.stamina - 8)
+            f.chin = max(1, f.chin - 5)
+        elif f.confidence <= 50:
+            f.stamina = max(0, f.stamina - 3)
+            f.chin = max(1, f.chin - 2)
 
     # Compute style context once
     style_ctx = _compute_style_context(a, b)
@@ -294,7 +334,7 @@ def simulate_fight(
         _apply_round_fatigue(b, round_num)
 
     # Judges' decision
-    winner, method = _judges_decision(a, b, round_results, rng, total_knockdowns)
+    winner, method, scorecards = _judges_decision(a, b, round_results, rng, total_knockdowns)
     loser = b if winner.id == a.id else a
     narrative = _build_narrative(a, b, round_results, method, winner, style_ctx, total_knockdowns)
     return FightResult(
@@ -305,6 +345,7 @@ def simulate_fight(
         time_ended="5:00",
         narrative=narrative,
         total_knockdowns=total_knockdowns,
+        judge_breakdown=scorecards,
     )
 
 
@@ -674,8 +715,74 @@ def _apply_round_fatigue(fighter: FighterStats, completed_round: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Judges' decision
+# Judges' decision — per-judge scoring with bias profiles
 # ---------------------------------------------------------------------------
+
+@dataclass
+class JudgeProfile:
+    """A judge with specific scoring biases."""
+    name: str
+    striking_bias: float = 0.0   # bonus weight on striking damage
+    grappling_bias: float = 0.0  # bonus weight on ground damage
+    aggression_bias: float = 0.0 # bonus for forward pressure (momentum)
+    damage_bias: float = 0.0     # bonus for raw damage dealt
+
+JUDGE_POOL: list[JudgeProfile] = [
+    JudgeProfile(name="Garcia", striking_bias=0.20, damage_bias=0.10),
+    JudgeProfile(name="Tanaka", grappling_bias=0.25, aggression_bias=-0.10),
+    JudgeProfile(name="O'Brien", aggression_bias=0.25, striking_bias=0.05),
+    JudgeProfile(name="Petrov"),  # balanced — no biases
+    JudgeProfile(name="Williams", damage_bias=0.20, grappling_bias=0.10),
+]
+
+
+def _judge_score_fight(
+    judge: JudgeProfile,
+    a: FighterStats,
+    b: FighterStats,
+    total_knockdowns: Optional[dict[int, int]],
+    rng: random.Random,
+) -> tuple[int, int]:
+    """One judge scores the full fight. Returns (score_a, score_b) in 10-point format."""
+    # Base scoring: damage dealt + standing damage weight
+    a_raw = b.damage + b.standing_damage * 0.5
+    b_raw = a.damage + a.standing_damage * 0.5
+
+    # Apply judge biases
+    # Striking bias — boosts standing damage component
+    a_raw += b.standing_damage * judge.striking_bias
+    b_raw += a.standing_damage * judge.striking_bias
+
+    # Grappling bias — boosts ground damage component
+    a_raw += b.ground_damage * judge.grappling_bias
+    b_raw += a.ground_damage * judge.grappling_bias
+
+    # Aggression bias — momentum advantage
+    a_raw += max(0, a.momentum) * 10 * judge.aggression_bias
+    b_raw += max(0, b.momentum) * 10 * judge.aggression_bias
+
+    # Damage bias — total damage dealt
+    a_raw += (b.damage + b.standing_damage + b.ground_damage) * judge.damage_bias * 0.3
+    b_raw += (a.damage + a.standing_damage + a.ground_damage) * judge.damage_bias * 0.3
+
+    # Knockdown bonus
+    if total_knockdowns:
+        a_raw += total_knockdowns.get(b.id, 0) * 10
+        b_raw += total_knockdowns.get(a.id, 0) * 10
+
+    # Per-judge subjectivity
+    a_raw += rng.uniform(-4, 4)
+    b_raw += rng.uniform(-4, 4)
+
+    # Convert to 10-point must system (rough: 29-28, 30-27, etc.)
+    diff = a_raw - b_raw
+    if abs(diff) < 2:
+        return (29, 28) if diff >= 0 else (28, 29)
+    elif abs(diff) < 8:
+        return (30, 27) if diff > 0 else (27, 30)
+    else:
+        return (30, 26) if diff > 0 else (26, 30)
+
 
 def _judges_decision(
     a: FighterStats,
@@ -683,33 +790,35 @@ def _judges_decision(
     rounds: list[RoundResult],
     rng: random.Random,
     total_knockdowns: Optional[dict[int, int]] = None,
-) -> tuple[FighterStats, str]:
-    # Score based on damage dealt
-    a_score = b.damage + b.standing_damage * 0.5
-    b_score = a.damage + a.standing_damage * 0.5
+) -> tuple[FighterStats, str, list[dict]]:
+    """Three randomly selected judges score the fight independently."""
+    judges = rng.sample(JUDGE_POOL, 3)
+    scorecards = []
+    a_wins = 0
 
-    # Knockdown bonus: each knockdown = +10 points
-    if total_knockdowns:
-        # a's knockdowns on b (stored under b's id) benefit a
-        a_score += total_knockdowns.get(b.id, 0) * 10
-        b_score += total_knockdowns.get(a.id, 0) * 10
+    for judge in judges:
+        sa, sb = _judge_score_fight(judge, a, b, total_knockdowns, rng)
+        scorecards.append({
+            "judge": judge.name,
+            "score_a": sa,
+            "score_b": sb,
+            "winner_id": a.id if sa > sb else b.id,
+        })
+        if sa > sb:
+            a_wins += 1
 
-    # Judging subjectivity
-    a_score += rng.uniform(-5, 5)
-    b_score += rng.uniform(-5, 5)
-
-    margin = abs(a_score - b_score)
-    if a_score > b_score:
-        winner = a
-    else:
-        winner = b
-
-    if margin < 3:
-        method = rng.choice(["Split Decision", "Majority Decision"])
-    else:
+    # Determine decision type
+    if a_wins == 3 or a_wins == 0:
         method = "Unanimous Decision"
+    elif a_wins == 2 or a_wins == 1:
+        # Check if any scorecard was a draw (29-29 impossible in our system, but safeguard)
+        close = any(abs(sc["score_a"] - sc["score_b"]) <= 1 for sc in scorecards)
+        method = "Split Decision" if close else "Majority Decision"
 
-    return winner, method
+    # Winner = whoever won 2+ scorecards
+    winner = a if a_wins >= 2 else b
+
+    return winner, method, scorecards
 
 
 # ---------------------------------------------------------------------------

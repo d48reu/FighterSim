@@ -143,6 +143,9 @@ def _fighter_dict(f: Fighter) -> dict:
         "goat_score": round(f.goat_score, 1),
         "traits": _get_traits_list(f),
         "is_cornerstone": f.is_cornerstone,
+        "natural_weight": f.natural_weight,
+        "fighting_weight": f.fighting_weight,
+        "cut_severity": get_cut_severity(f),
     }
 
 
@@ -151,6 +154,43 @@ def _get_traits_list(f: Fighter) -> list[str]:
         return json.loads(f.traits) if f.traits else []
     except (json.JSONDecodeError, TypeError):
         return []
+
+
+# ---------------------------------------------------------------------------
+# Weight Cut Severity
+# ---------------------------------------------------------------------------
+
+WEIGHT_CLASS_LIMITS: dict[str, int] = {
+    "Flyweight": 125,
+    "Lightweight": 155,
+    "Welterweight": 170,
+    "Middleweight": 185,
+    "Heavyweight": 265,
+}
+
+MISS_WEIGHT_PROB: dict[str, float] = {
+    "easy": 0.0,
+    "moderate": 0.02,
+    "severe": 0.08,
+    "extreme": 0.20,
+}
+
+
+def get_cut_severity(fighter: Fighter) -> str:
+    """Calculate weight cut severity based on natural vs fighting weight."""
+    if not fighter.natural_weight or not fighter.fighting_weight:
+        return "easy"
+    if fighter.natural_weight <= fighter.fighting_weight:
+        return "easy"
+    cut_pct = (fighter.natural_weight - fighter.fighting_weight) / fighter.natural_weight * 100
+    if cut_pct < 5:
+        return "easy"
+    elif cut_pct < 10:
+        return "moderate"
+    elif cut_pct < 15:
+        return "severe"
+    else:
+        return "extreme"
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +314,11 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
                     session.add(fight)
                     session.flush()
 
-                    result = simulate_fight(_to_stats(fa), _to_stats(fb), seed=rng.randint(0, 999_999))
+                    result = simulate_fight(
+                        _to_stats(fa), _to_stats(fb), seed=rng.randint(0, 999_999),
+                        cut_severity_a=get_cut_severity(fa),
+                        cut_severity_b=get_cut_severity(fb),
+                    )
 
                     fight.winner_id = result.winner_id
                     fight.method = result.method
@@ -335,6 +379,7 @@ def _to_stats(f: Fighter) -> FighterStats:
         cardio=f.cardio, chin=f.chin, speed=f.speed,
         traits=_get_traits_list(f),
         style=style,
+        confidence=getattr(f, "confidence", 70.0) or 70.0,
     )
 
 
@@ -1089,9 +1134,17 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                 if not fa or not fb:
                     continue
 
+                # Weight cut severity and missed weight check
+                sev_a = get_cut_severity(fa)
+                sev_b = get_cut_severity(fb)
+                missed_a = rng.random() < MISS_WEIGHT_PROB.get(sev_a, 0.0)
+                missed_b = rng.random() < MISS_WEIGHT_PROB.get(sev_b, 0.0)
+
                 result = simulate_fight(
                     _to_stats(fa), _to_stats(fb),
                     seed=rng.randint(0, 999_999),
+                    cut_severity_a=sev_a,
+                    cut_severity_b=sev_b,
                 )
 
                 fight.winner_id = result.winner_id
@@ -1122,6 +1175,15 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                         contract.fights_remaining = max(0, contract.fights_remaining - 1)
                         total_fighter_salaries += contract.salary
 
+                # Missed weight fine: 20% of purse to opponent
+                missed_weight_info = []
+                if missed_a:
+                    fine = total_fighter_salaries * 0.20 if total_fighter_salaries > 0 else 5000
+                    missed_weight_info.append({"fighter": fa.name, "fine": fine})
+                if missed_b:
+                    fine = total_fighter_salaries * 0.20 if total_fighter_salaries > 0 else 5000
+                    missed_weight_info.append({"fighter": fb.name, "fine": fine})
+
                 mark_rankings_dirty(session, WeightClass(fa.weight_class))
                 apply_fight_tags(winner, loser, fight, session)
 
@@ -1145,6 +1207,10 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                     "narrative": result.narrative,
                     "is_title_fight": fight.is_title_fight,
                     "weight_class": fa.weight_class.value if hasattr(fa.weight_class, "value") else fa.weight_class,
+                    "cut_severity_a": sev_a,
+                    "cut_severity_b": sev_b,
+                    "missed_weight": missed_weight_info if missed_weight_info else None,
+                    "judge_breakdown": result.judge_breakdown,
                 })
 
             # Calculate revenue

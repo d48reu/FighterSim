@@ -478,6 +478,37 @@ def apply_fight_tags(winner: Fighter, loser: Fighter, fight: Fight, session: Ses
         loser.is_cornerstone = False
         add_tag(loser, "fall_from_grace")
 
+    # ── Confidence shifts ────────────────────────────────────────────────────
+
+    method = fight.method if hasattr(fight.method, "value") is False else fight.method.value if hasattr(fight.method, "value") else fight.method
+    method_str = method.value if hasattr(method, "value") else str(method)
+
+    if method_str == "KO/TKO":
+        winner.confidence = min(100.0, getattr(winner, "confidence", 70.0) + 12.0)
+        loser.confidence  = max(0.0,   getattr(loser, "confidence", 70.0)  - 18.0)
+    elif method_str == "Submission":
+        winner.confidence = min(100.0, getattr(winner, "confidence", 70.0) + 10.0)
+        loser.confidence  = max(0.0,   getattr(loser, "confidence", 70.0)  - 12.0)
+    else:
+        # Decision
+        winner.confidence = min(100.0, getattr(winner, "confidence", 70.0) + 5.0)
+        loser.confidence  = max(0.0,   getattr(loser, "confidence", 70.0)  - 5.0)
+
+    # Confidence-based narrative tags
+    w_streak = _win_streak(winner.id, session)
+    if w_streak >= 3 and getattr(winner, "confidence", 70.0) >= 85:
+        add_tag(winner, "sky_high_confidence")
+    else:
+        remove_tag(winner, "sky_high_confidence")
+
+    if method_str == "KO/TKO" and getattr(loser, "confidence", 70.0) <= 40:
+        add_tag(loser, "shell_shocked")
+    # Remove shell_shocked if confidence recovers
+    if getattr(loser, "confidence", 70.0) > 55:
+        remove_tag(loser, "shell_shocked")
+    if getattr(winner, "confidence", 70.0) > 55:
+        remove_tag(winner, "shell_shocked")
+
     # ── Hype updates ─────────────────────────────────────────────────────────
 
     hype_gain = 30 if is_upset else (25 if is_finish else 15)
@@ -607,7 +638,16 @@ _PRESS_QUOTES: dict[str, list[str]] = {
 
 
 def _build_fighter_tone(fighter: Fighter) -> str:
-    """Combine archetype tone + first matching trait modifier + nationality tone."""
+    """Combine archetype tone + first matching trait modifier + nationality tone.
+
+    Low-confidence fighters get shifted to a more subdued tone.
+    """
+    conf = getattr(fighter, "confidence", 70.0) or 70.0
+
+    # Low confidence override — fighter sounds subdued regardless of archetype
+    if conf <= 40:
+        return "measured"
+
     archetype_val = fighter.archetype.value if hasattr(fighter.archetype, "value") else (fighter.archetype or "Journeyman")
     base = TONE_PROFILES.get(archetype_val, "measured")
 
@@ -1240,6 +1280,13 @@ def generate_fighter_bio(fighter: Fighter) -> str:
     trait_bio = _build_bio_from_traits(fighter, division)
     if trait_bio:
         bio = bio + " " + trait_bio
+
+    # Confidence-based flavor
+    conf = getattr(fighter, "confidence", 70.0) or 70.0
+    if conf >= 85:
+        bio += f" There's a visible swagger to {fighter.name} right now — a fighter who believes the next win is already his."
+    elif conf <= 35:
+        bio += f" Something has shifted in {fighter.name}'s demeanor. The hesitation is subtle, but it's there — and at this level, opponents notice."
 
     # Cornerstone bio paragraph for established cornerstone fighters
     if getattr(fighter, "is_cornerstone", False) and ctx["career_fights"] >= 5:

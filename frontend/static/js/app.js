@@ -1111,10 +1111,14 @@ function renderFighterPool() {
   el.innerHTML = fighters.map(f => {
     const isSelA = state.selectedFighterA === f.id;
     const isSelB = state.selectedFighterB === f.id;
+    const cutBadge = f.cut_severity && f.cut_severity !== 'easy'
+      ? `<span class="cut-badge cut-${f.cut_severity}">${f.cut_severity === 'moderate' ? 'MOD CUT' : f.cut_severity === 'severe' ? 'HARD CUT' : 'EXTREME CUT'}</span>`
+      : '';
     return `
       <div class="pool-fighter-card ${isSelA || isSelB ? 'selected' : ''}" data-fighter-id="${f.id}" data-wc="${esc(f.weight_class)}">
         <div class="pool-fighter-top">
           <span class="pool-fighter-name">${esc(f.name)}</span>
+          ${cutBadge}
           <span class="pool-ovr-badge">${f.overall}</span>
         </div>
         <div class="pool-fighter-meta">
@@ -1369,6 +1373,22 @@ async function simulateCard() {
   }
 }
 
+function buildScorecardHtml(f) {
+  if (!f.judge_breakdown || f.judge_breakdown.length === 0) return '';
+  let rows = f.judge_breakdown.map(j => {
+    const aWin = j.score_a > j.score_b;
+    return `<tr>
+      <td>${esc(j.judge)}</td>
+      <td class="${aWin ? 'sc-winner' : ''}">${j.score_a}</td>
+      <td class="${!aWin ? 'sc-winner' : ''}">${j.score_b}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="scorecard-table"><table>
+    <thead><tr><th>Judge</th><th>${esc(f.fighter_a)}</th><th>${esc(f.fighter_b)}</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
 async function showAnimatedResults(result) {
   const header = document.getElementById('event-header');
   const cardBuilder = document.getElementById('event-card-builder');
@@ -1416,8 +1436,11 @@ async function showAnimatedResults(result) {
 
     const card = document.createElement('div');
     card.className = 'result-fight-card anim-enter';
+    const missedHtml = f.missed_weight ? f.missed_weight.map(m => `<div class="missed-weight-warning">MISSED WEIGHT: ${esc(m.fighter)} (fined ${formatCurrency(m.fine)})</div>`).join('') : '';
+    const scorecardHtml = f.judge_breakdown ? buildScorecardHtml(f) : '';
     card.innerHTML = `
       ${f.is_title_fight ? '<div class="title-banner gold">TITLE FIGHT</div>' : ''}
+      ${missedHtml}
       <div class="result-matchup">
         <span class="result-fighter ${isWinnerA ? 'winner' : 'loser'}">${esc(f.fighter_a)}</span>
         <span class="result-vs">VS</span>
@@ -1428,6 +1451,7 @@ async function showAnimatedResults(result) {
         <span class="muted">R${f.round || '?'} ${esc(f.time || '')}</span>
       </div>
       <div class="result-narrative typewriter" data-text="${esc(f.narrative || '')}"></div>
+      ${scorecardHtml}
     `;
     container.appendChild(card);
 
@@ -1471,9 +1495,12 @@ function renderFinalResults(result, container) {
   for (const f of result.fights) {
     const methodClass = (f.method || '').includes('KO') ? 'ko' : (f.method || '').includes('Sub') ? 'sub' : 'dec';
     const isWinnerA = f.winner_id === f.fighter_a_id;
+    const missedHtml = f.missed_weight ? f.missed_weight.map(m => `<div class="missed-weight-warning">MISSED WEIGHT: ${esc(m.fighter)} (fined ${formatCurrency(m.fine)})</div>`).join('') : '';
+    const scorecardHtml = f.judge_breakdown ? buildScorecardHtml(f) : '';
     html += `
       <div class="result-fight-card entered ${f.is_title_fight ? 'title-fight' : ''}">
         ${f.is_title_fight ? '<div class="title-banner gold">TITLE FIGHT</div>' : ''}
+        ${missedHtml}
         <div class="result-matchup">
           <span class="result-fighter ${isWinnerA ? 'winner' : 'loser'}">${esc(f.fighter_a)}</span>
           <span class="result-vs">VS</span>
@@ -1484,6 +1511,7 @@ function renderFinalResults(result, container) {
           <span class="muted">R${f.round || '?'} ${esc(f.time || '')}</span>
         </div>
         ${f.narrative ? `<div class="result-narrative">${esc(f.narrative)}</div>` : ''}
+        ${scorecardHtml}
       </div>
     `;
   }

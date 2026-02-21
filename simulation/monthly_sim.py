@@ -226,10 +226,13 @@ def _generate_ai_event(
             session.add(fight)
             session.flush()
 
-            # Simulate
+            # Simulate — compute weight cut severity
             a_stats = _fighter_to_stats(fa)
             b_stats = _fighter_to_stats(fb)
-            result = simulate_fight(a_stats, b_stats, seed=rng.randint(0, 999999))
+            sev_a = _get_cut_severity(fa)
+            sev_b = _get_cut_severity(fb)
+            result = simulate_fight(a_stats, b_stats, seed=rng.randint(0, 999999),
+                                    cut_severity_a=sev_a, cut_severity_b=sev_b)
 
             fight.winner_id = result.winner_id
             fight.method = result.method
@@ -276,6 +279,22 @@ def _generate_ai_event(
     org.bank_balance += event.total_revenue
 
 
+def _get_cut_severity(f: Fighter) -> str:
+    """Calculate weight cut severity for a fighter."""
+    if not getattr(f, "natural_weight", None) or not getattr(f, "fighting_weight", None):
+        return "easy"
+    if f.natural_weight <= f.fighting_weight:
+        return "easy"
+    cut_pct = (f.natural_weight - f.fighting_weight) / f.natural_weight * 100
+    if cut_pct < 5:
+        return "easy"
+    elif cut_pct < 10:
+        return "moderate"
+    elif cut_pct < 15:
+        return "severe"
+    return "extreme"
+
+
 def _fighter_to_stats(f: Fighter) -> FighterStats:
     try:
         traits = json.loads(f.traits) if f.traits else []
@@ -293,6 +312,7 @@ def _fighter_to_stats(f: Fighter) -> FighterStats:
         speed=f.speed,
         traits=traits,
         style=style,
+        confidence=getattr(f, "confidence", 70.0) or 70.0,
     )
 
 
@@ -369,6 +389,12 @@ def sim_month(
     all_fighters = session.execute(select(Fighter)).scalars().all()
     for fighter in all_fighters:
         _age_fighter(fighter, rng)
+        # Confidence decay toward 70 (baseline)
+        conf = getattr(fighter, "confidence", 70.0) or 70.0
+        if conf > 70:
+            fighter.confidence = max(70.0, conf - 2.0)
+        elif conf < 70:
+            fighter.confidence = min(70.0, conf + 2.0)
         summary["fighters_aged"] += 1
 
     if progress_callback:

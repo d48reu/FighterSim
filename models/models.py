@@ -116,6 +116,13 @@ class Fighter(Base):
     traits: Mapped[Optional[str]] = Column(Text, default="[]")
     is_cornerstone: Mapped[bool] = Column(Boolean, default=False)
 
+    # Weight management
+    natural_weight: Mapped[Optional[float]] = Column(Float, nullable=True)
+    fighting_weight: Mapped[Optional[float]] = Column(Float, nullable=True)
+
+    # Psychology (hidden from player, expressed through narrative)
+    confidence: Mapped[float] = Column(Float, default=70.0)
+
     # Relationships
     contracts: Mapped[List["Contract"]] = relationship(
         "Contract", back_populates="fighter", cascade="all, delete-orphan"

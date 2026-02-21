@@ -1077,6 +1077,58 @@ tbody td { padding: 9px 10px; }
   border-radius: 10px;
 }
 
+/* Weight cut severity badges */
+.cut-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.cut-moderate { background: #b8860b; color: #fff; }
+.cut-severe { background: #d35400; color: #fff; }
+.cut-extreme { background: #c0392b; color: #fff; }
+
+/* Scorecard table for decisions */
+.scorecard-table {
+  margin-top: 8px;
+  animation: fadeIn 0.5s ease;
+}
+.scorecard-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.scorecard-table th {
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.scorecard-table td {
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.scorecard-table .sc-winner {
+  color: #2ecc71;
+  font-weight: 700;
+}
+
+/* Missed weight warning */
+.missed-weight-warning {
+  background: rgba(231, 76, 60, 0.2);
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  border-radius: 4px;
+}
+
 .pool-fighter-meta {
   display: flex;
   gap: 8px;

@@ -50,6 +50,23 @@ _NATIONALITIES = [
 
 _USED_NAMES: set[str] = set()
 
+# Weight class upper limits (lbs) and natural weight ranges for seeding
+WEIGHT_CLASS_LIMITS: dict[str, int] = {
+    "Flyweight": 125,
+    "Lightweight": 155,
+    "Welterweight": 170,
+    "Middleweight": 185,
+    "Heavyweight": 265,
+}
+
+NATURAL_WEIGHT_RANGES: dict[str, tuple[int, int]] = {
+    "Flyweight": (130, 150),
+    "Lightweight": (160, 180),
+    "Welterweight": (178, 198),
+    "Middleweight": (195, 215),
+    "Heavyweight": (225, 265),
+}
+
 
 def _random_name(rng: random.Random) -> str:
     for _ in range(200):
@@ -329,11 +346,17 @@ def seed_fighters(
         prime_end = prime_start + rng.randint(4, 8)
 
         record = _gen_record(age, rng)
+        wc = rng.choice(weight_classes)
+        wc_val = wc.value if hasattr(wc, "value") else wc
+        limit = WEIGHT_CLASS_LIMITS.get(wc_val, 185)
+        nat_lo, nat_hi = NATURAL_WEIGHT_RANGES.get(wc_val, (limit, limit + 20))
+        natural_wt = round(rng.uniform(nat_lo, nat_hi), 1)
+
         f = Fighter(
             name=_random_name(rng),
             age=age,
             nationality=rng.choice(_NATIONALITIES),
-            weight_class=rng.choice(weight_classes),
+            weight_class=wc,
             style=rng.choice(styles),
             striking=rng.randint(40, 92),
             grappling=rng.randint(40, 92),
@@ -348,6 +371,9 @@ def seed_fighters(
             draws=record["draws"],
             ko_wins=record["ko_wins"],
             sub_wins=record["sub_wins"],
+            natural_weight=natural_wt,
+            fighting_weight=float(limit),
+            confidence=70.0,
         )
         session.add(f)
         session.flush()
