@@ -1,71 +1,70 @@
-# MMA Management Simulator
+# FighterSim
 
-A desktop MMA promotion management game built with Python, SQLite, Flask, and vanilla JS.
+A Python-based MMA promotion management simulator. Models fighters, organizations, contracts, events, and fight cards with a tick-based fight engine and monthly simulation cycle.
 
 ## Setup
 
 ```bash
 pip install -r requirements.txt
 
-# Run the CLI test (validates everything works before touching the UI)
-PYTHONPATH=. python tests/test_cli.py
-
-# Start the web interface
-PYTHONPATH=. python main.py
-# → http://127.0.0.1:5000
+# Validate everything works
+python -X utf8 test_cli.py
 ```
 
 ## Project Structure
 
 ```
-mma_sim/
+FighterSim/
 ├── models/
-│   ├── database.py       # Engine, session factory
+│   ├── database.py       # Engine, session factory, declarative Base
 │   └── models.py         # SQLAlchemy ORM models
 ├── simulation/
-│   ├── fight_engine.py   # Core fight simulation (Flask-free)
-│   ├── monthly_sim.py    # sim_month() — aging, contracts, AI events
-│   ├── rankings.py       # Cached rankings system
-│   └── seed.py           # 100-fighter seed data
-├── api/
-│   ├── app.py            # Flask routes (no business logic)
-│   └── services.py       # All business logic
-├── frontend/
-│   ├── templates/index.html
-│   └── static/{css,js}
-├── tests/
-│   └── test_cli.py       # Full validation script
-├── main.py               # Entry point
+│   ├── fight_engine.py   # Core fight simulation (no framework dependencies)
+│   ├── monthly_sim.py    # sim_month() — aging, contracts, AI org events
+│   ├── rankings.py       # Cached rankings with dirty-flag invalidation
+│   └── seed.py           # 100-fighter + 4-org seed data
+├── test_cli.py           # Full validation script (4 steps)
 └── requirements.txt
 ```
 
-## Key Design Decisions
+## How It Works
 
-- **Fight engine** is 100% decoupled from Flask — pure Python, testable standalone
-- **Rankings** are cached in a `rankings` table with a `dirty` flag; never recomputed on page load
-- **All simulation runs async** via background threads; Flask returns a `task_id` immediately, frontend polls `/api/tasks/<id>`
-- **All DB queries use indexed lookups** — indexes on weight_class, age, contract expiry, fight date, fighter IDs
-- **sim_month()** completes in ~120ms average for 100 fighters
+### Fight Engine
 
-## API Reference
+Simulates fights round-by-round in 30-second ticks. Each tick:
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/fighters` | GET | List fighters (`?weight_class=`, `?limit=`, `?offset=`) |
-| `/api/fighters/<id>` | GET | Single fighter |
-| `/api/organization` | GET | Player org info |
-| `/api/events/<id>` | GET | Event results |
-| `/api/events/simulate` | POST | Simulate event card (async) |
-| `/api/rankings/<wc>` | GET | Weight class rankings |
-| `/api/sim/month` | POST | Advance one month (async) |
-| `/api/tasks/<id>` | GET | Poll async task result |
-
-## Fight Engine
-
-The engine simulates round-by-round in 30-second ticks. Each tick:
 1. Determines fight zone (striking / clinch / ground) based on wrestling stats
 2. Applies damage with stamina-adjusted attributes
-3. Checks for finish (KO threshold based on chin; sub threshold based on grappling)
-4. Drains stamina (cardio governs drain rate)
+3. Checks for finish — KO threshold scales with chin; submission threshold scales with grappling
+4. Drains stamina at a rate governed by cardio
 
-Between rounds, partial stamina recovery occurs — but the ceiling drops each round for low-cardio fighters, causing meaningful late-round fatigue.
+Between rounds, fighters partially recover stamina — but the ceiling drops each round for low-cardio fighters, causing meaningful late-round fatigue.
+
+### Monthly Simulation (`sim_month`)
+
+Each call advances the world one month:
+- Ages all fighters and applies attribute drift (pre-prime growth, peak stability, post-prime decline)
+- Recovers injured fighters
+- Expires and auto-renews AI org contracts
+- Randomly generates and simulates AI org events (~40% chance per org)
+
+Runs in ~25ms average for a 100-fighter roster.
+
+### Rankings
+
+Rankings are cached in a `rankings` table with a `dirty` flag. They are only recomputed when `rebuild_rankings()` is called explicitly — never on reads. Scores weight win rate, finish rate, and overall fighter rating.
+
+## Models
+
+| Model | Description |
+|---|---|
+| `Fighter` | Core athlete — attributes (1–100), record, age, prime range, condition |
+| `Organization` | MMA promotion — prestige, bank balance, player flag |
+| `Contract` | Fighter ↔ org relationship — salary, fights remaining, expiry |
+| `Event` | Fight card — venue, date, gate revenue, PPV buys |
+| `Fight` | Single bout result — method, round, time, narrative |
+| `Ranking` | Cached rank entry per weight class |
+
+## Weight Classes
+
+Flyweight · Lightweight · Welterweight · Middleweight · Heavyweight
