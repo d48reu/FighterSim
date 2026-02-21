@@ -195,6 +195,148 @@ for entry in rankings:
         f"{entry['overall']:<8} {entry['score']}"
     )
 
+# ──────────────────────────────────────────────
+# 5. Test new features: nationality, nicknames, press conference, cornerstones
+# ──────────────────────────────────────────────
+
+print()
+print("=" * 60)
+print("STEP 5: Feature tests (nationality, nicknames, press conf, cornerstones)")
+print("=" * 60)
+
+from simulation.narrative import (
+    _nationality_flavor, suggest_nicknames, generate_press_conference,
+)
+from models.models import Contract, ContractStatus, Organization
+
+with SessionFactory() as session:
+    errors = []
+
+    # 5a: Nationality flavor
+    print("\n  5a. Nationality flavor...")
+    brazilian_grappler = None
+    american_fighter = None
+    for f in session.execute(select(Fighter)).scalars().all():
+        if f.nationality == "Brazilian" and f.style.value == "Grappler" and not brazilian_grappler:
+            brazilian_grappler = f
+        if f.nationality == "American" and not american_fighter:
+            american_fighter = f
+    if brazilian_grappler:
+        flavor = _nationality_flavor(brazilian_grappler)
+        if flavor:
+            print(f"    ✓ Brazilian Grappler gets flavor: '{flavor[:60]}...'")
+        else:
+            errors.append("Brazilian Grappler should get nationality flavor text")
+            print("    ✗ Brazilian Grappler got no flavor text")
+    else:
+        print("    - No Brazilian Grappler found in seed (skipped)")
+    if american_fighter:
+        flavor = _nationality_flavor(american_fighter)
+        if not flavor:
+            print("    ✓ American fighter gets no flavor (correct)")
+        else:
+            errors.append("American fighter should NOT get nationality flavor text")
+            print(f"    ✗ American fighter got flavor: '{flavor}'")
+
+    # 5b: Nickname suggestions
+    print("\n  5b. Nickname suggestions...")
+    test_fighter = session.execute(select(Fighter)).scalars().first()
+    suggestions = suggest_nicknames(test_fighter, session=session)
+    if len(suggestions) == 3 and len(set(suggestions)) == 3:
+        print(f"    ✓ Got 3 distinct nicknames: {suggestions}")
+    else:
+        errors.append(f"Expected 3 distinct nicknames, got {suggestions}")
+        print(f"    ✗ Bad suggestions: {suggestions}")
+
+    # 5c: Press conference
+    print("\n  5c. Press conference...")
+    all_f = session.execute(select(Fighter)).scalars().all()
+    fa, fb = all_f[0], all_f[1]
+    pc = generate_press_conference(fa, fb)
+    if len(pc["exchanges"]) == 5:
+        print(f"    ✓ Generated 5 exchanges (non-cornerstone)")
+    else:
+        errors.append(f"Expected 5 exchanges, got {len(pc['exchanges'])}")
+        print(f"    ✗ Got {len(pc['exchanges'])} exchanges")
+    if pc["hype_generated"] > 0:
+        print(f"    ✓ Hype generated: {pc['hype_generated']:.1f}")
+    else:
+        errors.append("Expected hype_generated > 0")
+        print("    ✗ No hype generated")
+    if pc["ppv_boost"] > 0:
+        print(f"    ✓ PPV boost: {pc['ppv_boost']}")
+    else:
+        errors.append("Expected ppv_boost > 0")
+        print("    ✗ No PPV boost")
+
+    # Test cornerstone press conference (7 exchanges)
+    pc_cs = generate_press_conference(fa, fb, is_cornerstone_a=True)
+    if len(pc_cs["exchanges"]) == 7:
+        print(f"    ✓ Cornerstone press conference: 7 exchanges")
+    else:
+        errors.append(f"Expected 7 cornerstone exchanges, got {len(pc_cs['exchanges'])}")
+        print(f"    ✗ Got {len(pc_cs['exchanges'])} cornerstone exchanges")
+
+    # 5d: Cornerstone designation
+    print("\n  5d. Cornerstone designation...")
+    player_org = session.execute(
+        select(Organization).where(Organization.is_player == True)
+    ).scalar_one_or_none()
+
+    # Find fighters with active contracts on player org
+    roster_contracts = session.execute(
+        select(Contract).where(
+            Contract.organization_id == player_org.id,
+            Contract.status == ContractStatus.ACTIVE,
+        )
+    ).scalars().all()
+
+    if len(roster_contracts) >= 4:
+        # Designate 3
+        for i, c in enumerate(roster_contracts[:3]):
+            f = session.get(Fighter, c.fighter_id)
+            f.is_cornerstone = True
+        session.flush()
+
+        cs_list = [session.get(Fighter, c.fighter_id) for c in roster_contracts[:3] if session.get(Fighter, c.fighter_id).is_cornerstone]
+        if len(cs_list) == 3:
+            print(f"    ✓ Designated 3 cornerstones: {[f.name for f in cs_list]}")
+        else:
+            errors.append(f"Expected 3 cornerstones, got {len(cs_list)}")
+            print(f"    ✗ Cornerstone count: {len(cs_list)}")
+
+        # Verify max-3 enforcement would apply (4th fighter not cornerstone)
+        fourth = session.get(Fighter, roster_contracts[3].fighter_id)
+        if not fourth.is_cornerstone:
+            print("    ✓ 4th fighter is not a cornerstone (max-3 verified)")
+        else:
+            errors.append("4th fighter should not be a cornerstone")
+
+        # Remove one
+        cs_list[0].is_cornerstone = False
+        session.flush()
+        remaining = sum(1 for c in roster_contracts[:3] if session.get(Fighter, c.fighter_id).is_cornerstone)
+        if remaining == 2:
+            print(f"    ✓ Removed one cornerstone, {remaining} remain")
+        else:
+            errors.append(f"Expected 2 remaining after removal, got {remaining}")
+
+        # Clean up
+        for c in roster_contracts[:3]:
+            session.get(Fighter, c.fighter_id).is_cornerstone = False
+        session.flush()
+    else:
+        print("    - Not enough roster fighters to test cornerstones (skipped)")
+
+    # Summary
+    print()
+    if errors:
+        print(f"  ✗ {len(errors)} error(s):")
+        for e in errors:
+            print(f"    - {e}")
+    else:
+        print("  ✓ All Step 5 tests passed!")
+
 print()
 print("=" * 60)
 print("ALL TESTS COMPLETE")
