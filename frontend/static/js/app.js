@@ -202,7 +202,7 @@ async function loadFighters(weightClass = null) {
       <tr data-fighter-id="${f.id}">
         <td>${esc(f.name)}</td>
         <td>${f.age}</td>
-        <td><span class="badge">${esc(f.weight_class)}</span></td>
+        <td><span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}">${esc(f.weight_class)}</span></td>
         <td>${(f.traits || []).map(t => {
           const label = t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
           return `<span class="trait-badge" style="font-size:10px;padding:2px 6px">${esc(label)}</span>`;
@@ -237,6 +237,7 @@ async function loadFighters(weightClass = null) {
 async function showFighterPanel(fighterId, extraData) {
   const panel = document.getElementById('fighter-panel');
   panel.classList.remove('hidden');
+  panel.setAttribute('data-wc', '');
   state.panelExtraData = extraData;
 
   // Reset content
@@ -285,6 +286,7 @@ async function showFighterPanel(fighterId, extraData) {
     }
     nickEl.querySelector('.nick-edit').addEventListener('click', () => openNicknameEditor(fighterId));
     document.getElementById('panel-subtitle').textContent = `${fighter.weight_class} \xB7 ${fighter.style} \xB7 Age ${fighter.age}`;
+    panel.setAttribute('data-wc', fighter.weight_class);
     document.getElementById('panel-archetype').textContent = fighter.archetype || '';
     document.getElementById('panel-record').textContent   = fighter.record;
     document.getElementById('panel-overall').textContent  = fighter.overall;
@@ -552,7 +554,7 @@ async function loadFreeAgents() {
           data-asking-length="${f.asking_length_months}">
         <td>${esc(f.name)}</td>
         <td>${f.age}</td>
-        <td><span class="badge">${esc(f.weight_class)}</span></td>
+        <td><span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}">${esc(f.weight_class)}</span></td>
         <td>${esc(f.style)}</td>
         <td><strong>${f.overall}</strong></td>
         <td>${esc(f.record)}</td>
@@ -641,7 +643,7 @@ async function loadRoster() {
           data-expiry-date="${f.expiry_date || ''}">
         <td>${esc(f.name)}</td>
         <td>${f.age}</td>
-        <td><span class="badge">${esc(f.weight_class)}</span></td>
+        <td><span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}">${esc(f.weight_class)}</span></td>
         <td>${esc(f.style)}</td>
         <td><strong>${f.overall}</strong></td>
         <td>${esc(f.record)}</td>
@@ -900,7 +902,7 @@ async function loadGoat() {
       <tr>
         <td><strong>#${g.rank}</strong></td>
         <td>${esc(g.name)}</td>
-        <td><span class="badge">${esc(g.weight_class)}</span></td>
+        <td><span class="badge wc-badge-color" data-wc="${esc(g.weight_class)}">${esc(g.weight_class)}</span></td>
         <td><span class="badge">${esc(g.archetype || '\u2014')}</span></td>
         <td>${esc(g.record)}</td>
         <td>${g.overall}</td>
@@ -948,7 +950,7 @@ async function loadRetiredLegends() {
       <tr style="cursor:pointer" onclick="showFighterPanel(${l.id})">
         <td>${i + 1}</td>
         <td><strong>${esc(l.name)}</strong>${l.nickname ? ' <span class="muted">"' + esc(l.nickname) + '"</span>' : ''}</td>
-        <td><span class="badge">${esc(l.weight_class)}</span></td>
+        <td><span class="badge wc-badge-color" data-wc="${esc(l.weight_class)}">${esc(l.weight_class)}</span></td>
         <td>${esc(l.record)}</td>
         <td>${l.peak_overall}</td>
         <td><strong>${l.legacy_score}</strong></td>
@@ -1218,7 +1220,7 @@ function renderScheduledFights(event) {
         <span class="event-fighter-name">${esc(f.fighter_b.name)}${f.fighter_b.nickname ? ' <span class="nick-inline">"' + esc(f.fighter_b.nickname) + '"</span>' : ''}</span>
       </div>
       <div class="event-fight-meta">
-        <span class="badge">${esc(f.weight_class)}</span>
+        <span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}">${esc(f.weight_class)}</span>
         <span class="muted">${esc(f.fighter_a.record)} vs ${esc(f.fighter_b.record)}</span>
       </div>
       <button class="event-fight-remove" data-fight-id="${f.id}" title="Remove fight">&times;</button>
@@ -1356,7 +1358,7 @@ function renderFighterPool() {
         </div>
         <div class="pool-fighter-meta">
           <span>${esc(f.record)}</span>
-          <span class="badge" style="font-size:10px">${esc(f.weight_class)}</span>
+          <span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}" style="font-size:10px">${esc(f.weight_class)}</span>
           ${f.days_since_last_fight < 999 ? `<span class="muted">${f.days_since_last_fight}d ago</span>` : ''}
         </div>
       </div>
@@ -2050,7 +2052,7 @@ function renderDevFighterList() {
         </div>
         <div class="dev-card-mid">
           <span>${f.age}y</span>
-          <span class="badge" style="font-size:10px">${esc(f.weight_class)}</span>
+          <span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}" style="font-size:10px">${esc(f.weight_class)}</span>
           <span class="dev-status ${statusClass}">${statusIcon}</span>
         </div>
         <div class="dev-card-bottom">
