@@ -21,10 +21,14 @@ from models.models import (
     BroadcastDeal, BroadcastDealStatus,
     Sponsorship, SponsorshipStatus,
     RealityShow, ShowContestant, ShowEpisode, ShowStatus,
+    NewsHeadline,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
-from simulation.narrative import apply_fight_tags, decay_hype, update_goat_scores, update_rivalries
+from simulation.narrative import (
+    apply_fight_tags, decay_hype, update_goat_scores, update_rivalries,
+    generate_fight_headline, generate_signing_headline,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -263,6 +267,15 @@ def _generate_ai_event(
 
             # Narrative tags and hype
             apply_fight_tags(winner, loser, fight, session)
+
+            # Generate headline
+            headline_text = generate_fight_headline(winner, loser, fight, session)
+            if headline_text:
+                cat = "title" if fight.is_title_fight else ("upset" if loser.overall - winner.overall >= 10 else "fight_result")
+                session.add(NewsHeadline(
+                    headline=headline_text, category=cat,
+                    game_date=sim_date, fighter_id=winner.id, event_id=event.id,
+                ))
 
             paired.add(fa.id)
             paired.add(fb.id)
@@ -1102,6 +1115,14 @@ def _ai_sign_free_agents(
                         created_date=sim_date,
                     ))
 
+                # Generate signing headline for notable signings
+                signing_hl = generate_signing_headline(fighter, org)
+                if signing_hl:
+                    session.add(NewsHeadline(
+                        headline=signing_hl, category="signing",
+                        game_date=sim_date, fighter_id=fighter.id,
+                    ))
+
         # Remove signed fighters from free_agents list for next org
         free_agents = [f for f in free_agents if f.id not in active_ids]
 
@@ -1237,6 +1258,14 @@ def _ai_claim_expired_fighters(
                         type="rival_signed",
                         created_date=sim_date,
                     ))
+
+            # Generate signing headline for notable signings
+            signing_hl = generate_signing_headline(fighter, ai_org)
+            if signing_hl:
+                session.add(NewsHeadline(
+                    headline=signing_hl, category="signing",
+                    game_date=sim_date, fighter_id=fighter.id,
+                ))
 
 
 def _fluctuate_ai_prestige(

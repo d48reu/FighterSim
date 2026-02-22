@@ -109,6 +109,7 @@ async function loadDashboard() {
   loadRivalWidget();
   loadSponsorshipWidget();
   loadShowWidget();
+  loadNewsWidget();
 }
 
 async function loadDashUpcoming() {
@@ -255,6 +256,8 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('panel-offer-result').innerHTML = '';
   document.getElementById('panel-sponsorships').innerHTML = '';
   document.getElementById('panel-sponsorships').classList.add('hidden');
+  document.getElementById('panel-timeline').classList.add('hidden');
+  document.getElementById('timeline-list').innerHTML = '';
   document.getElementById('bar-popularity').style.width = '0%';
   document.getElementById('bar-hype').style.width       = '0%';
   document.getElementById('val-popularity').textContent = '';
@@ -414,6 +417,9 @@ async function showFighterPanel(fighterId, extraData) {
       loadPanelSponsorships(fighterId);
     }
 
+    // Load career timeline
+    loadFighterTimeline(fighterId);
+
   } catch (err) {
     document.getElementById('panel-name').textContent = 'Error';
     document.getElementById('panel-bio').textContent  = err.message;
@@ -460,6 +466,40 @@ async function openNicknameEditor(fighterId) {
   } catch (err) {
     nickEl.innerHTML = `<span class="muted" style="font-size:12px">Error loading suggestions</span>`;
   }
+}
+
+async function loadFighterTimeline(fighterId) {
+  try {
+    const data = await api(`/api/fighters/${fighterId}/timeline`);
+    const container = document.getElementById('panel-timeline');
+    const list = document.getElementById('timeline-list');
+    const toggle = document.getElementById('timeline-toggle');
+
+    if (!data.timeline || data.timeline.length === 0) {
+      container.classList.add('hidden');
+      return;
+    }
+
+    container.classList.remove('hidden');
+    toggle.textContent = `Career Timeline (${data.timeline.length} fights)`;
+    list.classList.add('hidden');
+
+    toggle.onclick = () => list.classList.toggle('hidden');
+
+    list.innerHTML = data.timeline.map(t => `
+      <div class="timeline-entry ${t.result === 'W' ? 'timeline-win' : 'timeline-loss'}">
+        <div class="timeline-date">${t.event_date}</div>
+        <div class="timeline-main">
+          <span class="timeline-result-badge ${t.result === 'W' ? 'badge-win' : 'badge-loss'}">${t.result}</span>
+          <span class="timeline-opponent">${esc(t.opponent_name)}</span>
+          ${t.is_title_fight ? '<span class="timeline-title-badge">TITLE</span>' : ''}
+        </div>
+        <div class="timeline-detail">
+          ${esc(t.method)}${t.round ? ' R' + t.round : ''}${t.time ? ' ' + t.time : ''} &middot; ${t.running_record}
+        </div>
+      </div>
+    `).join('');
+  } catch (err) { /* silent */ }
 }
 
 function closeFighterPanel() {
@@ -2715,6 +2755,39 @@ async function loadShowWidget() {
     `;
   } catch (err) {
     document.getElementById('show-widget').classList.add('hidden');
+  }
+}
+
+
+const NEWS_ICONS = {
+  fight_result: '\u{1F94A}',
+  signing: '\u{1F4DD}',
+  upset: '\u26A1',
+  title: '\u{1F3C6}',
+  streak: '\u{1F525}',
+  retirement_concern: '\u23F0',
+  show: '\u{1F3AC}',
+};
+
+async function loadNewsWidget() {
+  try {
+    const headlines = await api('/api/news?limit=10');
+    const widget = document.getElementById('news-widget');
+    const content = document.getElementById('news-widget-content');
+    if (!headlines || headlines.length === 0) {
+      widget.classList.add('hidden');
+      return;
+    }
+    widget.classList.remove('hidden');
+    content.innerHTML = headlines.map(h => `
+      <div class="news-item" ${h.fighter_id ? `onclick="showFighterPanel(${h.fighter_id})"` : ''}>
+        <span class="news-icon">${NEWS_ICONS[h.category] || '\u{1F4F0}'}</span>
+        <span class="news-text">${esc(h.headline)}</span>
+        <span class="news-date">${h.game_date}</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    document.getElementById('news-widget').classList.add('hidden');
   }
 }
 

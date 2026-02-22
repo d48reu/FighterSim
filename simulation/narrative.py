@@ -9,7 +9,7 @@ from typing import Optional
 from sqlalchemy import select, or_, and_, func
 from sqlalchemy.orm import Session
 
-from models.models import Fighter, Fight, Ranking, WeightClass, Archetype
+from models.models import Fighter, Fight, Ranking, WeightClass, Archetype, FighterDevelopment, Organization
 
 
 # ---------------------------------------------------------------------------
@@ -409,6 +409,54 @@ def _is_ranked_number_one(fighter_id: int, weight_class, session: Session) -> bo
     return r is not None
 
 
+def _first_round_finish_count(fighter_id: int, session: Session) -> int:
+    """Count wins where round_ended == 1 and method is KO/TKO or Submission."""
+    return session.execute(
+        select(func.count()).select_from(Fight).where(
+            Fight.winner_id == fighter_id,
+            Fight.round_ended == 1,
+            or_(Fight.method == "KO/TKO", Fight.method == "Submission"),
+        )
+    ).scalar() or 0
+
+
+def _decision_win_count(fighter_id: int, session: Session) -> int:
+    """Count wins by any Decision method."""
+    return session.execute(
+        select(func.count()).select_from(Fight).where(
+            Fight.winner_id == fighter_id,
+            or_(
+                Fight.method == "Unanimous Decision",
+                Fight.method == "Split Decision",
+                Fight.method == "Majority Decision",
+            ),
+        )
+    ).scalar() or 0
+
+
+def _has_been_kod(fighter_id: int, session: Session) -> bool:
+    """True if fighter has ever lost by KO/TKO."""
+    r = session.execute(
+        select(Fight).where(
+            or_(Fight.fighter_a_id == fighter_id, Fight.fighter_b_id == fighter_id),
+            Fight.winner_id != fighter_id,
+            Fight.winner_id.isnot(None),
+            Fight.method == "KO/TKO",
+        )
+    ).scalars().first()
+    return r is not None
+
+
+def _total_completed_fights(fighter_id: int, session: Session) -> int:
+    """Total fights where winner_id is not None."""
+    return session.execute(
+        select(func.count()).select_from(Fight).where(
+            or_(Fight.fighter_a_id == fighter_id, Fight.fighter_b_id == fighter_id),
+            Fight.winner_id.isnot(None),
+        )
+    ).scalar() or 0
+
+
 # ---------------------------------------------------------------------------
 # apply_fight_tags
 # ---------------------------------------------------------------------------
@@ -420,6 +468,16 @@ def apply_fight_tags(winner: Fighter, loser: Fighter, fight: Fight, session: Ses
     is_upset = is_finish and loser.overall > winner.overall
     winner_traits = get_traits(winner)
     loser_traits  = get_traits(loser)
+
+    # ── Tag removal logic ────────────────────────────────────────────────────
+    # Winner: answered doubters — remove retirement_watch
+    remove_tag(winner, "retirement_watch")
+    # Loser: no longer undefeated
+    remove_tag(loser, "undefeated")
+    # Loser: remove rising_prospect if loss_streak >= 2
+    ls_loser = _loss_streak(loser.id, session)
+    if ls_loser >= 2:
+        remove_tag(loser, "rising_prospect")
 
     # ── Winner tags ──────────────────────────────────────────────────────────
 
@@ -477,6 +535,93 @@ def apply_fight_tags(winner: Fighter, loser: Fighter, fight: Fight, session: Ses
     if getattr(loser, "is_cornerstone", False) and ls >= 3:
         loser.is_cornerstone = False
         add_tag(loser, "fall_from_grace")
+
+    # ── NEW: Method-specific winner tags ─────────────────────────────────────
+
+    if winner.ko_wins >= 5:
+        add_tag(winner, "ko_specialist")
+
+    if winner.sub_wins >= 5:
+        add_tag(winner, "submission_ace")
+
+    if fight.round_ended == 1 and is_finish and _first_round_finish_count(winner.id, session) >= 3:
+        add_tag(winner, "first_round_finisher")
+
+    method_str_raw = fight.method.value if hasattr(fight.method, "value") else str(fight.method)
+    is_decision = method_str_raw in ("Unanimous Decision", "Split Decision", "Majority Decision")
+    if is_decision and _decision_win_count(winner.id, session) >= 5:
+        add_tag(winner, "decision_machine")
+
+    if method_str_raw == "KO/TKO" and fight.round_ended == 1:
+        # time_ended format is "M:SS" — check if under 2:00
+        try:
+            parts = fight.time_ended.split(":")
+            mins = int(parts[0])
+            if mins < 2:
+                add_tag(winner, "highlight_reel")
+        except (AttributeError, ValueError, IndexError):
+            pass
+
+    if is_finish and fight.round_ended and fight.round_ended >= 3:
+        add_tag(winner, "comeback_victory")
+
+    # ── NEW: Career pattern winner tags ──────────────────────────────────────
+
+    total_fights = _total_completed_fights(winner.id, session)
+    if total_fights >= 10 and not _has_been_kod(winner.id, session):
+        add_tag(winner, "iron_chin_proven")
+
+    winner_archetype = winner.archetype.value if hasattr(winner.archetype, "value") else (winner.archetype or "")
+    if winner_archetype == "Gatekeeper" and _is_ranked(loser.id, session):
+        add_tag(winner, "gatekeeper_confirmed")
+
+    if winner.age > winner.prime_end + 2:
+        add_tag(winner, "veteran_presence")
+
+    if fight.is_title_fight:
+        add_tag(winner, "clutch_performer")
+
+    if winner.age < 24 and winner.wins >= 5 and ws >= 3:
+        add_tag(winner, "rising_prospect")
+
+    if winner.losses == 0 and winner.wins >= 5:
+        add_tag(winner, "undefeated")
+
+    if total_fights >= 15:
+        add_tag(winner, "road_warrior")
+
+    if _is_ranked_top_5(winner.id, session) and ws >= 3:
+        add_tag(winner, "title_contender")
+
+    if not _is_ranked(winner.id, session) and _is_ranked(loser.id, session):
+        add_tag(winner, "dark_horse")
+
+    # ── NEW: Loser career pattern tags ───────────────────────────────────────
+
+    if loser.age > loser.prime_end + 3 and ls >= 2 and loser.overall < 65:
+        add_tag(loser, "retirement_watch")
+
+    loser_tags = get_tags(loser)
+    if "chin_concerns" in loser_tags and "ko_specialist" in loser_tags:
+        add_tag(loser, "glass_cannon")
+
+    if ls >= 3:
+        has_dev = session.execute(
+            select(FighterDevelopment).where(
+                FighterDevelopment.fighter_id == loser.id,
+                FighterDevelopment.camp_id.isnot(None),
+            )
+        ).scalar_one_or_none()
+        if not has_dev:
+            add_tag(loser, "needs_new_camp")
+
+    # ── NEW: Fight quality tags (winner only) ────────────────────────────────
+
+    if is_decision and winner.hype > 40 and loser.hype > 40:
+        add_tag(winner, "fight_of_the_night")
+
+    if is_decision and fight.round_ended and fight.round_ended >= 3 and winner.hype >= 30:
+        add_tag(winner, "war_survivor")
 
     # ── Confidence shifts ────────────────────────────────────────────────────
 
@@ -1293,3 +1438,99 @@ def generate_fighter_bio(fighter: Fighter) -> str:
         bio = bio + f" As a cornerstone of the organization, {fighter.name} carries the weight of the franchise on their shoulders and headlines the biggest events."
 
     return bio
+
+
+# ---------------------------------------------------------------------------
+# News Headline System
+# ---------------------------------------------------------------------------
+
+HEADLINE_TEMPLATES: dict[str, list[str]] = {
+    "ko_finish": [
+        "{winner} DESTROYS {loser} in R{round} — another devastating knockout",
+        "LIGHTS OUT! {winner} flattens {loser} with a vicious R{round} stoppage",
+        "{winner} adds another highlight to the reel with R{round} KO of {loser}",
+    ],
+    "sub_finish": [
+        "{winner} taps out {loser} in R{round} — submission artistry on display",
+        "SUBMITTED! {loser} had no answer for {winner}'s ground game in R{round}",
+    ],
+    "upset": [
+        "UPSET! {winner} stuns {loser} in a shocking finish nobody saw coming",
+        "The betting lines were wrong — {winner} pulls off a massive upset over {loser}",
+    ],
+    "decision": [
+        "{winner} edges out {loser} in a competitive decision",
+        "Close fight goes to {winner} over {loser} on the scorecards",
+    ],
+    "title_fight": [
+        "CHAMPION: {winner} claims {division} gold with a dominant performance over {loser}",
+        "Title fight delivers — {winner} defeats {loser} for the {division} championship",
+    ],
+    "streak": [
+        "{name} extends win streak to {streak} — who can stop this run?",
+        "UNSTOPPABLE: {name} makes it {streak} in a row and the division is on notice",
+    ],
+    "signing": [
+        "BREAKING: {org} signs {name} — a major addition to the roster",
+        "Free agent {name} finds a new home with {org}",
+    ],
+    "retirement_concern": [
+        "Is it over? {name} drops {streak}th straight loss as decline continues",
+        "Father Time catches up — {name} suffers another defeat, retirement talk grows louder",
+    ],
+}
+
+
+def generate_fight_headline(
+    winner: Fighter, loser: Fighter, fight: Fight, session: Session
+) -> Optional[str]:
+    """Generate a news headline for a completed fight. Returns None for mundane fights."""
+    method = fight.method.value if hasattr(fight.method, "value") else str(fight.method) if fight.method else ""
+    division = winner.weight_class.value if hasattr(winner.weight_class, "value") else str(winner.weight_class)
+
+    # 1. Title fight — always generate
+    if fight.is_title_fight:
+        template = random.choice(HEADLINE_TEMPLATES["title_fight"])
+        return template.format(winner=winner.name, loser=loser.name, division=division)
+
+    # 2. KO/Sub in R1-2
+    if method == "KO/TKO" and fight.round_ended and fight.round_ended <= 2:
+        template = random.choice(HEADLINE_TEMPLATES["ko_finish"])
+        return template.format(winner=winner.name, loser=loser.name, round=fight.round_ended)
+
+    if method == "Submission" and fight.round_ended and fight.round_ended <= 2:
+        template = random.choice(HEADLINE_TEMPLATES["sub_finish"])
+        return template.format(winner=winner.name, loser=loser.name, round=fight.round_ended)
+
+    # 3. Upset — lower OVR beats higher by 10+
+    if loser.overall - winner.overall >= 10:
+        template = random.choice(HEADLINE_TEMPLATES["upset"])
+        return template.format(winner=winner.name, loser=loser.name)
+
+    # 4. Win streak >= 5
+    ws = _win_streak(winner.id, session)
+    if ws >= 5:
+        template = random.choice(HEADLINE_TEMPLATES["streak"])
+        return template.format(name=winner.name, streak=ws)
+
+    # 5. Loss streak >= 3, age > prime_end
+    ls = _loss_streak(loser.id, session)
+    if ls >= 3 and loser.age > loser.prime_end:
+        template = random.choice(HEADLINE_TEMPLATES["retirement_concern"])
+        return template.format(name=loser.name, streak=ls)
+
+    # 6. Decision — 50% chance
+    if method in ("Unanimous Decision", "Split Decision", "Majority Decision"):
+        if random.random() < 0.50:
+            template = random.choice(HEADLINE_TEMPLATES["decision"])
+            return template.format(winner=winner.name, loser=loser.name)
+
+    return None
+
+
+def generate_signing_headline(fighter: Fighter, org: Organization) -> Optional[str]:
+    """Generate headline for significant AI signings (OVR >= 70)."""
+    if fighter.overall < 70:
+        return None
+    template = random.choice(HEADLINE_TEMPLATES["signing"])
+    return template.format(name=fighter.name, org=org.name)

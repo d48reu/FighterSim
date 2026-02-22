@@ -20,6 +20,7 @@ from models.models import (
     BroadcastDeal, BroadcastDealStatus,
     Sponsorship, SponsorshipStatus,
     RealityShow, ShowContestant, ShowEpisode, ShowStatus,
+    NewsHeadline,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -27,7 +28,7 @@ from simulation.rankings import rebuild_rankings, get_rankings as _get_rankings,
 from simulation.narrative import (
     apply_fight_tags, update_goat_scores, update_rivalries,
     generate_fighter_bio, get_tags, display_archetype, suggest_nicknames,
-    generate_press_conference,
+    generate_press_conference, generate_fight_headline,
 )
 
 # ---------------------------------------------------------------------------
@@ -345,6 +346,16 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
                     mark_rankings_dirty(session, WeightClass(fa.weight_class))
                     apply_fight_tags(winner, loser, fight, session)
 
+                    # Generate headline
+                    game_date = _get_game_date(session)
+                    headline_text = generate_fight_headline(winner, loser, fight, session)
+                    if headline_text:
+                        cat = "title" if fight.is_title_fight else ("upset" if loser.overall - winner.overall >= 10 else "fight_result")
+                        session.add(NewsHeadline(
+                            headline=headline_text, category=cat,
+                            game_date=game_date, fighter_id=winner.id, event_id=event.id,
+                        ))
+
                     fight_results.append({
                         "fighter_a": fa.name,
                         "fighter_b": fb.name,
@@ -480,6 +491,82 @@ def get_fighter_tags(fighter_id: int) -> Optional[list[str]]:
         if not f:
             return None
         return get_tags(f)
+
+
+def get_news_feed(limit: int = 15) -> list[dict]:
+    """Return recent news headlines for the dashboard."""
+    from sqlalchemy import select
+    with _SessionFactory() as session:
+        headlines = session.execute(
+            select(NewsHeadline)
+            .order_by(NewsHeadline.game_date.desc(), NewsHeadline.id.desc())
+            .limit(limit)
+        ).scalars().all()
+        return [
+            {
+                "id": h.id,
+                "headline": h.headline,
+                "category": h.category,
+                "game_date": h.game_date.isoformat(),
+                "fighter_id": h.fighter_id,
+                "event_id": h.event_id,
+            }
+            for h in headlines
+        ]
+
+
+def get_fighter_timeline(fighter_id: int) -> Optional[dict]:
+    """Return chronological fight history with running record for a fighter."""
+    from sqlalchemy import or_
+    with _SessionFactory() as session:
+        f = session.get(Fighter, fighter_id)
+        if not f:
+            return None
+
+        fights = session.execute(
+            select(Fight, Event)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                or_(Fight.fighter_a_id == fighter_id, Fight.fighter_b_id == fighter_id),
+                Fight.winner_id.isnot(None),
+            )
+            .order_by(Event.event_date.asc(), Fight.id.asc())
+        ).all()
+
+        timeline = []
+        wins = 0
+        losses = 0
+        for fight, event in fights:
+            is_a = fight.fighter_a_id == fighter_id
+            opponent_id = fight.fighter_b_id if is_a else fight.fighter_a_id
+            opponent = session.get(Fighter, opponent_id)
+            won = fight.winner_id == fighter_id
+            if won:
+                wins += 1
+            else:
+                losses += 1
+            method = fight.method.value if hasattr(fight.method, "value") else str(fight.method) if fight.method else ""
+            timeline.append({
+                "fight_id": fight.id,
+                "event_name": event.name,
+                "event_date": event.event_date.isoformat(),
+                "opponent_name": opponent.name if opponent else "Unknown",
+                "opponent_overall": opponent.overall if opponent else 0,
+                "result": "W" if won else "L",
+                "method": method,
+                "round": fight.round_ended,
+                "time": fight.time_ended,
+                "is_title_fight": fight.is_title_fight,
+                "running_record": f"{wins}-{losses}",
+                "narrative_snippet": (fight.narrative or "")[:120],
+            })
+
+        return {
+            "fighter_id": fighter_id,
+            "fighter_name": f.name,
+            "current_tags": get_tags(f),
+            "timeline": timeline,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -1286,6 +1373,16 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
 
                 mark_rankings_dirty(session, WeightClass(fa.weight_class))
                 apply_fight_tags(winner, loser, fight, session)
+
+                # Generate headline
+                game_date = _get_game_date(session)
+                headline_text = generate_fight_headline(winner, loser, fight, session)
+                if headline_text:
+                    cat = "title" if fight.is_title_fight else ("upset" if loser.overall - winner.overall >= 10 else "fight_result")
+                    session.add(NewsHeadline(
+                        headline=headline_text, category=cat,
+                        game_date=game_date, fighter_id=winner.id, event_id=event.id,
+                    ))
 
                 # Cornerstone win bonuses
                 if winner.is_cornerstone:

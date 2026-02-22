@@ -589,3 +589,24 @@ class ShowEpisode(Base):
     __table_args__ = (
         Index("ix_episode_show", "show_id"),
     )
+
+
+# ---------------------------------------------------------------------------
+# News Headlines
+# ---------------------------------------------------------------------------
+
+class NewsHeadline(Base):
+    """A generated news headline for the dashboard ticker."""
+
+    __tablename__ = "news_headlines"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    headline: Mapped[str] = Column(String(300), nullable=False)
+    category: Mapped[str] = Column(String(50), nullable=False)
+    game_date: Mapped[date] = Column(Date, nullable=False)
+    fighter_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
+    event_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("events.id"), nullable=True)
+
+    __table_args__ = (
+        Index("ix_news_date", "game_date"),
+    )

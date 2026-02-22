@@ -27,7 +27,7 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 
 ### Narrative Engine
 - ✅ 6 fighter archetypes: Phenom, GOAT Candidate, Gatekeeper, Journeyman, Late Bloomer, Shooting Star
-- ✅ Fight result tags: 20+ tags (unstoppable, chin_concerns, giant_killer, redemption, etc.)
+- ✅ Fight result tags: 40+ tags (unstoppable, chin_concerns, giant_killer, ko_specialist, highlight_reel, etc.)
 - ✅ Context-aware bio generation with career stage gating (prospect/developing/established/veteran/elder)
 - ✅ Validation layer catches age-inappropriate language before returning
 - ✅ GOAT score tracker
@@ -46,6 +46,7 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 - ✅ Fighter, Organization, Event, Fight, Contract, Ranking models
 - ✅ Notification model
 - ✅ GameState model (persistent game clock)
+- ✅ NewsHeadline model (headline ticker)
 - ✅ Proper indexes on all frequently queried fields
 - ✅ 100 seeded fighters across 5 weight classes with realistic age-gated records
 
@@ -151,13 +152,13 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 - ✅ **Venue management** — prestige-gated venues, capacity shown in dropdown, Major Arena requires 65 prestige, Stadium requires 80. Sellout bonus and poor turnout prestige hit. (f733e9f)
 - ✅ **Rival promotion AI** — AI orgs compete for free agents, poach your fighters, respond to your prestige growth. Designated rival org tracked on dashboard. (23cc23a)
 - ✅ **Sponsorship system** — per-fighter sponsorships across 4 tiers (Local Brand to Global Sponsor). Hype/popularity gated, cornerstone bonuses, monthly stipend payments, compliance checks. Dashboard widget + roster fighter panel integration. (sponsorship-system)
-- ⏳ **Reality TV show (Ultimate Fighter-style)** — player produces a tournament show with 8 or 16 free agent prospects. Runs over several simulated months with a bracket. Each episode tick: fighters gain small attribute improvements, hype builds for the show and fighters, narrative moments generate. Winner gets automatic contract offer, runners-up available at discount. Show costs money to produce but generates monthly hype and prestige. Satisfies broadcast deal event requirements.
-  - **Shenanigans system** — each episode tick, fighters have a chance to trigger positive or negative random events. Good: steps up on short notice (hype spike, fan favorite tag), goes viral for training clip (popularity bump), calls out tournament favorite (rivalry created). Bad: house fight (suspended one episode), shows up out of shape (stamina penalty), quits the show (eliminated + permanent quitter tag on their career), breaks house rules (fine + hype hit). Events feed into existing narrative and tag system — tags follow fighters into their future careers. Player decisions: sign the talented quitter? Cut the troublemaker who keeps winning?
+- ✅ **Reality TV show (Ultimate Fighter-style)** — RealityShow, ShowContestant, ShowEpisode models. 8-fighter (4 episodes) or 16-fighter (5 episodes) single-elimination bracket. Seeded by overall rating. Episodes process via sim_month: intro (no fights), quarterfinals, semifinals, finale. $75K/episode production cost. Broadcast deal fee_per_event earned per episode. Completion bonus = show_hype * $500. Winner gets 25% salary discount, runner-up 15%, semifinalists 5%. Bracket visualization in frontend with 3 states (setup/active/completed). Dashboard widget. AI signing guard protects contestants during show and completion month.
+  - ✅ **Shenanigans system** — 3-4 slots per episode, 70% trigger each. 5 positive types (viral_training_clip, callout_favorite, mentor_moment, underdog_speech, short_notice_step_up) and 7 negative types (house_fight, out_of_shape, quits_show, breaks_rules, injury_in_training, weight_miss_drama, locker_room_tension). 40/60 positive/negative split. All tags persist on Fighter.narrative_tags. Permanent quitter tag reduces contract acceptance by 15%. Shenanigan cards with animated reveal in episode results.
 
 ### Medium Term — Narrative Expansion
-- ⏳ **More narrative tag variety** — currently ~20 tags, need 40+. Specific finish types (spinning heel kick KO, rear naked choke, etc.), comeback stories, retirement hints.
-- ⏳ **Career timeline view** — fight-by-fight tag history on fighter profile showing narrative arc.
-- ⏳ **News feed / media ticker** — simulated headlines on dashboard based on recent fight results, contract signings, rivalries.
+- ✅ **Expanded narrative tags (40+)** — 20 new tags added: method-specific (ko_specialist, submission_ace, first_round_finisher, decision_machine, highlight_reel, comeback_victory), career patterns (iron_chin_proven, gatekeeper_confirmed, veteran_presence, clutch_performer, rising_prospect, undefeated, road_warrior, title_contender, dark_horse), loser tags (retirement_watch, glass_cannon, needs_new_camp), fight quality (fight_of_the_night, war_survivor). Tag removal logic: winner loses retirement_watch, loser loses undefeated/rising_prospect on streaks.
+- ✅ **Career timeline view** — GET /api/fighters/<id>/timeline returns chronological fight history with running record, opponent info, method, round. Collapsible panel in fighter side panel with green/red W/L borders and gold TITLE badges. Max 300px scroll.
+- ✅ **News feed / media ticker** — NewsHeadline model with 8 headline template categories (ko_finish, sub_finish, upset, decision, title_fight, streak, signing, retirement_concern). generate_fight_headline() with priority logic, generate_signing_headline() for OVR>=70. Hooks in all fight sim paths + AI signings. Dashboard widget with category emoji icons, clickable headlines open fighter panel.
 - ⏳ **Retirement system** — fighters decline past a threshold and retire. Legacy score. Retired legends as coaching staff boosting camp effectiveness.
 
 ### Polish & Visual
@@ -177,8 +178,8 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 ## Feature Priority Order (Current)
 1. ~~Rival promotion AI~~ ✅
 2. ~~Sponsorship system~~ ✅
-3. Reality TV show (Ultimate Fighter-style) + shenanigans system
-4. Narrative expansion (more tags, career timeline, news ticker)
+3. ~~Reality TV show (Ultimate Fighter-style) + shenanigans system~~ ✅
+4. ~~Narrative expansion (more tags, career timeline, news ticker)~~ ✅
 5. Retirement system
 6. Fighter portraits
 7. **Design sprint** ← full visual overhaul before public release

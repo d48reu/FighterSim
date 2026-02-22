@@ -172,6 +172,18 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     # Narrative
     # ------------------------------------------------------------------
 
+    @app.route("/api/news")
+    def news_feed():
+        limit = int(request.args.get("limit", 15))
+        return jsonify(services.get_news_feed(limit))
+
+    @app.route("/api/fighters/<int:fighter_id>/timeline")
+    def fighter_timeline(fighter_id: int):
+        result = services.get_fighter_timeline(fighter_id)
+        if result is None:
+            return jsonify({"error": "Fighter not found"}), 404
+        return jsonify(result)
+
     @app.route("/api/fighters/<int:fighter_id>/nickname-suggestions")
     def nickname_suggestions(fighter_id: int):
         suggestions = services.get_nickname_suggestions(fighter_id)
