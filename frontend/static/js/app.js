@@ -271,6 +271,9 @@ async function showFighterPanel(fighterId, extraData) {
     ]);
 
     document.getElementById('panel-name').textContent     = fighter.name;
+    // Retired badge
+    const retiredBadgeEl = document.getElementById('panel-retired-badge');
+    if (retiredBadgeEl) retiredBadgeEl.classList.toggle('hidden', !fighter.is_retired);
     // Cornerstone badge
     document.getElementById('panel-cs-badge').classList.toggle('hidden', !fighter.is_cornerstone);
     // Nickname display with edit pencil
@@ -286,6 +289,16 @@ async function showFighterPanel(fighterId, extraData) {
     document.getElementById('panel-record').textContent   = fighter.record;
     document.getElementById('panel-overall').textContent  = fighter.overall;
     document.getElementById('panel-goat').textContent     = fighter.goat_score > 0 ? fighter.goat_score.toFixed(1) : '\u2014';
+    // Legacy score (retired fighters)
+    const legacyEl = document.getElementById('panel-legacy');
+    if (legacyEl) {
+      if (fighter.is_retired && fighter.legacy_score > 0) {
+        legacyEl.textContent = fighter.legacy_score.toFixed(1);
+        legacyEl.parentElement.classList.remove('hidden');
+      } else {
+        legacyEl.parentElement.classList.add('hidden');
+      }
+    }
 
     const popPct = Math.min(100, fighter.popularity);
     const hypePct = Math.min(100, fighter.hype);
@@ -871,7 +884,7 @@ async function loadRankings(weightClass) {
 // ---------------------------------------------------------------------------
 
 async function loadHallOfFame() {
-  await Promise.all([loadGoat(), loadRivalries()]);
+  await Promise.all([loadGoat(), loadRivalries(), loadRetiredLegends(), loadLegendCoaches()]);
 }
 
 async function loadGoat() {
@@ -918,6 +931,142 @@ async function loadRivalries() {
     `).join('');
   } catch (err) {
     container.innerHTML = `<p class="muted">Error: ${esc(err.message)}</p>`;
+  }
+}
+
+async function loadRetiredLegends() {
+  const tbody = document.getElementById('retired-legends-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading...</td></tr>';
+  try {
+    const legends = await api('/api/retired-legends?top=20');
+    if (!legends || legends.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="muted">No retired fighters yet \u2014 legends will appear here as careers end.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = legends.map((l, i) => `
+      <tr style="cursor:pointer" onclick="showFighterPanel(${l.id})">
+        <td>${i + 1}</td>
+        <td><strong>${esc(l.name)}</strong>${l.nickname ? ' <span class="muted">"' + esc(l.nickname) + '"</span>' : ''}</td>
+        <td><span class="badge">${esc(l.weight_class)}</span></td>
+        <td>${esc(l.record)}</td>
+        <td>${l.peak_overall}</td>
+        <td><strong>${l.legacy_score}</strong></td>
+        <td>${l.retired_date || '\u2014'}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" class="muted">Error: ${esc(err.message)}</td></tr>`;
+  }
+}
+
+async function loadLegendCoaches() {
+  const hiredContainer = document.getElementById('legend-coaches-list');
+  const availContainer = document.getElementById('legend-coaches-available-list');
+  if (!hiredContainer || !availContainer) return;
+
+  try {
+    const [coaches, available, camps] = await Promise.all([
+      api('/api/legends/coaches'),
+      api('/api/legends/available'),
+      api('/api/development/camps'),
+    ]);
+
+    // Hired coaches
+    if (!coaches || coaches.length === 0) {
+      hiredContainer.innerHTML = '<p class="muted">No legend coaches hired yet.</p>';
+    } else {
+      hiredContainer.innerHTML = coaches.map(c => `
+        <div class="legend-coach-card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong>${esc(c.fighter_name)}</strong>
+              <span class="badge-retired">LEGEND</span>
+              <span class="muted" style="margin-left:6px">Legacy ${c.legacy_score}</span>
+            </div>
+            <button class="btn btn-small btn-danger" onclick="fireLegendCoach(${c.id}, '${esc(c.fighter_name)}')">Fire</button>
+          </div>
+          <div style="margin-top:6px;font-size:12px;color:#aaa">
+            ${c.weight_class || ''} &bull; $${c.salary.toLocaleString()}/mo &bull; +${(c.specialty_bonus * 100).toFixed(0)}% training bonus
+          </div>
+          <div style="margin-top:6px;font-size:12px">
+            Camp: ${c.camp_name ? '<strong>' + esc(c.camp_name) + '</strong> (T' + c.camp_tier + ')' : '<span class="muted">Unassigned</span>'}
+            <select style="margin-left:8px;font-size:11px;padding:2px 4px;background:#1a1a2e;color:#ccc;border:1px solid #333;border-radius:3px"
+              onchange="assignLegendCamp(${c.id}, this.value)">
+              <option value="">-- No Camp --</option>
+              ${(camps || []).map(camp => `<option value="${camp.id}" ${c.camp_id === camp.id ? 'selected' : ''}>${esc(camp.name)} (T${camp.tier})</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Available legends
+    if (!available || available.length === 0) {
+      availContainer.innerHTML = '<p class="muted">No retired legends available for hiring.</p>';
+    } else {
+      availContainer.innerHTML = available.map(l => `
+        <div class="legend-coach-card" style="opacity:0.85">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong>${esc(l.name)}</strong>
+              <span class="muted" style="margin-left:6px">${esc(l.weight_class)} &bull; ${esc(l.record)}</span>
+            </div>
+            <button class="btn btn-small" onclick="hireLegendCoach(${l.id})">Hire</button>
+          </div>
+          <div style="margin-top:4px;font-size:12px;color:#aaa">
+            Legacy ${l.legacy_score} &bull; $${l.monthly_salary.toLocaleString()}/mo &bull; +${(l.specialty_bonus * 100).toFixed(0)}% bonus
+          </div>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    hiredContainer.innerHTML = `<p class="muted">Error: ${esc(err.message)}</p>`;
+    availContainer.innerHTML = '';
+  }
+}
+
+async function hireLegendCoach(fighterId) {
+  try {
+    const result = await api('/api/legends/hire', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ fighter_id: fighterId }) });
+    if (result.success) {
+      showNotification(result.message, 'success');
+      loadLegendCoaches();
+    } else {
+      showNotification(result.error || 'Failed to hire', 'error');
+    }
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function fireLegendCoach(coachId, name) {
+  if (!confirm(`Fire ${name} from coaching staff?`)) return;
+  try {
+    const result = await api('/api/legends/fire', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ coach_id: coachId }) });
+    if (result.success) {
+      showNotification(result.message, 'success');
+      loadLegendCoaches();
+    } else {
+      showNotification(result.error || 'Failed to fire', 'error');
+    }
+  } catch (err) {
+    showNotification(err.message, 'error');
+  }
+}
+
+async function assignLegendCamp(coachId, campId) {
+  try {
+    const result = await api('/api/legends/assign-camp', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ coach_id: coachId, camp_id: campId ? parseInt(campId) : null }) });
+    if (result.success) {
+      showNotification(result.message, 'success');
+    } else {
+      showNotification(result.error || 'Failed to assign', 'error');
+      loadLegendCoaches();
+    }
+  } catch (err) {
+    showNotification(err.message, 'error');
+    loadLegendCoaches();
   }
 }
 
@@ -2766,6 +2915,7 @@ const NEWS_ICONS = {
   title: '\u{1F3C6}',
   streak: '\u{1F525}',
   retirement_concern: '\u23F0',
+  retirement: '\u{1F3C6}',
   show: '\u{1F3AC}',
 };
 

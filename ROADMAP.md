@@ -159,7 +159,7 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 - ✅ **Expanded narrative tags (40+)** — 20 new tags added: method-specific (ko_specialist, submission_ace, first_round_finisher, decision_machine, highlight_reel, comeback_victory), career patterns (iron_chin_proven, gatekeeper_confirmed, veteran_presence, clutch_performer, rising_prospect, undefeated, road_warrior, title_contender, dark_horse), loser tags (retirement_watch, glass_cannon, needs_new_camp), fight quality (fight_of_the_night, war_survivor). Tag removal logic: winner loses retirement_watch, loser loses undefeated/rising_prospect on streaks.
 - ✅ **Career timeline view** — GET /api/fighters/<id>/timeline returns chronological fight history with running record, opponent info, method, round. Collapsible panel in fighter side panel with green/red W/L borders and gold TITLE badges. Max 300px scroll.
 - ✅ **News feed / media ticker** — NewsHeadline model with 8 headline template categories (ko_finish, sub_finish, upset, decision, title_fight, streak, signing, retirement_concern). generate_fight_headline() with priority logic, generate_signing_headline() for OVR>=70. Hooks in all fight sim paths + AI signings. Dashboard widget with category emoji icons, clickable headlines open fighter panel.
-- ⏳ **Retirement system** — fighters decline past a threshold and retire. Legacy score. Retired legends as coaching staff boosting camp effectiveness.
+- ✅ **Retirement system** — Probabilistic retirement for fighters past prime (age, OVR, loss streak, tags). Frozen legacy score computed at retirement (wins, opposition quality, finishes, titles, peak OVR, tag bonuses). 4 new Fighter columns (is_retired, retired_date, legacy_score, peak_overall). Retired fighters excluded from rankings, free agents, AI signing, hype decay. Retirement headlines in news feed. Hall of Fame retired legends table sorted by legacy score. LegendCoach model — hire retired legends (legacy >= 40) as coaching staff (max 3/org), assign to training camps for +10-20% training gains based on legacy tier. Legend coach payroll deducted monthly. Fighter panel shows RETIRED badge + legacy score.
 
 ### Polish & Visual
 - ⏳ **Fighter portraits** — library of ~80-100 generated portraits assigned by archetype/age at seed time. Midjourney with --cref for consistency.
@@ -180,7 +180,7 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 2. ~~Sponsorship system~~ ✅
 3. ~~Reality TV show (Ultimate Fighter-style) + shenanigans system~~ ✅
 4. ~~Narrative expansion (more tags, career timeline, news ticker)~~ ✅
-5. Retirement system
+5. ~~Retirement system~~ ✅
 6. Fighter portraits
 7. **Design sprint** ← full visual overhaul before public release
 8. Fight visualization upgrade

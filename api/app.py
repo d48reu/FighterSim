@@ -376,6 +376,53 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         return jsonify(services.get_show_contestants_for_signing(show_id))
 
     # ------------------------------------------------------------------
+    # Retired Legends & Legend Coaches
+    # ------------------------------------------------------------------
+
+    @app.route("/api/retired-legends")
+    def retired_legends():
+        top_n = int(request.args.get("top", 20))
+        return jsonify(services.get_retired_legends(top_n))
+
+    @app.route("/api/legends/available")
+    def available_legends():
+        return jsonify(services.get_available_legends())
+
+    @app.route("/api/legends/coaches")
+    def legend_coaches():
+        return jsonify(services.get_legend_coaches())
+
+    @app.route("/api/legends/hire", methods=["POST"])
+    def hire_legend():
+        data = request.json
+        result = services.hire_legend_coach(
+            fighter_id=data["fighter_id"],
+            camp_id=data.get("camp_id"),
+        )
+        if not result.get("success"):
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/legends/fire", methods=["POST"])
+    def fire_legend():
+        data = request.json
+        result = services.fire_legend_coach(data["coach_id"])
+        if not result.get("success"):
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/legends/assign-camp", methods=["POST"])
+    def assign_legend_camp():
+        data = request.json
+        result = services.assign_legend_to_camp(
+            coach_id=data["coach_id"],
+            camp_id=data.get("camp_id"),
+        )
+        if not result.get("success"):
+            return jsonify(result), 400
+        return jsonify(result)
+
+    # ------------------------------------------------------------------
     # Contract negotiation
     # ------------------------------------------------------------------
 

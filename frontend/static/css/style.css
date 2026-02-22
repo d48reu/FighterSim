@@ -2824,3 +2824,30 @@ tbody td { padding: 9px 10px; }
 .news-text { flex: 1; line-height: 1.4; }
 .news-date { font-size: 11px; color: #666; white-space: nowrap; margin-top: 2px; }
 
+/* ─── Retired Badge ─── */
+.badge-retired {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #78350f, #92400e);
+  color: #fbbf24;
+  letter-spacing: 0.5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ─── Legend Coach Cards ─── */
+.legend-coach-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.legend-coach-card:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(251,191,36,0.2);
+}
+

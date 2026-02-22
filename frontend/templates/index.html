@@ -637,6 +637,44 @@
             <p class="muted">Loading...</p>
           </div>
         </div>
+
+        <div class="section" style="margin-top: 32px;">
+          <h2>Retired Legends</h2>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Fighter</th>
+                  <th>Class</th>
+                  <th>Record</th>
+                  <th>Peak OVR</th>
+                  <th>Legacy Score</th>
+                  <th>Retired</th>
+                </tr>
+              </thead>
+              <tbody id="retired-legends-tbody">
+                <tr><td colspan="7" class="muted">No retired fighters yet — legends will appear here as careers end.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section" style="margin-top: 32px;">
+          <h2>Legend Coaches</h2>
+          <div id="legend-coaches-hired" style="margin-bottom: 20px;">
+            <h3 style="font-size: 14px; margin-bottom: 8px;">Your Coaching Staff</h3>
+            <div id="legend-coaches-list">
+              <p class="muted">No legend coaches hired yet.</p>
+            </div>
+          </div>
+          <div id="legend-coaches-available">
+            <h3 style="font-size: 14px; margin-bottom: 8px;">Available to Hire</h3>
+            <div id="legend-coaches-available-list">
+              <p class="muted">No retired legends available for hiring.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
     </main>
@@ -647,6 +685,7 @@
         <button class="panel-close" id="btn-close-panel" aria-label="Close">&times;</button>
         <div class="panel-name" id="panel-name">—</div>
         <span id="panel-cs-badge" class="cornerstone-badge hidden">&#128081; Cornerstone</span>
+        <span id="panel-retired-badge" class="badge-retired hidden">RETIRED</span>
         <div class="panel-nickname" id="panel-nickname"></div>
         <div class="panel-subtitle" id="panel-subtitle">—</div>
       </div>
@@ -665,6 +704,10 @@
           <div class="panel-stat-row">
             <span class="panel-stat-label">GOAT Score</span>
             <span class="panel-stat-value" id="panel-goat">—</span>
+          </div>
+          <div class="panel-stat-row hidden">
+            <span class="panel-stat-label">Legacy Score</span>
+            <span class="panel-stat-value" id="panel-legacy" style="color:#fbbf24;font-weight:700">—</span>
           </div>
         </div>
 

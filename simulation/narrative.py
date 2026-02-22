@@ -672,7 +672,9 @@ def apply_fight_tags(winner: Fighter, loser: Fighter, fight: Fight, session: Ses
 
 def decay_hype(session: Session, rng: random.Random) -> None:
     """Monthly hype decay for all fighters. Fight results will add hype back."""
-    fighters = session.execute(select(Fighter)).scalars().all()
+    fighters = session.execute(
+        select(Fighter).where(Fighter.is_retired == False)
+    ).scalars().all()
     for f in fighters:
         traits = get_traits(f)
         # media_darling: hype decays at 40% of the normal rate

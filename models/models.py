@@ -142,6 +142,12 @@ class Fighter(Base):
     # Psychology (hidden from player, expressed through narrative)
     confidence: Mapped[float] = Column(Float, default=70.0)
 
+    # Retirement
+    is_retired: Mapped[bool] = Column(Boolean, default=False)
+    retired_date: Mapped[Optional[date]] = Column(Date, nullable=True)
+    legacy_score: Mapped[float] = Column(Float, default=0.0)
+    peak_overall: Mapped[int] = Column(Integer, default=0)
+
     # Relationships
     contracts: Mapped[List["Contract"]] = relationship(
         "Contract", back_populates="fighter", cascade="all, delete-orphan"
@@ -159,6 +165,7 @@ class Fighter(Base):
     __table_args__ = (
         Index("ix_fighter_weight_class", "weight_class"),
         Index("ix_fighter_age", "age"),
+        Index("ix_fighter_retired", "is_retired"),
         CheckConstraint("striking BETWEEN 1 AND 100"),
         CheckConstraint("grappling BETWEEN 1 AND 100"),
         CheckConstraint("wrestling BETWEEN 1 AND 100"),
@@ -610,3 +617,32 @@ class NewsHeadline(Base):
     __table_args__ = (
         Index("ix_news_date", "game_date"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Legend Coaches
+# ---------------------------------------------------------------------------
+
+class LegendCoach(Base):
+    """A retired legend hired as coaching staff for a training camp."""
+
+    __tablename__ = "legend_coaches"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), unique=True, nullable=False)
+    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    camp_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("training_camps.id"), nullable=True)
+    salary: Mapped[float] = Column(Float, nullable=False)
+    hired_date: Mapped[date] = Column(Date, nullable=False)
+    specialty_bonus: Mapped[float] = Column(Float, default=0.0)
+
+    fighter: Mapped["Fighter"] = relationship("Fighter")
+    camp: Mapped[Optional["TrainingCamp"]] = relationship("TrainingCamp")
+
+    __table_args__ = (
+        Index("ix_legend_org", "organization_id"),
+        Index("ix_legend_camp", "camp_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<LegendCoach fighter_id={self.fighter_id} org_id={self.organization_id}>"

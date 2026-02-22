@@ -20,7 +20,7 @@ from models.models import (
     BroadcastDeal, BroadcastDealStatus,
     Sponsorship, SponsorshipStatus,
     RealityShow, ShowContestant, ShowEpisode, ShowStatus,
-    NewsHeadline,
+    NewsHeadline, LegendCoach,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -150,6 +150,10 @@ def _fighter_dict(f: Fighter) -> dict:
         "natural_weight": f.natural_weight,
         "fighting_weight": f.fighting_weight,
         "cut_severity": get_cut_severity(f),
+        "is_retired": getattr(f, 'is_retired', False),
+        "retired_date": f.retired_date.isoformat() if getattr(f, 'retired_date', None) else None,
+        "legacy_score": round(getattr(f, 'legacy_score', 0.0), 1),
+        "peak_overall": getattr(f, 'peak_overall', 0) or f.overall,
     }
 
 
@@ -655,6 +659,8 @@ def get_free_agents(
         for f in fighters:
             if f.id in active_set:
                 continue
+            if getattr(f, 'is_retired', False):
+                continue
             if min_overall and f.overall < min_overall:
                 continue
             d = _fighter_dict(f)
@@ -948,6 +954,12 @@ def get_finances() -> dict:
                 "production_cost_per_episode": active_show.production_cost_per_episode,
             }
 
+        # Legend coach costs
+        legend_coaches = session.execute(
+            select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
+        ).scalars().all()
+        monthly_legend_coach_cost = sum(c.salary for c in legend_coaches)
+
         result = {
             "bank_balance": round(player_org.bank_balance, 2),
             "monthly_payroll": round(monthly_payroll, 2),
@@ -961,6 +973,8 @@ def get_finances() -> dict:
             "monthly_sponsorship_income": round(monthly_sponsorship_income, 2),
             "active_sponsorships_count": len(active_sponsorships),
             "active_show": active_show_info,
+            "monthly_legend_coach_cost": round(monthly_legend_coach_cost, 2),
+            "legend_coaches_count": len(legend_coaches),
         }
         return result
 
@@ -2452,10 +2466,20 @@ def process_fighter_development(session, org_id: int, sim_date) -> list[dict]:
             prime_modifier = 1.1 if fighter.prime_start <= fighter.age <= fighter.prime_end else 0.9
             consistency_bonus = min(1.2, 1.0 + dev.months_at_camp * 0.02)
 
+            # Check for legend coach at this camp
+            legend_coach = session.execute(
+                select(LegendCoach).where(
+                    LegendCoach.camp_id == camp.id,
+                    LegendCoach.organization_id == org_id,
+                )
+            ).scalar_one_or_none()
+            legend_mult = (1.0 + legend_coach.specialty_bonus) if legend_coach else 1.0
+
             for attr in _ATTR_FIELDS:
                 multiplier = focus_mults[attr]
                 gain = base_gain * multiplier * specialty_bonus * age_modifier * prime_modifier * consistency_bonus
                 gain *= rng.uniform(0.7, 1.3)
+                gain *= legend_mult
 
                 current = getattr(fighter, attr)
                 if current >= 85:
@@ -3424,4 +3448,251 @@ def get_show_contestants_for_signing(show_id: int) -> list[dict]:
             results.append(d)
 
         results.sort(key=lambda x: x["discount_pct"], reverse=True)
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Retired Legends
+# ---------------------------------------------------------------------------
+
+def get_retired_legends(top_n: int = 20) -> list[dict]:
+    """Return top retired fighters sorted by legacy score."""
+    with _SessionFactory() as session:
+        fighters = session.execute(
+            select(Fighter)
+            .where(Fighter.is_retired == True)
+            .order_by(Fighter.legacy_score.desc())
+            .limit(top_n)
+        ).scalars().all()
+        results = []
+        for f in fighters:
+            results.append({
+                "id": f.id,
+                "name": f.name,
+                "nickname": f.nickname,
+                "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
+                "record": f.record,
+                "peak_overall": f.peak_overall or f.overall,
+                "legacy_score": round(f.legacy_score, 1),
+                "retired_date": f.retired_date.isoformat() if f.retired_date else None,
+                "age": f.age,
+                "ko_wins": f.ko_wins,
+                "sub_wins": f.sub_wins,
+            })
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Legend Coach System
+# ---------------------------------------------------------------------------
+
+LEGEND_COACH_SALARY_MULTIPLIER = 500  # legacy_score * 500 / 12 = monthly salary
+MAX_LEGEND_COACHES_PER_ORG = 3
+MIN_LEGACY_TO_HIRE = 40
+
+_LEGEND_BONUS_TIERS = [
+    (80, 0.20),  # Legacy 80+: +20%
+    (60, 0.15),  # Legacy 60-79: +15%
+    (40, 0.10),  # Legacy 40-59: +10%
+]
+
+
+def _legend_specialty_bonus(legacy_score: float) -> float:
+    """Return training gain multiplier based on legacy score tier."""
+    for threshold, bonus in _LEGEND_BONUS_TIERS:
+        if legacy_score >= threshold:
+            return bonus
+    return 0.0
+
+
+def get_available_legends() -> list[dict]:
+    """Retired fighters with legacy >= 40, not already hired, ordered by legacy desc."""
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        # Get already-hired fighter IDs
+        hired_ids = set(
+            session.execute(
+                select(LegendCoach.fighter_id)
+            ).scalars().all()
+        )
+
+        fighters = session.execute(
+            select(Fighter)
+            .where(
+                Fighter.is_retired == True,
+                Fighter.legacy_score >= MIN_LEGACY_TO_HIRE,
+            )
+            .order_by(Fighter.legacy_score.desc())
+        ).scalars().all()
+
+        results = []
+        for f in fighters:
+            if f.id in hired_ids:
+                continue
+            monthly_salary = round(f.legacy_score * LEGEND_COACH_SALARY_MULTIPLIER / 12, 2)
+            results.append({
+                "id": f.id,
+                "name": f.name,
+                "nickname": f.nickname,
+                "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
+                "record": f.record,
+                "legacy_score": round(f.legacy_score, 1),
+                "monthly_salary": monthly_salary,
+                "specialty_bonus": _legend_specialty_bonus(f.legacy_score),
+                "retired_date": f.retired_date.isoformat() if f.retired_date else None,
+            })
+        return results
+
+
+def hire_legend_coach(fighter_id: int, camp_id: int = None) -> dict:
+    """Hire a retired legend as coaching staff."""
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"success": False, "error": "No player organization found"}
+
+        fighter = session.get(Fighter, fighter_id)
+        if not fighter:
+            return {"success": False, "error": "Fighter not found"}
+        if not fighter.is_retired:
+            return {"success": False, "error": "Fighter is not retired"}
+        if fighter.legacy_score < MIN_LEGACY_TO_HIRE:
+            return {"success": False, "error": f"Legacy score must be at least {MIN_LEGACY_TO_HIRE}"}
+
+        # Check not already hired
+        existing = session.execute(
+            select(LegendCoach).where(LegendCoach.fighter_id == fighter_id)
+        ).scalar_one_or_none()
+        if existing:
+            return {"success": False, "error": f"{fighter.name} is already hired as a coach"}
+
+        # Check org limit
+        current_count = session.execute(
+            select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
+        ).scalars().all()
+        if len(current_count) >= MAX_LEGEND_COACHES_PER_ORG:
+            return {"success": False, "error": f"Maximum {MAX_LEGEND_COACHES_PER_ORG} legend coaches allowed"}
+
+        # Affordability check (3x monthly salary)
+        monthly_salary = round(fighter.legacy_score * LEGEND_COACH_SALARY_MULTIPLIER / 12, 2)
+        if player_org.bank_balance < monthly_salary * 3:
+            return {"success": False, "error": "Insufficient funds (need 3x monthly salary in bank)"}
+
+        # Validate camp if provided
+        if camp_id:
+            camp = session.get(TrainingCamp, camp_id)
+            if not camp:
+                return {"success": False, "error": "Training camp not found"}
+            # Check no legend already at this camp for this org
+            existing_at_camp = session.execute(
+                select(LegendCoach).where(
+                    LegendCoach.camp_id == camp_id,
+                    LegendCoach.organization_id == player_org.id,
+                )
+            ).scalar_one_or_none()
+            if existing_at_camp:
+                return {"success": False, "error": "A legend coach is already assigned to this camp"}
+
+        game_date = _get_game_date(session)
+        coach = LegendCoach(
+            fighter_id=fighter_id,
+            organization_id=player_org.id,
+            camp_id=camp_id,
+            salary=monthly_salary,
+            hired_date=game_date,
+            specialty_bonus=_legend_specialty_bonus(fighter.legacy_score),
+        )
+        session.add(coach)
+        session.commit()
+
+        return {
+            "success": True,
+            "message": f"Hired {fighter.name} as legend coach (${monthly_salary:,.0f}/mo, +{coach.specialty_bonus*100:.0f}% training bonus)",
+            "coach_id": coach.id,
+        }
+
+
+def fire_legend_coach(coach_id: int) -> dict:
+    """Fire a legend coach."""
+    with _SessionFactory() as session:
+        coach = session.get(LegendCoach, coach_id)
+        if not coach:
+            return {"success": False, "error": "Coach not found"}
+
+        fighter = session.get(Fighter, coach.fighter_id)
+        name = fighter.name if fighter else "Unknown"
+        session.delete(coach)
+        session.commit()
+        return {"success": True, "message": f"Released {name} from coaching staff"}
+
+
+def assign_legend_to_camp(coach_id: int, camp_id: int) -> dict:
+    """Assign a hired legend coach to a specific training camp."""
+    with _SessionFactory() as session:
+        coach = session.get(LegendCoach, coach_id)
+        if not coach:
+            return {"success": False, "error": "Coach not found"}
+
+        if camp_id:
+            camp = session.get(TrainingCamp, camp_id)
+            if not camp:
+                return {"success": False, "error": "Training camp not found"}
+            # Check no other legend at this camp for this org
+            existing = session.execute(
+                select(LegendCoach).where(
+                    LegendCoach.camp_id == camp_id,
+                    LegendCoach.organization_id == coach.organization_id,
+                    LegendCoach.id != coach_id,
+                )
+            ).scalar_one_or_none()
+            if existing:
+                return {"success": False, "error": "A legend coach is already assigned to this camp"}
+
+        coach.camp_id = camp_id if camp_id else None
+        session.commit()
+
+        if camp_id:
+            camp = session.get(TrainingCamp, camp_id)
+            return {"success": True, "message": f"Assigned to {camp.name}"}
+        return {"success": True, "message": "Removed from camp assignment"}
+
+
+def get_legend_coaches() -> list[dict]:
+    """Get player org's hired legend coaches."""
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        coaches = session.execute(
+            select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
+        ).scalars().all()
+
+        results = []
+        for c in coaches:
+            fighter = session.get(Fighter, c.fighter_id)
+            camp = session.get(TrainingCamp, c.camp_id) if c.camp_id else None
+            results.append({
+                "id": c.id,
+                "fighter_id": c.fighter_id,
+                "fighter_name": fighter.name if fighter else "Unknown",
+                "fighter_nickname": fighter.nickname if fighter else None,
+                "legacy_score": round(fighter.legacy_score, 1) if fighter else 0,
+                "weight_class": (fighter.weight_class.value if hasattr(fighter.weight_class, "value") else fighter.weight_class) if fighter else None,
+                "camp_id": c.camp_id,
+                "camp_name": camp.name if camp else None,
+                "camp_tier": camp.tier if camp else None,
+                "salary": round(c.salary, 2),
+                "specialty_bonus": c.specialty_bonus,
+                "hired_date": c.hired_date.isoformat() if c.hired_date else None,
+            })
         return results

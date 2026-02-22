@@ -18,7 +18,10 @@ def mark_rankings_dirty(session: Session, weight_class: WeightClass) -> None:
 
 def rebuild_rankings(session: Session, weight_class: WeightClass) -> None:
     fighters = session.execute(
-        select(Fighter).where(Fighter.weight_class == weight_class)
+        select(Fighter).where(
+            Fighter.weight_class == weight_class,
+            Fighter.is_retired == False,
+        )
     ).scalars().all()
 
     scored = sorted(fighters, key=_compute_score, reverse=True)

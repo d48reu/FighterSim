@@ -21,7 +21,7 @@ from models.models import (
     BroadcastDeal, BroadcastDealStatus,
     Sponsorship, SponsorshipStatus,
     RealityShow, ShowContestant, ShowEpisode, ShowStatus,
-    NewsHeadline,
+    NewsHeadline, LegendCoach, FighterDevelopment,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
@@ -1036,7 +1036,7 @@ def _ai_sign_free_agents(
     excluded_ids = active_ids | show_ids
 
     all_fighters = session.execute(select(Fighter)).scalars().all()
-    free_agents = [f for f in all_fighters if f.id not in excluded_ids]
+    free_agents = [f for f in all_fighters if f.id not in excluded_ids and not f.is_retired]
 
     if not free_agents:
         return
@@ -1220,6 +1220,8 @@ def _ai_claim_expired_fighters(
     for contract, fighter in recently_expired:
         if fighter.id in excluded_ids:
             continue
+        if fighter.is_retired:
+            continue
         if fighter.overall < 62:
             continue
 
@@ -1316,6 +1318,250 @@ def _fluctuate_ai_prestige(
 
 
 # ---------------------------------------------------------------------------
+# Retirement system
+# ---------------------------------------------------------------------------
+
+_RETIREMENT_HEADLINES_NORMAL = [
+    "{name} announces retirement after a {record} career in {division}",
+    "End of an era: {name} hangs up the gloves at {age} ({record})",
+    "{name} retires from {division} with {wins} wins and {ko_wins} knockouts",
+    "Official: {name} calls it a career — leaves {division} with a {record} record",
+]
+
+_RETIREMENT_HEADLINES_LEGEND = [
+    "LEGEND RETIRES: {name} walks away from {division} with a legacy score of {legacy:.0f}",
+    "Hall of Fame career ends — {name} retires at {age} with a {record} record and {legacy:.0f} legacy score",
+    "One of the greats says goodbye: {name} retires from {division} ({record}, legacy {legacy:.0f})",
+]
+
+
+def _should_retire(fighter: Fighter, session: Session, rng: random.Random) -> bool:
+    """Determine if a fighter should retire this month."""
+    # Never retire if too young
+    if fighter.age < 30:
+        return False
+
+    # Never retire if on active reality show
+    active_show = session.execute(
+        select(ShowContestant)
+        .join(RealityShow, ShowContestant.show_id == RealityShow.id)
+        .where(
+            ShowContestant.fighter_id == fighter.id,
+            RealityShow.status == ShowStatus.IN_PROGRESS,
+        )
+    ).scalar_one_or_none()
+    if active_show:
+        return False
+
+    years_past_prime = fighter.age - fighter.prime_end
+
+    # Mandatory retirement
+    if years_past_prime > 8:
+        return True
+
+    # Forced: retirement_watch tag AND overall < 55
+    tags = []
+    try:
+        tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    if "retirement_watch" in tags and fighter.overall < 55:
+        return True
+
+    # Probabilistic (only when past prime)
+    if years_past_prime <= 0:
+        return False
+
+    prob = years_past_prime * 0.02
+
+    # Low OVR bonus
+    if fighter.overall < 50:
+        prob += (60 - fighter.overall) * 0.01 + 0.10
+    elif fighter.overall < 60:
+        prob += (60 - fighter.overall) * 0.01
+
+    # Loss streak
+    from simulation.narrative import _loss_streak
+    ls = _loss_streak(fighter.id, session)
+    if ls >= 3:
+        prob += 0.10
+    elif ls >= 2:
+        prob += 0.05
+
+    # retirement_watch tag
+    if "retirement_watch" in tags:
+        prob += 0.15
+
+    # High GOAT score — proved everything
+    if fighter.goat_score > 50:
+        prob += 0.05
+
+    # Cap at 60%
+    prob = min(0.60, prob)
+
+    return rng.random() < prob
+
+
+def _compute_legacy_score(fighter: Fighter, session: Session) -> float:
+    """Compute a frozen legacy score at retirement."""
+    score = fighter.wins * 2.0 - fighter.losses * 0.5
+
+    # Quality of opposition: per-win opponent overall bonus
+    from sqlalchemy import or_
+    wins_a = session.execute(
+        select(Fight, Fighter)
+        .join(Fighter, Fight.fighter_b_id == Fighter.id)
+        .where(Fight.fighter_a_id == fighter.id, Fight.winner_id == fighter.id)
+    ).all()
+    wins_b = session.execute(
+        select(Fight, Fighter)
+        .join(Fighter, Fight.fighter_a_id == Fighter.id)
+        .where(Fight.fighter_b_id == fighter.id, Fight.winner_id == fighter.id)
+    ).all()
+    for _, opp in wins_a + wins_b:
+        score += (opp.overall / 100) * 3.0
+
+    # Finishing bonus
+    score += (fighter.ko_wins + fighter.sub_wins) * 1.5
+
+    # Title reigns
+    tags = []
+    try:
+        tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+    except (json.JSONDecodeError, TypeError):
+        pass
+    score += tags.count("champion") * 8.0
+
+    # Longevity
+    career_fights = fighter.wins + fighter.losses + fighter.draws
+    score += min(12.0, career_fights * 0.3)
+
+    # Peak overall
+    peak = fighter.peak_overall or fighter.overall
+    score += peak * 0.2
+
+    # Tag bonuses
+    tag_bonuses = {
+        "goat_watch": 8, "legendary_rivalry": 5, "ageless_wonder": 4,
+        "clutch_performer": 3, "show_winner": 3, "unstoppable": 3,
+        "iron_chin_proven": 2, "ko_specialist": 2, "submission_ace": 2,
+    }
+    for tag, bonus in tag_bonuses.items():
+        if tag in tags:
+            score += bonus
+
+    return max(0.0, round(score, 1))
+
+
+def _retire_fighter(
+    session: Session, fighter: Fighter, sim_date: date, player_org: Organization, rng: random.Random
+) -> None:
+    """Process a fighter's retirement."""
+    fighter.is_retired = True
+    fighter.retired_date = sim_date
+    fighter.legacy_score = _compute_legacy_score(fighter, session)
+
+    # Update tags
+    tags = []
+    try:
+        tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+    except (json.JSONDecodeError, TypeError):
+        tags = []
+
+    # Add retired tag, remove active-career tags
+    active_tags_to_remove = [
+        "retirement_watch", "rising_prospect", "title_contender",
+        "on_a_tear", "unstoppable", "at_the_crossroads", "fading",
+        "sky_high_confidence", "shell_shocked",
+    ]
+    for tag in active_tags_to_remove:
+        if tag in tags:
+            tags.remove(tag)
+    if "retired" not in tags:
+        tags.append("retired")
+    fighter.narrative_tags = json.dumps(tags)
+
+    # Expire all active contracts
+    active_contracts = session.execute(
+        select(Contract).where(
+            Contract.fighter_id == fighter.id,
+            Contract.status == ContractStatus.ACTIVE,
+        )
+    ).scalars().all()
+    was_player_fighter = False
+    for c in active_contracts:
+        if player_org and c.organization_id == player_org.id:
+            was_player_fighter = True
+        c.status = ContractStatus.EXPIRED
+
+    # Cancel active sponsorships
+    active_sponsorships = session.execute(
+        select(Sponsorship).where(
+            Sponsorship.fighter_id == fighter.id,
+            Sponsorship.status == SponsorshipStatus.ACTIVE,
+        )
+    ).scalars().all()
+    for sp in active_sponsorships:
+        sp.status = SponsorshipStatus.CANCELLED
+
+    # Remove from development
+    dev = session.execute(
+        select(FighterDevelopment).where(
+            FighterDevelopment.fighter_id == fighter.id,
+        )
+    ).scalar_one_or_none()
+    if dev:
+        dev.camp_id = None
+
+    # Generate notification
+    division = fighter.weight_class.value if hasattr(fighter.weight_class, "value") else str(fighter.weight_class)
+    if fighter.legacy_score >= 50 or was_player_fighter:
+        msg = f"{fighter.name} has retired from {division} with a {fighter.record} record (Legacy: {fighter.legacy_score:.0f})"
+    else:
+        msg = f"{fighter.name} has retired from {division} ({fighter.record})"
+    session.add(Notification(
+        message=msg,
+        type="retirement",
+        created_date=sim_date,
+    ))
+
+    # Generate news headline
+    fmt = {
+        "name": fighter.name, "record": fighter.record,
+        "division": division, "age": fighter.age,
+        "wins": fighter.wins, "ko_wins": fighter.ko_wins,
+        "legacy": fighter.legacy_score,
+    }
+    if fighter.legacy_score >= 60:
+        template = rng.choice(_RETIREMENT_HEADLINES_LEGEND)
+    else:
+        template = rng.choice(_RETIREMENT_HEADLINES_NORMAL)
+    headline = template.format(**fmt)
+    session.add(NewsHeadline(
+        headline=headline, category="retirement",
+        game_date=sim_date, fighter_id=fighter.id,
+    ))
+
+
+def _process_retirements(
+    session: Session, sim_date: date, rng: random.Random, player_org: Organization
+) -> int:
+    """Evaluate all fighters for retirement. Returns count of retirements."""
+    all_fighters = session.execute(
+        select(Fighter).where(Fighter.is_retired == False)
+    ).scalars().all()
+
+    retired_count = 0
+    for fighter in all_fighters:
+        if _should_retire(fighter, session, rng):
+            _retire_fighter(session, fighter, sim_date, player_org, rng)
+            retired_count += 1
+
+    return retired_count
+
+
+# ---------------------------------------------------------------------------
 # Main monthly tick
 # ---------------------------------------------------------------------------
 
@@ -1384,10 +1630,23 @@ def sim_month(
                 created_date=sim_date,
             ))
 
+        # Legend coach payroll
+        legend_coaches = session.execute(
+            select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
+        ).scalars().all()
+        legend_payroll = sum(c.salary for c in legend_coaches)
+        if legend_payroll > 0:
+            player_org.bank_balance -= legend_payroll
+
     # 1. Age all fighters (bulk update — fast regardless of roster size)
-    all_fighters = session.execute(select(Fighter)).scalars().all()
+    all_fighters = session.execute(
+        select(Fighter).where(Fighter.is_retired == False)
+    ).scalars().all()
     for fighter in all_fighters:
         _age_fighter(fighter, rng)
+        # Track peak overall
+        if fighter.overall > (fighter.peak_overall or 0):
+            fighter.peak_overall = fighter.overall
         # Confidence decay toward 70 (baseline)
         conf = getattr(fighter, "confidence", 70.0) or 70.0
         if conf > 70:
@@ -1480,6 +1739,10 @@ def sim_month(
     # 5. Post-event narrative updates
     update_goat_scores(session)
     update_rivalries(session)
+
+    # 6. Process retirements
+    retired_count = _process_retirements(session, sim_date, rng, player_org)
+    summary["fighters_retired"] = retired_count
 
     # Advance game clock by one month
     if game_state:
