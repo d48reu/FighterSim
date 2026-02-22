@@ -163,7 +163,7 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 
 ### Polish & Visual
 - ⏳ **Fighter portraits** — library of ~80-100 generated portraits assigned by archetype/age at seed time. Midjourney with --cref for consistency.
-- ⏳ **Design sprint** — full visual overhaul. Committed typography system, color palette per weight class, motion design, component library (Arena UI). Reference: Hades, Football Manager newer UI.
+- ✅ **Design sprint (Arena UI)** — full visual overhaul. Rajdhani + Inter typography system via Google Fonts. ~45 CSS design tokens (backgrounds, borders, text, semantic, weight-class colors, elevation, radius, motion timing). Weight-class identity colors (Flyweight=violet, Lightweight=cyan, Welterweight=emerald, Middleweight=amber, Heavyweight=red) via data-wc attribute selectors. Motion design: arena-enter view transitions, card hover lift, button press scale, stat bar fill animation, modal spring entrance with backdrop blur, cornerstone glow pulse. Component polish across sidebar, cards, tables, badges, stat bars, buttons, modals, dashboard, fighter panel.
 - ⏳ **Fight visualization upgrade** — round-by-round momentum bars, damage tracking display during event simulation.
 - ⏳ **Sound design** — ambient crowd noise, fight bell, notification sounds, finish sounds.
 
@@ -182,8 +182,9 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 4. ~~Narrative expansion (more tags, career timeline, news ticker)~~ ✅
 5. ~~Retirement system~~ ✅
 6. Fighter portraits
-7. **Design sprint** ← full visual overhaul before public release
-8. Fight visualization upgrade
+7. ~~Design sprint (Arena UI)~~ ✅
+8. **Fight visualization upgrade** ← next priority
+
 9. Sound design
 10. Save/load
 11. Steam prep
