@@ -263,6 +263,17 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         return jsonify(result)
 
     # ------------------------------------------------------------------
+    # Rival Info
+    # ------------------------------------------------------------------
+
+    @app.route("/api/rival")
+    def get_rival():
+        result = services.get_rival_info()
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    # ------------------------------------------------------------------
     # Contract negotiation
     # ------------------------------------------------------------------
 

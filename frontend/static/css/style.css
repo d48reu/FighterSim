@@ -1968,3 +1968,161 @@ tbody td { padding: 9px 10px; }
   color: var(--accent);
 }
 
+/* ── Rival Widget ─────────────────────────────────── */
+
+.rival-widget {
+  background: var(--card-bg);
+  border: 1px solid rgba(230,57,70,0.25);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.rival-widget h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.rival-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.rival-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent);
+}
+
+.rival-prestige-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.rival-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rival-bar-label {
+  width: 80px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-bar-track {
+  flex: 1;
+  height: 14px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.rival-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.rival-bar-fill.player {
+  background: #4cc9f0;
+}
+
+.rival-bar-fill.rival {
+  background: var(--accent);
+}
+
+.rival-bar-value {
+  width: 36px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.rival-section {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.rival-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.rival-fighter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.rival-fighter-name {
+  font-weight: 600;
+  min-width: 100px;
+}
+
+.rival-fighter-ovr {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.rival-last-event {
+  font-size: 13px;
+}
+
+.standing-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.standing-row.standing-player {
+  background: rgba(76,201,240,0.12);
+  border: 1px solid rgba(76,201,240,0.25);
+}
+
+.standing-row.standing-rival {
+  background: rgba(230,57,70,0.12);
+  border: 1px solid rgba(230,57,70,0.25);
+}
+
+.standing-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.standing-prestige {
+  font-weight: 700;
+  width: 40px;
+  text-align: right;
+}
+
+.standing-roster {
+  width: 70px;
+  text-align: right;
+  font-size: 12px;
+}
+

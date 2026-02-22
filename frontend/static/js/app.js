@@ -101,6 +101,7 @@ async function loadDashboard() {
   loadDashRecentResults();
   loadCornerstones();
   loadBroadcastWidget();
+  loadRivalWidget();
 }
 
 async function loadDashUpcoming() {
@@ -1705,6 +1706,88 @@ async function loadBroadcastWidget() {
     } else {
       widget.classList.add('hidden');
     }
+  } catch (err) { /* silent */ }
+}
+
+// ---------------------------------------------------------------------------
+// Rival Widget
+// ---------------------------------------------------------------------------
+
+async function loadRivalWidget() {
+  try {
+    const data = await api('/api/rival');
+    const widget = document.getElementById('rival-widget');
+    const content = document.getElementById('rival-widget-content');
+    if (!data.rival) {
+      widget.classList.add('hidden');
+      return;
+    }
+    widget.classList.remove('hidden');
+    const r = data.rival;
+    const playerP = data.player_prestige;
+    const maxP = Math.max(playerP, r.prestige, 1);
+
+    // Top fighters list
+    const topHtml = r.top_fighters.map(f =>
+      `<div class="rival-fighter-row">
+        <span class="rival-fighter-name">${esc(f.name)}</span>
+        <span class="muted">${esc(f.weight_class)}</span>
+        <span class="rival-fighter-ovr">${f.overall} OVR</span>
+        <span class="muted">${f.record}</span>
+      </div>`
+    ).join('');
+
+    // Last event
+    const lastEvtHtml = r.last_event
+      ? `<div class="rival-last-event">${esc(r.last_event.name)} &middot; ${r.last_event.date} &middot; ${r.last_event.fight_count} fights</div>`
+      : '<div class="muted">No events yet</div>';
+
+    // Standings
+    const standingsHtml = data.standings.map(s => {
+      let cls = 'standing-row';
+      if (s.is_player) cls += ' standing-player';
+      else if (s.is_rival) cls += ' standing-rival';
+      return `<div class="${cls}">
+        <span class="standing-name">${esc(s.name)}</span>
+        <span class="standing-prestige">${s.prestige}</span>
+        <span class="standing-roster muted">${s.roster_count} fighters</span>
+      </div>`;
+    }).join('');
+
+    content.innerHTML = `
+      <div class="rival-header">
+        <span class="rival-name">${esc(r.name)}</span>
+        <span class="muted">${r.roster_count} fighters</span>
+      </div>
+      <div class="rival-prestige-compare">
+        <div class="rival-bar-row">
+          <span class="rival-bar-label">You</span>
+          <div class="rival-bar-track">
+            <div class="rival-bar-fill player" style="width:${(playerP / maxP * 100).toFixed(1)}%"></div>
+          </div>
+          <span class="rival-bar-value">${playerP}</span>
+        </div>
+        <div class="rival-bar-row">
+          <span class="rival-bar-label">${esc(r.name)}</span>
+          <div class="rival-bar-track">
+            <div class="rival-bar-fill rival" style="width:${(r.prestige / maxP * 100).toFixed(1)}%"></div>
+          </div>
+          <span class="rival-bar-value">${r.prestige}</span>
+        </div>
+      </div>
+      <div class="rival-section">
+        <div class="rival-section-title">Top Fighters</div>
+        ${topHtml || '<div class="muted">No fighters</div>'}
+      </div>
+      <div class="rival-section">
+        <div class="rival-section-title">Last Event</div>
+        ${lastEvtHtml}
+      </div>
+      <div class="rival-section">
+        <div class="rival-section-title">League Standings</div>
+        ${standingsHtml}
+      </div>
+    `;
   } catch (err) { /* silent */ }
 }
 

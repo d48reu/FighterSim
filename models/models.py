@@ -191,6 +191,8 @@ class Organization(Base):
     prestige: Mapped[float] = Column(Float, default=50.0)
     bank_balance: Mapped[float] = Column(Float, default=1_000_000.0)
     is_player: Mapped[bool] = Column(Boolean, default=False)
+    last_event_name: Mapped[Optional[str]] = Column(String(120), nullable=True)
+    last_event_date: Mapped[Optional[date]] = Column(Date, nullable=True)
 
     contracts: Mapped[List["Contract"]] = relationship(
         "Contract", back_populates="organization", cascade="all, delete-orphan"

@@ -1863,6 +1863,111 @@ def negotiate_deal(tier: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Rival Info
+# ---------------------------------------------------------------------------
+
+def get_rival_info() -> dict:
+    """Return rival org info, prestige comparison, and league standings."""
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"error": "No player organization found"}
+
+        ai_orgs = session.execute(
+            select(Organization).where(Organization.is_player == False)
+        ).scalars().all()
+
+        if not ai_orgs:
+            return {"rival": None, "player_prestige": round(player_org.prestige, 1), "prestige_gap": 0, "standings": []}
+
+        # Rival = AI org with minimum abs(prestige - player_prestige)
+        rival_org = min(ai_orgs, key=lambda o: abs(o.prestige - player_org.prestige))
+
+        # Get roster counts and top fighters for rival
+        def _org_roster_count(org_id):
+            return len(session.execute(
+                select(Contract.fighter_id).where(
+                    Contract.organization_id == org_id,
+                    Contract.status == ContractStatus.ACTIVE,
+                )
+            ).scalars().all())
+
+        def _org_top_fighters(org_id, limit=3):
+            fighter_ids = session.execute(
+                select(Contract.fighter_id).where(
+                    Contract.organization_id == org_id,
+                    Contract.status == ContractStatus.ACTIVE,
+                )
+            ).scalars().all()
+            if not fighter_ids:
+                return []
+            fighters = session.execute(
+                select(Fighter).where(Fighter.id.in_(fighter_ids))
+            ).scalars().all()
+            fighters.sort(key=lambda f: f.overall, reverse=True)
+            return [
+                {
+                    "name": f.name,
+                    "overall": f.overall,
+                    "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else str(f.weight_class),
+                    "record": f.record,
+                }
+                for f in fighters[:limit]
+            ]
+
+        rival_roster_count = _org_roster_count(rival_org.id)
+        rival_top = _org_top_fighters(rival_org.id)
+
+        # Last event info for rival
+        last_event = None
+        if rival_org.last_event_name and rival_org.last_event_date:
+            # Count fights in that event
+            evt = session.execute(
+                select(Event).where(
+                    Event.organization_id == rival_org.id,
+                    Event.name == rival_org.last_event_name,
+                    Event.event_date == rival_org.last_event_date,
+                )
+            ).scalar_one_or_none()
+            fight_count = len(evt.fights) if evt else 0
+            last_event = {
+                "name": rival_org.last_event_name,
+                "date": rival_org.last_event_date.isoformat(),
+                "fight_count": fight_count,
+            }
+
+        prestige_gap = round(abs(rival_org.prestige - player_org.prestige), 1)
+
+        # Build standings (all orgs sorted by prestige desc)
+        all_orgs = [player_org] + list(ai_orgs)
+        all_orgs.sort(key=lambda o: o.prestige, reverse=True)
+        standings = []
+        for org in all_orgs:
+            standings.append({
+                "name": org.name,
+                "prestige": round(org.prestige, 1),
+                "roster_count": _org_roster_count(org.id),
+                "is_rival": org.id == rival_org.id,
+                "is_player": org.is_player,
+            })
+
+        return {
+            "rival": {
+                "name": rival_org.name,
+                "prestige": round(rival_org.prestige, 1),
+                "roster_count": rival_roster_count,
+                "top_fighters": rival_top,
+                "last_event": last_event,
+            },
+            "player_prestige": round(player_org.prestige, 1),
+            "prestige_gap": prestige_gap,
+            "standings": standings,
+        }
+
+
+# ---------------------------------------------------------------------------
 # Fighter Development
 # ---------------------------------------------------------------------------
 

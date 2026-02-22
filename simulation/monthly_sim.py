@@ -272,6 +272,10 @@ def _generate_ai_event(
         if card_position >= 8:
             break
 
+    # Cache last event info on org
+    org.last_event_name = event.name
+    org.last_event_date = sim_date
+
     # Deduct salaries for fighters on this event
     total_salaries = sum(
         c.salary for c, f in active_contracts if f.id in paired
@@ -367,6 +371,267 @@ def _fighter_to_stats(f: Fighter) -> FighterStats:
         style=style,
         confidence=getattr(f, "confidence", 70.0) or 70.0,
     )
+
+
+# ---------------------------------------------------------------------------
+# AI rival behaviors
+# ---------------------------------------------------------------------------
+
+def _ai_sign_free_agents(
+    session: Session, ai_orgs: list, sim_date: date, rng: random.Random, player_org
+) -> None:
+    """Each AI org evaluates free agents and signs 1-2 per month."""
+    # Build set of fighter IDs with active contracts
+    active_ids = set(
+        session.execute(
+            select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
+        ).scalars().all()
+    )
+
+    all_fighters = session.execute(select(Fighter)).scalars().all()
+    free_agents = [f for f in all_fighters if f.id not in active_ids]
+
+    if not free_agents:
+        return
+
+    player_prestige = player_org.prestige if player_org else 50.0
+
+    for org in ai_orgs:
+        # Max signings: 1 base, 2 if within 15 prestige of player (rival-tier)
+        is_rival_tier = abs(org.prestige - player_prestige) <= 15
+        max_signings = 2 if is_rival_tier else 1
+        signed = 0
+
+        # Min overall filter based on org prestige
+        min_ovr = max(45, int(org.prestige * 0.55))
+
+        # Count roster by weight class for thin-class logic
+        org_contracts = session.execute(
+            select(Contract.fighter_id).where(
+                Contract.organization_id == org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalars().all()
+        org_fighter_ids = set(org_contracts)
+        wc_counts: dict[str, int] = {}
+        for f in all_fighters:
+            if f.id in org_fighter_ids:
+                wc = f.weight_class.value if hasattr(f.weight_class, "value") else str(f.weight_class)
+                wc_counts[wc] = wc_counts.get(wc, 0) + 1
+
+        candidates = [f for f in free_agents if f.overall >= min_ovr]
+        rng.shuffle(candidates)
+
+        for fighter in candidates:
+            if signed >= max_signings:
+                break
+
+            # Prefer thin weight classes — 70% skip for non-thin
+            wc = fighter.weight_class.value if hasattr(fighter.weight_class, "value") else str(fighter.weight_class)
+            if wc_counts.get(wc, 0) >= 4 and rng.random() < 0.70:
+                continue
+
+            # Salary offer and acceptance
+            asking = fighter.overall * 800 * (1 + (fighter.hype or 10.0) / 200) + (fighter.wins or 0) * 200
+            asking = int(round(asking, -2))
+            offer_salary = round(asking * rng.uniform(0.8, 1.1), 2)
+
+            # Budget gate: 3x salary in bank
+            if org.bank_balance < offer_salary * 3:
+                continue
+
+            # Acceptance formula (same as player)
+            salary_factor = offer_salary / asking if asking > 0 else 1.0
+            prestige_factor = org.prestige / 100
+            acceptance_prob = min(0.95, salary_factor * 0.6 + prestige_factor * 0.4)
+
+            if rng.random() < acceptance_prob:
+                expiry = sim_date + timedelta(days=365)
+                contract = Contract(
+                    fighter_id=fighter.id,
+                    organization_id=org.id,
+                    status=ContractStatus.ACTIVE,
+                    salary=offer_salary,
+                    fight_count_total=4,
+                    fights_remaining=4,
+                    expiry_date=expiry,
+                )
+                session.add(contract)
+                active_ids.add(fighter.id)
+                signed += 1
+
+                # Notify player for high-overall signings
+                if player_org and fighter.overall >= 65:
+                    session.add(Notification(
+                        message=f"{org.name} signed free agent {fighter.name} (OVR {fighter.overall})",
+                        type="rival_signed",
+                        created_date=sim_date,
+                    ))
+
+        # Remove signed fighters from free_agents list for next org
+        free_agents = [f for f in free_agents if f.id not in active_ids]
+
+
+def _ai_poach_expiring(
+    session: Session, ai_orgs: list, player_org, sim_date: date, rng: random.Random
+) -> None:
+    """AI orgs attempt to poach player fighters with expiring contracts."""
+    if not player_org:
+        return
+
+    cutoff = sim_date + timedelta(days=60)
+    expiring = session.execute(
+        select(Contract, Fighter)
+        .join(Fighter, Contract.fighter_id == Fighter.id)
+        .where(
+            Contract.organization_id == player_org.id,
+            Contract.status == ContractStatus.ACTIVE,
+            Contract.expiry_date <= cutoff,
+            Contract.expiry_date > sim_date,
+        )
+    ).all()
+
+    player_prestige = player_org.prestige
+
+    for contract, fighter in expiring:
+        if fighter.overall < 62:
+            continue
+
+        # Pick one AI org to attempt (weighted by prestige)
+        if not ai_orgs:
+            break
+        weights = [max(1.0, o.prestige) for o in ai_orgs]
+        ai_org = rng.choices(ai_orgs, weights=weights, k=1)[0]
+
+        # Poach probability
+        prob = 0.15
+        if abs(ai_org.prestige - player_prestige) <= 15:
+            prob += 0.10
+        if fighter.overall >= 75:
+            prob += 0.05
+        if ai_org.prestige > player_prestige:
+            prob += 0.05
+
+        if rng.random() < prob:
+            session.add(Notification(
+                message=f"{ai_org.name} has made an offer to {fighter.name}. Renew now or risk losing them!",
+                type="rival_poach",
+                created_date=sim_date,
+            ))
+
+
+def _ai_claim_expired_fighters(
+    session: Session, ai_orgs: list, player_org, sim_date: date, rng: random.Random
+) -> None:
+    """AI orgs pick up fighters whose contracts just expired."""
+    # Find fighters with no active contract and overall >= 62
+    active_ids = set(
+        session.execute(
+            select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
+        ).scalars().all()
+    )
+
+    # Find recently expired contracts (expired this cycle)
+    recently_expired = session.execute(
+        select(Contract, Fighter)
+        .join(Fighter, Contract.fighter_id == Fighter.id)
+        .where(
+            Contract.status == ContractStatus.EXPIRED,
+            Contract.expiry_date >= sim_date - timedelta(days=31),
+            Contract.expiry_date <= sim_date,
+        )
+    ).all()
+
+    player_prestige = player_org.prestige if player_org else 50.0
+
+    for contract, fighter in recently_expired:
+        if fighter.id in active_ids:
+            continue
+        if fighter.overall < 62:
+            continue
+
+        # Org selection weighted by prestige
+        if not ai_orgs:
+            break
+        weights = [max(1.0, o.prestige) for o in ai_orgs]
+        ai_org = rng.choices(ai_orgs, weights=weights, k=1)[0]
+
+        # Sign probability
+        sign_prob = ai_org.prestige / (ai_org.prestige + player_prestige + 1)
+
+        if rng.random() < sign_prob:
+            asking = fighter.overall * 800 * (1 + (fighter.hype or 10.0) / 200) + (fighter.wins or 0) * 200
+            offer_salary = round(int(round(asking, -2)) * rng.uniform(0.85, 1.05), 2)
+
+            expiry = sim_date + timedelta(days=365)
+            new_contract = Contract(
+                fighter_id=fighter.id,
+                organization_id=ai_org.id,
+                status=ContractStatus.ACTIVE,
+                salary=offer_salary,
+                fight_count_total=4,
+                fights_remaining=4,
+                expiry_date=expiry,
+            )
+            session.add(new_contract)
+            active_ids.add(fighter.id)
+
+            # Notify player
+            if player_org:
+                was_player_fighter = contract.organization_id == player_org.id
+                if was_player_fighter or fighter.overall >= 65:
+                    session.add(Notification(
+                        message=f"{ai_org.name} claimed {fighter.name} (OVR {fighter.overall})",
+                        type="rival_signed",
+                        created_date=sim_date,
+                    ))
+
+
+def _fluctuate_ai_prestige(
+    session: Session, ai_orgs: list, sim_date: date, rng: random.Random
+) -> None:
+    """Monthly prestige fluctuation for AI orgs."""
+    for org in ai_orgs:
+        # Base drift
+        delta = rng.uniform(-0.5, 0.5)
+
+        # Activity bonus: +0.3 per event in last 90 days, max +0.9
+        recent_cutoff = sim_date - timedelta(days=90)
+        recent_events = session.execute(
+            select(Event).where(
+                Event.organization_id == org.id,
+                Event.status == EventStatus.COMPLETED,
+                Event.event_date >= recent_cutoff,
+            )
+        ).scalars().all()
+        activity_bonus = min(0.9, len(recent_events) * 0.3)
+        delta += activity_bonus
+
+        # Roster quality bonus: avg overall of top 5 fighters
+        org_fighter_ids = session.execute(
+            select(Contract.fighter_id).where(
+                Contract.organization_id == org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalars().all()
+        if org_fighter_ids:
+            org_fighters = session.execute(
+                select(Fighter).where(Fighter.id.in_(org_fighter_ids))
+            ).scalars().all()
+            top5 = sorted(org_fighters, key=lambda f: f.overall, reverse=True)[:5]
+            avg_ovr = sum(f.overall for f in top5) / len(top5)
+            if avg_ovr >= 75:
+                delta += 0.3
+            elif avg_ovr >= 65:
+                delta += 0.1
+
+        # Mean reversion
+        if org.prestige > 95:
+            delta -= 0.5
+        elif org.prestige < 40:
+            delta += 0.3
+
+        org.prestige = max(20.0, min(99.0, org.prestige + delta))
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +746,7 @@ def sim_month(
     before_count = summary["contracts_expired"]
     _process_contracts(session, sim_date, rng)
 
-    # 4. AI organizations generate events (roughly 1-in-3 chance per org per month)
+    # Query AI orgs early (used by multiple steps)
     ai_orgs = (
         session.execute(
             select(Organization).where(Organization.is_player == False)
@@ -490,15 +755,28 @@ def sim_month(
         .all()
     )
 
-    # 3b. Decay hype before events (fights will restore it via apply_fight_tags)
+    # 3a. AI poach expiring player fighters
+    _ai_poach_expiring(session, ai_orgs, player_org, sim_date, rng)
+
+    # 3b. AI claim expired fighters
+    _ai_claim_expired_fighters(session, ai_orgs, player_org, sim_date, rng)
+
+    # 3c. Decay hype before events (fights will restore it via apply_fight_tags)
     decay_hype(session, rng)
 
+    # 4. AI sign free agents
+    _ai_sign_free_agents(session, ai_orgs, sim_date, rng, player_org)
+
+    # 4b. AI organizations generate events (roughly 1-in-3 chance per org per month)
     for org in ai_orgs:
         if rng.random() < 0.4:
             _generate_ai_event(session, org, sim_date, rng)
             summary["events_simulated"] += 1
 
-    # Post-event narrative updates
+    # 4c. AI prestige fluctuation
+    _fluctuate_ai_prestige(session, ai_orgs, sim_date, rng)
+
+    # 5. Post-event narrative updates
     update_goat_scores(session)
     update_rivalries(session)
 
