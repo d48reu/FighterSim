@@ -19,6 +19,7 @@ from models.models import (
     TrainingCamp, FighterDevelopment,
     BroadcastDeal, BroadcastDealStatus,
     Sponsorship, SponsorshipStatus,
+    RealityShow, ShowContestant, ShowEpisode, ShowStatus,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -665,6 +666,11 @@ def make_contract_offer(fighter_id: int, salary: float, fight_count: int, length
         prestige_factor = player_org.prestige / 100
         acceptance_prob = min(0.95, salary_factor * 0.6 + prestige_factor * 0.4)
 
+        # Quitter tag from reality show: -15% acceptance
+        tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+        if "quitter" in tags:
+            acceptance_prob *= 0.85
+
         if random.random() < acceptance_prob:
             from datetime import timedelta
             game_date = _get_game_date(session)
@@ -783,6 +789,11 @@ def renew_contract(fighter_id: int, salary: float, fight_count: int, length_mont
         acceptance_prob = min(0.95, salary_factor * 0.6 + prestige_factor * 0.4)
         acceptance_prob = min(0.95, acceptance_prob * 1.15)  # loyalty bonus
 
+        # Quitter tag from reality show: -15% acceptance
+        tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+        if "quitter" in tags:
+            acceptance_prob *= 0.85
+
         if random.random() < acceptance_prob:
             from datetime import timedelta
             game_date = _get_game_date(session)
@@ -834,6 +845,22 @@ def get_finances() -> dict:
         ).scalars().all()
         monthly_sponsorship_income = sum(sp.monthly_stipend for sp in active_sponsorships)
 
+        # Active show info
+        active_show_info = None
+        active_show = session.execute(
+            select(RealityShow).where(
+                RealityShow.organization_id == player_org.id,
+                RealityShow.status == ShowStatus.IN_PROGRESS,
+            )
+        ).scalar_one_or_none()
+        if active_show:
+            total_episodes = (4 if active_show.format_size == 8 else 5)
+            active_show_info = {
+                "name": active_show.name,
+                "episodes_remaining": total_episodes - active_show.episodes_aired,
+                "production_cost_per_episode": active_show.production_cost_per_episode,
+            }
+
         result = {
             "bank_balance": round(player_org.bank_balance, 2),
             "monthly_payroll": round(monthly_payroll, 2),
@@ -846,6 +873,7 @@ def get_finances() -> dict:
             "broadcast_fee_per_event": active_deal.fee_per_event if active_deal else 0,
             "monthly_sponsorship_income": round(monthly_sponsorship_income, 2),
             "active_sponsorships_count": len(active_sponsorships),
+            "active_show": active_show_info,
         }
         return result
 
@@ -2635,3 +2663,668 @@ def get_sponsorship_summary() -> dict:
             "active_count": active_count,
             "top_earners": top_earners,
         }
+
+
+# ---------------------------------------------------------------------------
+# Reality Show (Ultimate Fighter-style)
+# ---------------------------------------------------------------------------
+
+SHOW_PRODUCTION_COST = 75000
+
+SHENANIGANS = {
+    "positive": [
+        {
+            "type": "viral_training_clip",
+            "tag": "fan_favorite",
+            "effects": {"popularity": 12, "hype": 5},
+            "weight": 4,
+            "templates": [
+                "{name}'s training clip goes viral — fans are loving the intensity!",
+                "{name} posted a highlight reel from sparring that blew up online.",
+                "A camera crew caught {name} doing something incredible in the gym.",
+            ],
+        },
+        {
+            "type": "callout_favorite",
+            "tag": None,
+            "effects": {"hype": 6, "rivalry": True},
+            "weight": 3,
+            "templates": [
+                "{name} called out {target} in an epic face-off at the house!",
+                "{name} and {target} got into a heated verbal exchange — the rivalry is ON.",
+                "{name} publicly challenged {target}: 'You're next.'",
+            ],
+        },
+        {
+            "type": "mentor_moment",
+            "tag": "coach_praise",
+            "effects": {"random_attr": 3, "confidence": 5},
+            "weight": 3,
+            "templates": [
+                "The coaches praised {name} for an outstanding training session.",
+                "{name} showed incredible technique today — coaches took notice.",
+                "Head coach pulled {name} aside to say they see championship potential.",
+            ],
+        },
+        {
+            "type": "underdog_speech",
+            "tag": "crowd_pleaser",
+            "effects": {"hype": 8, "popularity": 10},
+            "weight": 2,
+            "templates": [
+                "{name} gave an emotional underdog speech that moved the whole house.",
+                "{name} shared their story of adversity and the room went silent with respect.",
+            ],
+        },
+        {
+            "type": "short_notice_step_up",
+            "tag": "short_notice_warrior",
+            "effects": {"hype": 8, "confidence": 5},
+            "weight": 3,
+            "templates": [
+                "{name} stepped up on short notice when another fighter was removed!",
+                "With a spot open, {name} eagerly volunteered — respect earned.",
+            ],
+        },
+    ],
+    "negative": [
+        {
+            "type": "house_fight",
+            "tag": "hothead",
+            "effects": {"suspend": 1, "confidence": -10},
+            "weight": 4,
+            "templates": [
+                "{name} got into a physical altercation at the fighter house!",
+                "Security had to break up a fight involving {name} in the living quarters.",
+                "{name} threw a punch outside the octagon — suspended for one episode.",
+            ],
+        },
+        {
+            "type": "out_of_shape",
+            "tag": "undisciplined",
+            "effects": {"cardio": -5, "hype": -3},
+            "weight": 3,
+            "templates": [
+                "{name} showed up to training visibly out of shape.",
+                "Coaches noticed {name} gassing out early — conditioning is a concern.",
+            ],
+        },
+        {
+            "type": "quits_show",
+            "tag": "quitter",
+            "effects": {"eliminate": True},
+            "weight": 2,
+            "templates": [
+                "{name} packed their bags and left the show. The quitter tag will follow them.",
+                "In a shocking moment, {name} quit — unable to handle the pressure.",
+            ],
+        },
+        {
+            "type": "breaks_rules",
+            "tag": "loose_cannon",
+            "effects": {"fine": 5000, "show_hype": -5, "hype": -8},
+            "weight": 3,
+            "templates": [
+                "{name} broke house rules and was fined $5,000.",
+                "{name} was caught violating show regulations — a $5K fine issued.",
+            ],
+        },
+        {
+            "type": "injury_in_training",
+            "tag": None,
+            "effects": {"eliminate_if_fighting": True, "cardio": -15},
+            "weight": 3,
+            "templates": [
+                "{name} suffered an injury during training camp activities.",
+                "{name} tweaked something in sparring — medical staff evaluating.",
+            ],
+        },
+        {
+            "type": "weight_miss_drama",
+            "tag": "weight_issues",
+            "effects": {"cardio": -3, "speed": -2, "hype": -5},
+            "weight": 2,
+            "templates": [
+                "{name} had a rough weight cut and looked drained.",
+                "Concerns about {name}'s ability to make weight — cardio is suffering.",
+            ],
+        },
+        {
+            "type": "locker_room_tension",
+            "tag": "divisive",
+            "effects": {"show_hype": -5, "others_confidence": -5},
+            "weight": 2,
+            "templates": [
+                "{name} caused tension in the locker room — morale is down.",
+                "Housemates are frustrated with {name}'s attitude behind the scenes.",
+            ],
+        },
+    ],
+}
+
+
+def _contestant_dict(sc: ShowContestant, session) -> dict:
+    fighter = session.get(Fighter, sc.fighter_id)
+    d = _fighter_dict(fighter) if fighter else {"id": sc.fighter_id, "name": "Unknown"}
+    d["contestant_id"] = sc.id
+    d["seed"] = sc.seed
+    d["contestant_status"] = sc.status
+    d["eliminated_round"] = sc.eliminated_round
+    d["eliminated_by"] = sc.eliminated_by
+    d["show_wins"] = sc.show_wins
+    d["show_losses"] = sc.show_losses
+    d["show_hype_earned"] = round(sc.show_hype_earned, 1)
+    d["shenanigan_count"] = sc.shenanigan_count
+    return d
+
+
+def _show_dict(show: RealityShow, session, include_episodes=False, include_contestants=True) -> dict:
+    total_episodes = 4 if show.format_size == 8 else 5
+    d = {
+        "id": show.id,
+        "name": show.name,
+        "organization_id": show.organization_id,
+        "weight_class": show.weight_class.value if hasattr(show.weight_class, "value") else show.weight_class,
+        "status": show.status.value if hasattr(show.status, "value") else show.status,
+        "format_size": show.format_size,
+        "start_date": show.start_date.isoformat() if show.start_date else None,
+        "end_date": show.end_date.isoformat() if show.end_date else None,
+        "current_round": show.current_round,
+        "episodes_aired": show.episodes_aired,
+        "total_episodes": total_episodes,
+        "production_cost_per_episode": show.production_cost_per_episode,
+        "total_production_spend": round(show.total_production_spend, 2),
+        "total_revenue": round(show.total_revenue, 2),
+        "show_hype": round(show.show_hype, 1),
+        "winner_id": show.winner_id,
+        "runner_up_id": show.runner_up_id,
+    }
+    if include_contestants:
+        d["contestants"] = [_contestant_dict(sc, session) for sc in show.contestants]
+    if include_episodes:
+        d["episodes"] = []
+        for ep in show.episodes:
+            d["episodes"].append({
+                "id": ep.id,
+                "episode_number": ep.episode_number,
+                "episode_type": ep.episode_type,
+                "air_date": ep.air_date.isoformat() if ep.air_date else None,
+                "fight_results": json.loads(ep.fight_results) if ep.fight_results else [],
+                "shenanigans": json.loads(ep.shenanigans) if ep.shenanigans else [],
+                "episode_narrative": ep.episode_narrative,
+                "episode_rating": round(ep.episode_rating, 1),
+                "hype_generated": round(ep.hype_generated, 1),
+            })
+    return d
+
+
+def get_show_eligible_fighters(weight_class: str) -> list[dict]:
+    """Return free agents in weight class, not injured, not on active show."""
+    with _SessionFactory() as session:
+        # IDs with active contracts
+        active_ids = set(
+            session.execute(
+                select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
+            ).scalars().all()
+        )
+        # IDs on active shows
+        show_ids = set(
+            session.execute(
+                select(ShowContestant.fighter_id)
+                .join(RealityShow, ShowContestant.show_id == RealityShow.id)
+                .where(
+                    RealityShow.status == ShowStatus.IN_PROGRESS,
+                    ShowContestant.status.in_(["active", "suspended"]),
+                )
+            ).scalars().all()
+        )
+        excluded = active_ids | show_ids
+
+        fighters = session.execute(
+            select(Fighter).where(
+                Fighter.weight_class == weight_class,
+                Fighter.injury_months == 0,
+            )
+        ).scalars().all()
+
+        results = []
+        for f in fighters:
+            if f.id in excluded:
+                continue
+            d = _fighter_dict(f)
+            d["asking_salary"] = _asking_salary(f)
+            results.append(d)
+        results.sort(key=lambda x: x["overall"], reverse=True)
+        return results
+
+
+def create_reality_show(name: str, weight_class: str, format_size: int, fighter_ids: list[int]) -> dict:
+    """Create a new reality show with selected fighters."""
+    if format_size not in (8, 16):
+        return {"error": "Format size must be 8 or 16."}
+    if len(fighter_ids) != format_size:
+        return {"error": f"Need exactly {format_size} fighters, got {len(fighter_ids)}."}
+
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"error": "No player organization found."}
+
+        # Check no active show
+        existing = session.execute(
+            select(RealityShow).where(
+                RealityShow.organization_id == player_org.id,
+                RealityShow.status == ShowStatus.IN_PROGRESS,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return {"error": "You already have an active show running."}
+
+        # Check affordability (2 episodes upfront)
+        cost = SHOW_PRODUCTION_COST * 2
+        if player_org.bank_balance < cost:
+            return {"error": f"Need at least ${cost:,.0f} in the bank (2 episodes upfront)."}
+
+        # Validate fighters are eligible
+        active_ids = set(
+            session.execute(
+                select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
+            ).scalars().all()
+        )
+        show_ids = set(
+            session.execute(
+                select(ShowContestant.fighter_id)
+                .join(RealityShow, ShowContestant.show_id == RealityShow.id)
+                .where(
+                    RealityShow.status == ShowStatus.IN_PROGRESS,
+                    ShowContestant.status.in_(["active", "suspended"]),
+                )
+            ).scalars().all()
+        )
+
+        fighters = []
+        for fid in fighter_ids:
+            f = session.get(Fighter, fid)
+            if not f:
+                return {"error": f"Fighter ID {fid} not found."}
+            if f.id in active_ids:
+                return {"error": f"{f.name} has an active contract."}
+            if f.id in show_ids:
+                return {"error": f"{f.name} is already on an active show."}
+            if f.injury_months > 0:
+                return {"error": f"{f.name} is injured."}
+            wc = f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class
+            if wc != weight_class:
+                return {"error": f"{f.name} is not in {weight_class} division."}
+            fighters.append(f)
+
+        game_date = _get_game_date(session)
+
+        show = RealityShow(
+            name=name,
+            organization_id=player_org.id,
+            weight_class=weight_class,
+            status=ShowStatus.IN_PROGRESS,
+            format_size=format_size,
+            start_date=game_date,
+            production_cost_per_episode=SHOW_PRODUCTION_COST,
+        )
+        session.add(show)
+        session.flush()
+
+        # Seed by overall rating (highest = seed 1)
+        fighters.sort(key=lambda f: f.overall, reverse=True)
+        for i, f in enumerate(fighters):
+            sc = ShowContestant(
+                show_id=show.id,
+                fighter_id=f.id,
+                seed=i + 1,
+            )
+            session.add(sc)
+
+        # Deduct first episode cost
+        player_org.bank_balance -= SHOW_PRODUCTION_COST
+        show.total_production_spend += SHOW_PRODUCTION_COST
+
+        session.add(Notification(
+            message=f"Reality show '{name}' is now in production! {format_size} fighters competing in {weight_class}.",
+            type="show",
+            created_date=game_date,
+        ))
+
+        session.commit()
+        return _show_dict(show, session, include_episodes=True)
+
+
+def get_active_show() -> dict:
+    """Return current IN_PROGRESS show with contestants and episodes."""
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"show": None}
+
+        show = session.execute(
+            select(RealityShow).where(
+                RealityShow.organization_id == player_org.id,
+                RealityShow.status == ShowStatus.IN_PROGRESS,
+            )
+        ).scalar_one_or_none()
+        if not show:
+            return {"show": None}
+
+        return {"show": _show_dict(show, session, include_episodes=True)}
+
+
+def get_show_details(show_id: int) -> dict:
+    """Full show data including all episodes and contestants."""
+    with _SessionFactory() as session:
+        show = session.get(RealityShow, show_id)
+        if not show:
+            return {"error": "Show not found."}
+        return _show_dict(show, session, include_episodes=True)
+
+
+def get_show_bracket(show_id: int) -> dict:
+    """Return bracket as nested rounds with matchup data."""
+    with _SessionFactory() as session:
+        show = session.get(RealityShow, show_id)
+        if not show:
+            return {"error": "Show not found."}
+
+        contestants = {sc.seed: sc for sc in show.contestants}
+
+        # Build bracket matchups based on format
+        if show.format_size == 8:
+            matchup_seeds = [
+                [(1, 8), (4, 5), (3, 6), (2, 7)],  # QF
+            ]
+            round_names = ["Quarterfinals", "Semifinals", "Finale"]
+        else:
+            matchup_seeds = [
+                [(1, 16), (8, 9), (4, 13), (5, 12), (3, 14), (6, 11), (2, 15), (7, 10)],  # R1
+            ]
+            round_names = ["First Round", "Quarterfinals", "Semifinals", "Finale"]
+
+        # Parse episode fight results to reconstruct bracket
+        episodes = sorted(show.episodes, key=lambda e: e.episode_number)
+
+        rounds = []
+        current_matchup_seeds = matchup_seeds[0]
+
+        for rnd_idx, rnd_name in enumerate(round_names):
+            matchups = []
+            # Find the episode with these fights
+            fight_ep = None
+            for ep in episodes:
+                if ep.episode_type == rnd_name.lower().replace(" ", "_") or \
+                   (rnd_name == "Quarterfinals" and ep.episode_type == "quarterfinal") or \
+                   (rnd_name == "Semifinals" and ep.episode_type == "semifinal") or \
+                   (rnd_name == "Finale" and ep.episode_type == "finale") or \
+                   (rnd_name == "First Round" and ep.episode_type == "first_round"):
+                    fight_ep = ep
+                    break
+
+            fight_data = json.loads(fight_ep.fight_results) if fight_ep and fight_ep.fight_results else []
+
+            next_round_seeds = []
+            for i, (seed_a, seed_b) in enumerate(current_matchup_seeds):
+                sc_a = contestants.get(seed_a)
+                sc_b = contestants.get(seed_b)
+                fa = session.get(Fighter, sc_a.fighter_id) if sc_a else None
+                fb = session.get(Fighter, sc_b.fighter_id) if sc_b else None
+
+                matchup = {
+                    "fighter_a": {"seed": seed_a, "name": fa.name if fa else "TBD", "id": fa.id if fa else None},
+                    "fighter_b": {"seed": seed_b, "name": fb.name if fb else "TBD", "id": fb.id if fb else None},
+                    "winner": None,
+                    "is_walkover": False,
+                }
+
+                # Check fight results for this matchup
+                if fight_data and i < len(fight_data):
+                    fr = fight_data[i]
+                    matchup["winner"] = fr.get("winner_id")
+                    matchup["is_walkover"] = fr.get("is_walkover", False)
+                    matchup["method"] = fr.get("method")
+                    matchup["round"] = fr.get("round")
+                    # Track winner seed for next round
+                    if fr.get("winner_id") == (fa.id if fa else None):
+                        next_round_seeds.append(seed_a)
+                    else:
+                        next_round_seeds.append(seed_b)
+                elif fight_data:
+                    # Check by fighter IDs in fight results
+                    for fr in fight_data:
+                        ids = {fr.get("fighter_a_id"), fr.get("fighter_b_id")}
+                        a_id = fa.id if fa else None
+                        b_id = fb.id if fb else None
+                        if a_id in ids and b_id in ids:
+                            matchup["winner"] = fr.get("winner_id")
+                            matchup["is_walkover"] = fr.get("is_walkover", False)
+                            matchup["method"] = fr.get("method")
+                            matchup["round"] = fr.get("round")
+                            if fr.get("winner_id") == a_id:
+                                next_round_seeds.append(seed_a)
+                            else:
+                                next_round_seeds.append(seed_b)
+                            break
+
+                matchups.append(matchup)
+
+            rounds.append({
+                "round_name": rnd_name,
+                "matchups": matchups,
+            })
+
+            # Set up next round matchups from winners
+            if next_round_seeds and rnd_idx < len(round_names) - 1:
+                current_matchup_seeds = []
+                for j in range(0, len(next_round_seeds), 2):
+                    if j + 1 < len(next_round_seeds):
+                        current_matchup_seeds.append((next_round_seeds[j], next_round_seeds[j + 1]))
+            elif rnd_idx < len(round_names) - 1:
+                # No results yet, create placeholder pairings
+                current_matchup_seeds = [(0, 0)] * (len(current_matchup_seeds) // 2)
+
+        # Winner info
+        winner_info = None
+        if show.winner_id:
+            winner = session.get(Fighter, show.winner_id)
+            if winner:
+                winner_info = {"id": winner.id, "name": winner.name}
+
+        return {
+            "show_id": show.id,
+            "format_size": show.format_size,
+            "rounds": rounds,
+            "winner": winner_info,
+        }
+
+
+def get_show_history() -> list[dict]:
+    """All completed/cancelled shows for player org."""
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return []
+
+        shows = session.execute(
+            select(RealityShow).where(
+                RealityShow.organization_id == player_org.id,
+                RealityShow.status.in_([ShowStatus.COMPLETED, ShowStatus.CANCELLED]),
+            ).order_by(RealityShow.end_date.desc())
+        ).scalars().all()
+
+        results = []
+        for show in shows:
+            winner_name = None
+            if show.winner_id:
+                winner = session.get(Fighter, show.winner_id)
+                winner_name = winner.name if winner else None
+            results.append({
+                "id": show.id,
+                "name": show.name,
+                "weight_class": show.weight_class.value if hasattr(show.weight_class, "value") else show.weight_class,
+                "status": show.status.value if hasattr(show.status, "value") else show.status,
+                "format_size": show.format_size,
+                "start_date": show.start_date.isoformat() if show.start_date else None,
+                "end_date": show.end_date.isoformat() if show.end_date else None,
+                "episodes_aired": show.episodes_aired,
+                "winner_name": winner_name,
+                "show_hype": round(show.show_hype, 1),
+                "total_production_spend": round(show.total_production_spend, 2),
+                "total_revenue": round(show.total_revenue, 2),
+            })
+        return results
+
+
+def cancel_show(show_id: int) -> dict:
+    """Cancel an active show. -3 prestige penalty."""
+    with _SessionFactory() as session:
+        show = session.get(RealityShow, show_id)
+        if not show:
+            return {"error": "Show not found."}
+        if show.status != ShowStatus.IN_PROGRESS:
+            return {"error": "Can only cancel an active show."}
+
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+
+        show.status = ShowStatus.CANCELLED
+        game_date = _get_game_date(session)
+        show.end_date = game_date
+
+        if player_org:
+            player_org.prestige = max(0.0, player_org.prestige - 3.0)
+
+        session.add(Notification(
+            message=f"Reality show '{show.name}' has been cancelled. -3 prestige.",
+            type="show",
+            created_date=game_date,
+        ))
+
+        session.commit()
+        return {"success": True, "message": f"Show '{show.name}' cancelled. -3 prestige penalty."}
+
+
+def sign_show_winner(show_id: int) -> dict:
+    """Offer contract to show winner at 25% discount."""
+    with _SessionFactory() as session:
+        show = session.get(RealityShow, show_id)
+        if not show:
+            return {"error": "Show not found."}
+        if show.status != ShowStatus.COMPLETED:
+            return {"error": "Show must be completed to sign the winner."}
+        if not show.winner_id:
+            return {"error": "No winner found."}
+
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"error": "No player organization found."}
+
+        fighter = session.get(Fighter, show.winner_id)
+        if not fighter:
+            return {"error": "Winner fighter not found."}
+
+        # Check not already signed
+        existing = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return {"error": f"{fighter.name} already has an active contract."}
+
+        asking = _asking_salary(fighter)
+        discounted = int(round(asking * 0.75, -2))  # 25% discount
+        game_date = _get_game_date(session)
+
+        # 95% acceptance
+        if random.random() < 0.95:
+            from datetime import timedelta
+            contract = Contract(
+                fighter_id=fighter.id,
+                organization_id=player_org.id,
+                status=ContractStatus.ACTIVE,
+                salary=discounted,
+                fight_count_total=4,
+                fights_remaining=4,
+                expiry_date=game_date + timedelta(days=365),
+            )
+            session.add(contract)
+            session.commit()
+            return {
+                "accepted": True,
+                "message": f"{fighter.name} signed at ${discounted:,.0f}/yr (25% show winner discount)!",
+            }
+        else:
+            return {
+                "accepted": False,
+                "message": f"{fighter.name} surprisingly turned down the offer. Try a standard contract offer.",
+            }
+
+
+def get_show_contestants_for_signing(show_id: int) -> list[dict]:
+    """After completion, return contestants with show performance and modified asking salaries."""
+    with _SessionFactory() as session:
+        show = session.get(RealityShow, show_id)
+        if not show:
+            return []
+        if show.status != ShowStatus.COMPLETED:
+            return []
+
+        # Check who already has a contract
+        active_ids = set(
+            session.execute(
+                select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
+            ).scalars().all()
+        )
+
+        results = []
+        for sc in show.contestants:
+            fighter = session.get(Fighter, sc.fighter_id)
+            if not fighter or fighter.id in active_ids:
+                continue
+
+            base_asking = _asking_salary(fighter)
+
+            # Determine discount based on placement
+            if fighter.id == show.winner_id:
+                discount = 0.25
+                placement = "Winner"
+            elif fighter.id == show.runner_up_id:
+                discount = 0.15
+                placement = "Runner-up"
+            elif sc.eliminated_round and sc.eliminated_round >= (3 if show.format_size == 16 else 2):
+                discount = 0.05
+                placement = "Semifinalist"
+            else:
+                discount = 0.0
+                placement = "Participant"
+
+            modified_asking = int(round(base_asking * (1 - discount), -2))
+
+            d = _fighter_dict(fighter)
+            d["contestant_id"] = sc.id
+            d["seed"] = sc.seed
+            d["show_wins"] = sc.show_wins
+            d["show_losses"] = sc.show_losses
+            d["shenanigan_count"] = sc.shenanigan_count
+            d["placement"] = placement
+            d["discount_pct"] = round(discount * 100)
+            d["base_asking_salary"] = base_asking
+            d["modified_asking_salary"] = modified_asking
+            results.append(d)
+
+        results.sort(key=lambda x: x["discount_pct"], reverse=True)
+        return results

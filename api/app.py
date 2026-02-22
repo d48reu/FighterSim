@@ -300,6 +300,70 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         return jsonify(services.get_sponsorship_summary())
 
     # ------------------------------------------------------------------
+    # Reality Show
+    # ------------------------------------------------------------------
+
+    @app.route("/api/show/eligible-fighters")
+    def show_eligible_fighters():
+        weight_class = request.args.get("weight_class")
+        if not weight_class:
+            return jsonify({"error": "weight_class parameter required"}), 400
+        return jsonify(services.get_show_eligible_fighters(weight_class))
+
+    @app.route("/api/show/create", methods=["POST"])
+    def create_show():
+        data = request.json
+        result = services.create_reality_show(
+            name=data["name"],
+            weight_class=data["weight_class"],
+            format_size=data["format_size"],
+            fighter_ids=data["fighter_ids"],
+        )
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/show/active")
+    def active_show():
+        return jsonify(services.get_active_show())
+
+    @app.route("/api/show/<int:show_id>")
+    def show_details(show_id: int):
+        result = services.get_show_details(show_id)
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+
+    @app.route("/api/show/<int:show_id>/bracket")
+    def show_bracket(show_id: int):
+        result = services.get_show_bracket(show_id)
+        if "error" in result:
+            return jsonify(result), 404
+        return jsonify(result)
+
+    @app.route("/api/show/history")
+    def show_history():
+        return jsonify(services.get_show_history())
+
+    @app.route("/api/show/<int:show_id>/cancel", methods=["POST"])
+    def cancel_show(show_id: int):
+        result = services.cancel_show(show_id)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/show/<int:show_id>/sign-winner", methods=["POST"])
+    def sign_show_winner(show_id: int):
+        result = services.sign_show_winner(show_id)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/show/<int:show_id>/contestants")
+    def show_contestants(show_id: int):
+        return jsonify(services.get_show_contestants_for_signing(show_id))
+
+    # ------------------------------------------------------------------
     # Contract negotiation
     # ------------------------------------------------------------------
 

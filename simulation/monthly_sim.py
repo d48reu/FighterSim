@@ -13,13 +13,14 @@ from datetime import date, timedelta
 from typing import Callable
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_ as db_or, and_ as db_and
 
 from models.models import (
     Fighter, Organization, Contract, Event, Fight,
     Ranking, WeightClass, ContractStatus, EventStatus, Notification, GameState,
     BroadcastDeal, BroadcastDealStatus,
     Sponsorship, SponsorshipStatus,
+    RealityShow, ShowContestant, ShowEpisode, ShowStatus,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
@@ -434,6 +435,561 @@ def _fighter_to_stats(f: Fighter) -> FighterStats:
 
 
 # ---------------------------------------------------------------------------
+# Reality Show processing
+# ---------------------------------------------------------------------------
+
+def _process_reality_show(
+    session: Session, sim_date: date, player_org: Organization, rng: random.Random
+) -> list[str]:
+    """Process one episode of an active reality show. Returns notification messages."""
+    notifications = []
+    if not player_org:
+        return notifications
+
+    show = session.execute(
+        select(RealityShow).where(
+            RealityShow.organization_id == player_org.id,
+            RealityShow.status == ShowStatus.IN_PROGRESS,
+        )
+    ).scalar_one_or_none()
+    if not show:
+        return notifications
+
+    from api.services import SHENANIGANS, SHOW_PRODUCTION_COST
+
+    total_episodes = 4 if show.format_size == 8 else 5
+    ep_num = show.episodes_aired + 1
+
+    # Determine episode type
+    if show.format_size == 8:
+        ep_types = ["intro", "quarterfinal", "semifinal", "finale"]
+    else:
+        ep_types = ["intro", "first_round", "quarterfinal", "semifinal", "finale"]
+
+    if ep_num > total_episodes:
+        return notifications
+
+    ep_type = ep_types[ep_num - 1]
+    is_fight_episode = ep_type != "intro"
+
+    # Get active contestants
+    contestants = session.execute(
+        select(ShowContestant).where(
+            ShowContestant.show_id == show.id,
+        )
+    ).scalars().all()
+    active_contestants = [sc for sc in contestants if sc.status == "active"]
+    suspended_contestants = [sc for sc in contestants if sc.status == "suspended"]
+
+    # Un-suspend fighters at start of new episode
+    for sc in suspended_contestants:
+        sc.status = "active"
+        active_contestants.append(sc)
+
+    # --- Generate shenanigans ---
+    shenanigan_slots = 4 if ep_type == "intro" else 3
+    shenanigan_results = []
+    shenanigan_targets_count: dict[int, int] = {}
+
+    for _ in range(shenanigan_slots):
+        if rng.random() > 0.70:
+            continue
+        if not active_contestants:
+            break
+
+        # Positive vs negative
+        is_positive = rng.random() < 0.40
+        category = "positive" if is_positive else "negative"
+        pool = SHENANIGANS[category]
+
+        # Weight selection
+        weights = [s["weight"] for s in pool]
+
+        # Pick a target fighter
+        eligible_targets = [
+            sc for sc in active_contestants
+            if shenanigan_targets_count.get(sc.fighter_id, 0) < 2
+        ]
+        if not eligible_targets:
+            continue
+
+        # Weight targets by traits
+        target_weights = []
+        for sc in eligible_targets:
+            fighter = session.get(Fighter, sc.fighter_id)
+            tags = []
+            try:
+                tags = json.loads(fighter.narrative_tags) if fighter and fighter.narrative_tags else []
+            except (json.JSONDecodeError, TypeError):
+                pass
+            w = 1.0
+            if not is_positive:
+                if "hothead" in tags or "loose_cannon" in tags:
+                    w = 2.0
+            else:
+                if "fan_favorite" in tags or "media_darling" in tags:
+                    w = 1.5
+            target_weights.append(w)
+
+        target_sc = rng.choices(eligible_targets, weights=target_weights, k=1)[0]
+        shenanigan_targets_count[target_sc.fighter_id] = shenanigan_targets_count.get(target_sc.fighter_id, 0) + 1
+
+        shenanigan = rng.choices(pool, weights=weights, k=1)[0]
+        fighter = session.get(Fighter, target_sc.fighter_id)
+
+        # Skip short_notice_step_up unless someone was recently eliminated
+        eliminated_this_ep = [s for s in shenanigan_results if s.get("eliminated")]
+        if shenanigan["type"] == "short_notice_step_up" and not eliminated_this_ep:
+            continue
+
+        # Build description
+        desc = rng.choice(shenanigan["templates"]).format(
+            name=fighter.name if fighter else "Unknown",
+            target=rng.choice([sc for sc in active_contestants if sc.fighter_id != target_sc.fighter_id]).fighter_id
+            if shenanigan["type"] == "callout_favorite" and len(active_contestants) > 1
+            else ""
+        )
+
+        # For callout_favorite, pick actual target name
+        if shenanigan["type"] == "callout_favorite" and len(active_contestants) > 1:
+            others = [sc for sc in active_contestants if sc.fighter_id != target_sc.fighter_id]
+            if others:
+                other_sc = rng.choice(others)
+                other_fighter = session.get(Fighter, other_sc.fighter_id)
+                desc = rng.choice(shenanigan["templates"]).format(
+                    name=fighter.name, target=other_fighter.name if other_fighter else "Unknown"
+                )
+                # Apply hype to both
+                if other_fighter:
+                    other_fighter.hype = min(100.0, other_fighter.hype + 6)
+                    # Create rivalry
+                    if fighter and not fighter.rivalry_with:
+                        fighter.rivalry_with = other_fighter.id
+                    if other_fighter and not other_fighter.rivalry_with:
+                        other_fighter.rivalry_with = fighter.id
+
+        effects = shenanigan["effects"]
+        result_entry = {
+            "type": shenanigan["type"],
+            "category": category,
+            "description": desc,
+            "fighter_id": target_sc.fighter_id,
+            "fighter_name": fighter.name if fighter else "Unknown",
+            "tag": shenanigan["tag"],
+            "eliminated": False,
+        }
+
+        # Apply effects
+        if fighter:
+            if effects.get("popularity"):
+                fighter.popularity = min(100.0, max(0.0, fighter.popularity + effects["popularity"]))
+            if effects.get("hype"):
+                fighter.hype = min(100.0, max(0.0, fighter.hype + effects["hype"]))
+                target_sc.show_hype_earned += abs(effects["hype"])
+            if effects.get("confidence"):
+                fighter.confidence = min(100.0, max(0.0, fighter.confidence + effects["confidence"]))
+            if effects.get("cardio"):
+                fighter.cardio = max(1, min(100, fighter.cardio + effects["cardio"]))
+            if effects.get("speed"):
+                fighter.speed = max(1, min(100, fighter.speed + effects["speed"]))
+            if effects.get("random_attr"):
+                attr = rng.choice(["striking", "grappling", "wrestling", "cardio", "chin", "speed"])
+                val = getattr(fighter, attr)
+                setattr(fighter, attr, min(85, val + effects["random_attr"]))
+
+            # Apply tag
+            if shenanigan["tag"]:
+                try:
+                    tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+                except (json.JSONDecodeError, TypeError):
+                    tags = []
+                if shenanigan["tag"] not in tags:
+                    tags.append(shenanigan["tag"])
+                    fighter.narrative_tags = json.dumps(tags)
+
+        # Special effects
+        if effects.get("suspend"):
+            target_sc.status = "suspended"
+            if target_sc in active_contestants:
+                active_contestants.remove(target_sc)
+            result_entry["suspended"] = True
+
+        if effects.get("eliminate"):
+            target_sc.status = "eliminated"
+            target_sc.eliminated_round = show.current_round
+            target_sc.eliminated_by = "quit"
+            if target_sc in active_contestants:
+                active_contestants.remove(target_sc)
+            result_entry["eliminated"] = True
+
+        if effects.get("eliminate_if_fighting") and is_fight_episode:
+            target_sc.status = "eliminated"
+            target_sc.eliminated_round = show.current_round
+            target_sc.eliminated_by = "injury"
+            if target_sc in active_contestants:
+                active_contestants.remove(target_sc)
+            result_entry["eliminated"] = True
+
+        if effects.get("fine"):
+            player_org.bank_balance -= effects["fine"]
+
+        if effects.get("show_hype"):
+            show.show_hype = max(0.0, min(100.0, show.show_hype + effects["show_hype"]))
+
+        if effects.get("others_confidence"):
+            other_active = [sc for sc in active_contestants if sc.fighter_id != target_sc.fighter_id]
+            targets = rng.sample(other_active, min(2, len(other_active)))
+            for osc in targets:
+                of = session.get(Fighter, osc.fighter_id)
+                if of:
+                    of.confidence = max(0.0, min(100.0, of.confidence + effects["others_confidence"]))
+
+        target_sc.shenanigan_count += 1
+        shenanigan_results.append(result_entry)
+
+    # --- Simulate fights if fight episode ---
+    fight_results = []
+    if is_fight_episode:
+        # Build matchups from bracket
+        contestants_by_seed = {sc.seed: sc for sc in contestants}
+        matchups = _get_round_matchups(show, ep_type, contestants_by_seed, session)
+
+        for seed_a, seed_b in matchups:
+            sc_a = contestants_by_seed.get(seed_a)
+            sc_b = contestants_by_seed.get(seed_b)
+
+            if not sc_a or not sc_b:
+                continue
+
+            fa = session.get(Fighter, sc_a.fighter_id) if sc_a else None
+            fb = session.get(Fighter, sc_b.fighter_id) if sc_b else None
+
+            # Handle walkovers
+            a_can_fight = sc_a.status == "active" and fa and fa.injury_months == 0
+            b_can_fight = sc_b.status == "active" and fb and fb.injury_months == 0
+
+            if not a_can_fight and not b_can_fight:
+                continue
+            if not a_can_fight:
+                sc_b.show_wins += 1
+                fight_results.append({
+                    "fighter_a_id": fa.id if fa else None,
+                    "fighter_a": fa.name if fa else "Unknown",
+                    "fighter_b_id": fb.id if fb else None,
+                    "fighter_b": fb.name if fb else "Unknown",
+                    "winner_id": fb.id if fb else None,
+                    "winner": fb.name if fb else "Unknown",
+                    "is_walkover": True,
+                    "method": "Walkover",
+                    "round": None,
+                    "time": None,
+                    "narrative": f"{fb.name} advances via walkover — opponent was unable to compete.",
+                })
+                sc_a.status = "eliminated"
+                sc_a.eliminated_round = show.current_round + 1
+                sc_a.eliminated_by = "walkover"
+                sc_a.show_losses += 1
+                continue
+            if not b_can_fight:
+                sc_a.show_wins += 1
+                fight_results.append({
+                    "fighter_a_id": fa.id if fa else None,
+                    "fighter_a": fa.name if fa else "Unknown",
+                    "fighter_b_id": fb.id if fb else None,
+                    "fighter_b": fb.name if fb else "Unknown",
+                    "winner_id": fa.id if fa else None,
+                    "winner": fa.name if fa else "Unknown",
+                    "is_walkover": True,
+                    "method": "Walkover",
+                    "round": None,
+                    "time": None,
+                    "narrative": f"{fa.name} advances via walkover — opponent was unable to compete.",
+                })
+                sc_b.status = "eliminated"
+                sc_b.eliminated_round = show.current_round + 1
+                sc_b.eliminated_by = "walkover"
+                sc_b.show_losses += 1
+                continue
+
+            # Simulate fight (3 rounds)
+            a_stats = _fighter_to_stats(fa)
+            b_stats = _fighter_to_stats(fb)
+            result = simulate_fight(a_stats, b_stats, seed=rng.randint(0, 999999), max_rounds=3)
+
+            winner = fa if result.winner_id == fa.id else fb
+            loser = fb if winner is fa else fa
+            winner_sc = sc_a if winner is fa else sc_b
+            loser_sc = sc_b if winner is fa else sc_a
+
+            # Update records
+            winner.wins += 1
+            loser.losses += 1
+            if result.method == "KO/TKO":
+                winner.ko_wins += 1
+            elif result.method == "Submission":
+                winner.sub_wins += 1
+
+            winner_sc.show_wins += 1
+            loser_sc.show_losses += 1
+            loser_sc.status = "eliminated"
+            loser_sc.eliminated_round = show.current_round + 1
+            loser_sc.eliminated_by = "loss"
+
+            # Hype changes
+            winner.hype = min(100.0, winner.hype + 15)
+            loser.hype = max(0.0, loser.hype - 5)
+            winner_sc.show_hype_earned += 15
+
+            mark_rankings_dirty(session, WeightClass(fa.weight_class))
+
+            fight_results.append({
+                "fighter_a_id": fa.id,
+                "fighter_a": fa.name,
+                "fighter_b_id": fb.id,
+                "fighter_b": fb.name,
+                "winner_id": result.winner_id,
+                "winner": winner.name,
+                "loser": loser.name,
+                "is_walkover": False,
+                "method": result.method,
+                "round": result.round_ended,
+                "time": result.time_ended,
+                "narrative": result.narrative,
+            })
+
+    # --- Training gains for all active contestants ---
+    still_active = [sc for sc in contestants if sc.status == "active"]
+    for sc in still_active:
+        fighter = session.get(Fighter, sc.fighter_id)
+        if fighter:
+            attr = rng.choice(["striking", "grappling", "wrestling", "cardio", "chin", "speed"])
+            gain = rng.randint(1, 3)
+            current = getattr(fighter, attr)
+            setattr(fighter, attr, min(85, current + gain))
+
+    # --- Update show hype ---
+    hype_base = rng.uniform(5, 10)
+    finish_bonus = sum(3 for fr in fight_results if fr.get("method") in ("KO/TKO", "Submission"))
+    drama_bonus = sum(2 for s in shenanigan_results if s["category"] == "negative")
+    hype_generated = hype_base + finish_bonus + drama_bonus
+    show.show_hype = min(100.0, show.show_hype + hype_generated)
+
+    # --- Update round counter ---
+    if ep_type == "intro":
+        show.current_round = 0
+    elif ep_type == "first_round":
+        show.current_round = 1
+    elif ep_type == "quarterfinal":
+        show.current_round = 2 if show.format_size == 16 else 1
+    elif ep_type == "semifinal":
+        show.current_round = 3 if show.format_size == 16 else 2
+    elif ep_type == "finale":
+        show.current_round = 4 if show.format_size == 16 else 3
+
+    # --- Create Event record for broadcast compliance ---
+    broadcast_revenue = 0.0
+    active_deal = session.execute(
+        select(BroadcastDeal).where(
+            BroadcastDeal.organization_id == player_org.id,
+            BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+        )
+    ).scalar_one_or_none()
+    if active_deal:
+        broadcast_revenue = active_deal.fee_per_event
+        active_deal.events_delivered += 1
+
+    event = Event(
+        name=f"{show.name} - Episode {ep_num}",
+        event_date=sim_date,
+        venue="TV Studio",
+        organization_id=player_org.id,
+        status=EventStatus.COMPLETED,
+        gate_revenue=0.0,
+        ppv_buys=0,
+        broadcast_revenue=broadcast_revenue,
+        venue_rental_cost=0.0,
+        tickets_sold=0,
+        venue_capacity=0,
+    )
+    session.add(event)
+    session.flush()
+
+    show.total_revenue += broadcast_revenue
+
+    # --- Deduct production cost ---
+    if ep_num > 1:  # First episode was already deducted at creation
+        player_org.bank_balance -= show.production_cost_per_episode
+        show.total_production_spend += show.production_cost_per_episode
+
+    # --- Store episode ---
+    episode_narrative = f"Episode {ep_num}: {ep_type.replace('_', ' ').title()}"
+    if shenanigan_results:
+        episode_narrative += f" — {len(shenanigan_results)} shenanigan(s)"
+    if fight_results:
+        episode_narrative += f", {len(fight_results)} fight(s)"
+
+    episode = ShowEpisode(
+        show_id=show.id,
+        episode_number=ep_num,
+        episode_type=ep_type,
+        air_date=sim_date,
+        fight_results=json.dumps(fight_results) if fight_results else None,
+        shenanigans=json.dumps(shenanigan_results) if shenanigan_results else None,
+        episode_narrative=episode_narrative,
+        episode_rating=min(10.0, show.show_hype / 10),
+        hype_generated=hype_generated,
+        event_id=event.id,
+    )
+    session.add(episode)
+
+    show.episodes_aired = ep_num
+
+    # --- Check if finale ---
+    if ep_type == "finale":
+        _conclude_show(session, show, contestants, sim_date, player_org)
+        notifications.append(f"Reality show '{show.name}' has concluded!")
+    else:
+        notifications.append(f"'{show.name}' Episode {ep_num} aired — {ep_type.replace('_', ' ').title()}")
+
+    return notifications
+
+
+def _get_round_matchups(show, ep_type, contestants_by_seed, session):
+    """Return list of (seed_a, seed_b) matchups for the current round."""
+    if show.format_size == 8:
+        if ep_type == "quarterfinal":
+            return [(1, 8), (4, 5), (3, 6), (2, 7)]
+        elif ep_type == "semifinal":
+            # Get QF winners from episode results
+            return _get_next_round_matchups(show, "quarterfinal", contestants_by_seed, session)
+        elif ep_type == "finale":
+            return _get_next_round_matchups(show, "semifinal", contestants_by_seed, session)
+    else:
+        if ep_type == "first_round":
+            return [(1, 16), (8, 9), (4, 13), (5, 12), (3, 14), (6, 11), (2, 15), (7, 10)]
+        elif ep_type == "quarterfinal":
+            return _get_next_round_matchups(show, "first_round", contestants_by_seed, session)
+        elif ep_type == "semifinal":
+            return _get_next_round_matchups(show, "quarterfinal", contestants_by_seed, session)
+        elif ep_type == "finale":
+            return _get_next_round_matchups(show, "semifinal", contestants_by_seed, session)
+    return []
+
+
+def _get_next_round_matchups(show, prev_ep_type, contestants_by_seed, session):
+    """Determine next round matchups from previous round results."""
+    # Find the previous round episode
+    prev_ep = session.execute(
+        select(ShowEpisode).where(
+            ShowEpisode.show_id == show.id,
+            ShowEpisode.episode_type == prev_ep_type,
+        )
+    ).scalar_one_or_none()
+
+    if not prev_ep or not prev_ep.fight_results:
+        return []
+
+    fight_data = json.loads(prev_ep.fight_results)
+    winner_ids = [fr["winner_id"] for fr in fight_data if fr.get("winner_id")]
+
+    # Map winner IDs back to seeds
+    id_to_seed = {}
+    for seed, sc in contestants_by_seed.items():
+        id_to_seed[sc.fighter_id] = seed
+
+    winner_seeds = [id_to_seed.get(wid) for wid in winner_ids if id_to_seed.get(wid) is not None]
+
+    # Pair winners sequentially: 1st vs 2nd, 3rd vs 4th, etc.
+    matchups = []
+    for i in range(0, len(winner_seeds), 2):
+        if i + 1 < len(winner_seeds):
+            matchups.append((winner_seeds[i], winner_seeds[i + 1]))
+    return matchups
+
+
+def _conclude_show(session, show, contestants, sim_date, player_org):
+    """Handle show completion: set winner, apply tags, prestige, revenue."""
+    # Find winner and runner-up from the finale fight
+    finale_ep = session.execute(
+        select(ShowEpisode).where(
+            ShowEpisode.show_id == show.id,
+            ShowEpisode.episode_type == "finale",
+        )
+    ).scalar_one_or_none()
+
+    if finale_ep and finale_ep.fight_results:
+        fight_data = json.loads(finale_ep.fight_results)
+        if fight_data:
+            finale_fight = fight_data[0]
+            show.winner_id = finale_fight.get("winner_id")
+            # Runner-up is the loser of the finale
+            fighter_ids = {finale_fight.get("fighter_a_id"), finale_fight.get("fighter_b_id")}
+            fighter_ids.discard(show.winner_id)
+            if fighter_ids:
+                show.runner_up_id = fighter_ids.pop()
+
+    show.status = ShowStatus.COMPLETED
+    show.end_date = sim_date
+
+    # Apply post-show effects
+    for sc in contestants:
+        fighter = session.get(Fighter, sc.fighter_id)
+        if not fighter:
+            continue
+
+        try:
+            tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+        except (json.JSONDecodeError, TypeError):
+            tags = []
+
+        if fighter.id == show.winner_id:
+            if "show_winner" not in tags:
+                tags.append("show_winner")
+            fighter.hype = min(100.0, fighter.hype + 30)
+            fighter.popularity = min(100.0, fighter.popularity + 20)
+        elif fighter.id == show.runner_up_id:
+            if "show_runner_up" not in tags:
+                tags.append("show_runner_up")
+            fighter.hype = min(100.0, fighter.hype + 15)
+            fighter.popularity = min(100.0, fighter.popularity + 10)
+        elif sc.eliminated_round and sc.eliminated_round >= (3 if show.format_size == 16 else 2):
+            if "show_veteran" not in tags:
+                tags.append("show_veteran")
+            fighter.hype = min(100.0, fighter.hype + 8)
+            fighter.popularity = min(100.0, fighter.popularity + 5)
+        else:
+            if "show_veteran" not in tags:
+                tags.append("show_veteran")
+            fighter.hype = min(100.0, fighter.hype + 3)
+            fighter.popularity = min(100.0, fighter.popularity + 3)
+
+        fighter.narrative_tags = json.dumps(tags)
+
+    # Org prestige gain
+    prestige_gain = 3
+    if show.show_hype > 70:
+        prestige_gain = 8
+    elif show.show_hype > 50:
+        prestige_gain = 5
+    player_org.prestige = min(100.0, player_org.prestige + prestige_gain)
+
+    # Completion bonus
+    completion_bonus = show.show_hype * 500
+    show.total_revenue += completion_bonus
+    player_org.bank_balance += completion_bonus
+
+    # Winner contract auto-offer notification
+    if show.winner_id:
+        winner = session.get(Fighter, show.winner_id)
+        if winner:
+            session.add(Notification(
+                message=f"{winner.name} won '{show.name}'! Sign them at a 25% discount.",
+                type="show_winner",
+                created_date=sim_date,
+            ))
+
+
+# ---------------------------------------------------------------------------
 # AI rival behaviors
 # ---------------------------------------------------------------------------
 
@@ -448,8 +1004,26 @@ def _ai_sign_free_agents(
         ).scalars().all()
     )
 
+    # Also exclude fighters on active reality shows or shows that just completed this month
+    show_ids = set(
+        session.execute(
+            select(ShowContestant.fighter_id)
+            .join(RealityShow, ShowContestant.show_id == RealityShow.id)
+            .where(
+                db_or(
+                    RealityShow.status == ShowStatus.IN_PROGRESS,
+                    db_and(
+                        RealityShow.status == ShowStatus.COMPLETED,
+                        RealityShow.end_date == sim_date,
+                    ),
+                )
+            )
+        ).scalars().all()
+    )
+    excluded_ids = active_ids | show_ids
+
     all_fighters = session.execute(select(Fighter)).scalars().all()
-    free_agents = [f for f in all_fighters if f.id not in active_ids]
+    free_agents = [f for f in all_fighters if f.id not in excluded_ids]
 
     if not free_agents:
         return
@@ -591,6 +1165,24 @@ def _ai_claim_expired_fighters(
         ).scalars().all()
     )
 
+    # Exclude show contestants (active or just-completed)
+    show_ids = set(
+        session.execute(
+            select(ShowContestant.fighter_id)
+            .join(RealityShow, ShowContestant.show_id == RealityShow.id)
+            .where(
+                db_or(
+                    RealityShow.status == ShowStatus.IN_PROGRESS,
+                    db_and(
+                        RealityShow.status == ShowStatus.COMPLETED,
+                        RealityShow.end_date == sim_date,
+                    ),
+                )
+            )
+        ).scalars().all()
+    )
+    excluded_ids = active_ids | show_ids
+
     # Find recently expired contracts (expired this cycle)
     recently_expired = session.execute(
         select(Contract, Fighter)
@@ -605,7 +1197,7 @@ def _ai_claim_expired_fighters(
     player_prestige = player_org.prestige if player_org else 50.0
 
     for contract, fighter in recently_expired:
-        if fighter.id in active_ids:
+        if fighter.id in excluded_ids:
             continue
         if fighter.overall < 62:
             continue
@@ -806,6 +1398,16 @@ def sim_month(
             session.add(Notification(
                 message=msg,
                 type="sponsorship",
+                created_date=sim_date,
+            ))
+
+    # 1e. Process reality show episode (player org only)
+    if player_org:
+        show_notifications = _process_reality_show(session, sim_date, player_org, rng)
+        for msg in show_notifications:
+            session.add(Notification(
+                message=msg,
+                type="show",
                 created_date=sim_date,
             ))
 

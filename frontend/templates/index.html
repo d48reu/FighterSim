@@ -25,6 +25,7 @@
         <div class="nav-item" data-view="roster">Roster</div>
         <div class="nav-item" data-view="development">Development</div>
         <div class="nav-item" data-view="broadcast">TV Deals</div>
+        <div class="nav-item" data-view="show">Reality Show</div>
         <div class="nav-item" data-view="free-agents">Free Agents</div>
         <div class="nav-item" data-view="rankings">Rankings</div>
         <div class="nav-item" data-view="hof">Hall of Fame</div>
@@ -125,6 +126,11 @@
         <div id="sponsorship-widget" class="sponsorship-widget hidden">
           <h3>&#x1F4B0; Sponsorship Income</h3>
           <div id="sponsorship-widget-content"></div>
+        </div>
+
+        <div id="show-widget" class="show-widget hidden">
+          <h3>&#x1F3AC; Reality Show</h3>
+          <div id="show-widget-content"></div>
         </div>
       </div>
 
@@ -437,6 +443,110 @@
         <h2 style="margin-top:24px">Available Tiers</h2>
         <div id="broadcast-org-stats" class="broadcast-org-stats"></div>
         <div id="broadcast-tiers" class="broadcast-tiers"></div>
+      </div>
+
+      <!-- Reality Show -->
+      <div id="view-show" class="view hidden">
+        <!-- State 1: No active show — setup -->
+        <div id="show-setup">
+          <h1>Reality Show</h1>
+          <div class="show-setup-form">
+            <div class="show-setup-row">
+              <label>Show Name
+                <input type="text" id="show-name-input" placeholder="The Ultimate Fighter Season 1">
+              </label>
+              <label>Weight Class
+                <select id="show-wc-select">
+                  <option value="Flyweight">Flyweight</option>
+                  <option value="Lightweight">Lightweight</option>
+                  <option value="Welterweight">Welterweight</option>
+                  <option value="Middleweight">Middleweight</option>
+                  <option value="Heavyweight">Heavyweight</option>
+                </select>
+              </label>
+              <div class="show-format-toggle">
+                <span>Format:</span>
+                <button class="format-btn active" data-size="8">8 Fighters</button>
+                <button class="format-btn" data-size="16">16 Fighters</button>
+              </div>
+            </div>
+            <div class="show-cost-preview" id="show-cost-preview">
+              Cost: $75,000/episode x 4 episodes = $300,000 total
+            </div>
+          </div>
+
+          <div class="show-setup-panels">
+            <div class="show-pool-panel">
+              <h3>Available Fighters <span id="show-pool-count">(0)</span></h3>
+              <div id="show-fighter-pool" class="show-fighter-pool">
+                <p class="muted">Select a weight class to load fighters.</p>
+              </div>
+            </div>
+            <div class="show-selected-panel">
+              <h3>Selected <span id="show-selected-count">0</span>/<span id="show-format-target">8</span></h3>
+              <div id="show-selected-list" class="show-selected-list">
+                <p class="muted">Click fighters to add them.</p>
+              </div>
+              <button class="btn btn-primary" id="btn-start-show" disabled style="width:100%;margin-top:12px">Start Production</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- State 2: Show in progress -->
+        <div id="show-active" class="hidden">
+          <div class="show-active-header">
+            <div class="show-active-title">
+              <h1 id="show-active-name">—</h1>
+              <span class="wc-badge" id="show-active-wc">—</span>
+              <span class="show-ep-progress" id="show-ep-progress">Episode 0/0</span>
+            </div>
+            <div class="show-hype-bar">
+              <span>Show Hype</span>
+              <div class="hype-bar-track">
+                <div class="hype-bar-fill" id="show-hype-fill" style="width:20%"></div>
+              </div>
+              <span id="show-hype-val">20</span>
+            </div>
+          </div>
+
+          <div class="show-bracket-container" id="show-bracket-container">
+            <p class="muted">Loading bracket...</p>
+          </div>
+
+          <div class="show-latest-episode" id="show-latest-episode"></div>
+
+          <div class="show-contestants-section">
+            <h3>Contestants</h3>
+            <div id="show-contestants-list" class="show-contestants-list"></div>
+          </div>
+
+          <button class="btn btn-danger" id="btn-cancel-show" style="margin-top:16px">Cancel Show</button>
+        </div>
+
+        <!-- State 3: Show completed -->
+        <div id="show-completed" class="hidden">
+          <div class="show-champion-banner" id="show-champion-banner">
+            <div class="champion-label">CHAMPION</div>
+            <div class="champion-name" id="show-champion-name">—</div>
+          </div>
+
+          <div class="show-bracket-container" id="show-completed-bracket"></div>
+
+          <div class="show-signing-section">
+            <h3>Sign Contestants</h3>
+            <div id="show-signing-list" class="show-signing-list"></div>
+          </div>
+
+          <div class="show-summary" id="show-summary"></div>
+        </div>
+
+        <!-- Show history -->
+        <div class="show-history-section" style="margin-top:32px">
+          <h3>Show History</h3>
+          <div id="show-history-list">
+            <p class="muted">No past shows.</p>
+          </div>
+        </div>
       </div>
 
       <!-- Free Agents -->

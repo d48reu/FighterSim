@@ -66,6 +66,13 @@ class SponsorshipStatus(str, enum.Enum):
     CANCELLED = "Cancelled"
 
 
+class ShowStatus(str, enum.Enum):
+    CASTING = "Casting"
+    IN_PROGRESS = "In Progress"
+    COMPLETED = "Completed"
+    CANCELLED = "Cancelled"
+
+
 class Archetype(str, enum.Enum):
     PHENOM         = "Phenom"
     LATE_BLOOMER   = "Late Bloomer"
@@ -485,4 +492,100 @@ class Sponsorship(Base):
     __table_args__ = (
         Index("ix_sponsorship_fighter", "fighter_id"),
         Index("ix_sponsorship_org", "organization_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reality Show
+# ---------------------------------------------------------------------------
+
+class RealityShow(Base):
+    """A reality TV show (Ultimate Fighter-style) produced by the player org."""
+
+    __tablename__ = "reality_shows"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = Column(String(120), nullable=False)
+    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    weight_class: Mapped[str] = Column(Enum(WeightClass), nullable=False)
+    status: Mapped[str] = Column(Enum(ShowStatus), default=ShowStatus.IN_PROGRESS)
+    format_size: Mapped[int] = Column(Integer, nullable=False)  # 8 or 16
+    start_date: Mapped[Optional[date]] = Column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = Column(Date, nullable=True)
+    current_round: Mapped[int] = Column(Integer, default=0)  # 0=intro
+    episodes_aired: Mapped[int] = Column(Integer, default=0)
+    production_cost_per_episode: Mapped[float] = Column(Float, default=75000.0)
+    total_production_spend: Mapped[float] = Column(Float, default=0.0)
+    total_revenue: Mapped[float] = Column(Float, default=0.0)
+    show_hype: Mapped[float] = Column(Float, default=20.0)
+    winner_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
+    runner_up_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
+
+    contestants: Mapped[List["ShowContestant"]] = relationship(
+        "ShowContestant", back_populates="show", cascade="all, delete-orphan"
+    )
+    episodes: Mapped[List["ShowEpisode"]] = relationship(
+        "ShowEpisode", back_populates="show", cascade="all, delete-orphan",
+        order_by="ShowEpisode.episode_number"
+    )
+
+    __table_args__ = (
+        Index("ix_show_org", "organization_id"),
+        Index("ix_show_status", "status"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<RealityShow {self.name} status={self.status}>"
+
+
+class ShowContestant(Base):
+    """A fighter participating in a reality show."""
+
+    __tablename__ = "show_contestants"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    show_id: Mapped[int] = Column(Integer, ForeignKey("reality_shows.id"), nullable=False)
+    fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
+    seed: Mapped[int] = Column(Integer, nullable=False)
+    status: Mapped[str] = Column(String(30), default="active")  # active/eliminated/quit/suspended
+    eliminated_round: Mapped[Optional[int]] = Column(Integer, nullable=True)
+    eliminated_by: Mapped[Optional[str]] = Column(String(50), nullable=True)  # loss/quit/injury/expelled
+    show_wins: Mapped[int] = Column(Integer, default=0)
+    show_losses: Mapped[int] = Column(Integer, default=0)
+    show_hype_earned: Mapped[float] = Column(Float, default=0.0)
+    shenanigan_count: Mapped[int] = Column(Integer, default=0)
+
+    show: Mapped["RealityShow"] = relationship("RealityShow", back_populates="contestants")
+    fighter: Mapped["Fighter"] = relationship("Fighter")
+
+    __table_args__ = (
+        Index("ix_contestant_show", "show_id"),
+        Index("ix_contestant_fighter", "fighter_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ShowContestant fighter_id={self.fighter_id} seed={self.seed} status={self.status}>"
+
+
+class ShowEpisode(Base):
+    """A single episode of a reality show."""
+
+    __tablename__ = "show_episodes"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    show_id: Mapped[int] = Column(Integer, ForeignKey("reality_shows.id"), nullable=False)
+    episode_number: Mapped[int] = Column(Integer, nullable=False)
+    episode_type: Mapped[str] = Column(String(30), nullable=False)  # intro/quarterfinal/semifinal/finale/first_round
+    air_date: Mapped[date] = Column(Date, nullable=False)
+    fight_results: Mapped[Optional[str]] = Column(Text, nullable=True)  # JSON
+    shenanigans: Mapped[Optional[str]] = Column(Text, nullable=True)  # JSON
+    episode_narrative: Mapped[Optional[str]] = Column(Text, nullable=True)
+    episode_rating: Mapped[float] = Column(Float, default=0.0)
+    hype_generated: Mapped[float] = Column(Float, default=0.0)
+    event_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("events.id"), nullable=True)
+
+    show: Mapped["RealityShow"] = relationship("RealityShow", back_populates="episodes")
+
+    __table_args__ = (
+        Index("ix_episode_show", "show_id"),
     )

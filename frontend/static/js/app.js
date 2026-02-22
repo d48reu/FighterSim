@@ -17,6 +17,10 @@ const state = {
   poolFilter: '',
   poolWc: '',
   bookableFighters: [],
+  // Show state
+  activeShowId: null,
+  showFormatSize: 8,
+  showSelectedFighters: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -76,6 +80,7 @@ function loadView(view) {
   if (view === 'roster')       loadRoster();
   if (view === 'development')  loadDevelopmentView();
   if (view === 'broadcast')    loadBroadcastView();
+  if (view === 'show')          loadShowView();
   if (view === 'free-agents')  loadFreeAgents();
   if (view === 'rankings')     loadRankings(state.currentWeightClass);
   if (view === 'hof')          loadHallOfFame();
@@ -103,6 +108,7 @@ async function loadDashboard() {
   loadBroadcastWidget();
   loadRivalWidget();
   loadSponsorshipWidget();
+  loadShowWidget();
 }
 
 async function loadDashUpcoming() {
@@ -2273,6 +2279,447 @@ function esc(str) {
 }
 
 // ---------------------------------------------------------------------------
+// Reality Show
+// ---------------------------------------------------------------------------
+
+async function loadShowView() {
+  try {
+    const data = await api('/api/show/active');
+    if (data.show) {
+      state.activeShowId = data.show.id;
+      if (data.show.status === 'In Progress') {
+        showActiveState(data.show);
+      } else {
+        showCompletedState(data.show);
+      }
+    } else {
+      showSetupState();
+    }
+    loadShowHistory();
+  } catch (err) {
+    setStatus('Error loading show: ' + err.message, true);
+  }
+}
+
+function showSetupState() {
+  document.getElementById('show-setup').classList.remove('hidden');
+  document.getElementById('show-active').classList.add('hidden');
+  document.getElementById('show-completed').classList.add('hidden');
+  state.showSelectedFighters = [];
+  updateShowFormatUI();
+  loadShowEligibleFighters();
+}
+
+function updateShowFormatUI() {
+  const size = state.showFormatSize;
+  const episodes = size === 8 ? 4 : 5;
+  const cost = 75000 * episodes;
+  document.getElementById('show-cost-preview').textContent =
+    `Cost: $75,000/episode x ${episodes} episodes = $${cost.toLocaleString()} total`;
+  document.getElementById('show-format-target').textContent = size;
+  renderShowSelected();
+}
+
+async function loadShowEligibleFighters() {
+  const wc = document.getElementById('show-wc-select').value;
+  try {
+    const fighters = await api(`/api/show/eligible-fighters?weight_class=${encodeURIComponent(wc)}`);
+    const pool = document.getElementById('show-fighter-pool');
+    document.getElementById('show-pool-count').textContent = `(${fighters.length})`;
+    if (fighters.length === 0) {
+      pool.innerHTML = '<p class="muted">No eligible fighters in this weight class.</p>';
+      return;
+    }
+    pool.innerHTML = fighters.map(f => `
+      <div class="show-pool-fighter ${state.showSelectedFighters.some(s => s.id === f.id) ? 'selected' : ''}"
+           data-id="${f.id}" onclick="toggleShowFighter(${f.id})">
+        <div class="show-fighter-info">
+          <span class="show-fighter-ovr">${f.overall}</span>
+          <span>${esc(f.name)}</span>
+          <span style="color:var(--muted);font-size:12px">${f.age}y ${f.record}</span>
+        </div>
+        <span class="show-fighter-salary">$${f.asking_salary?.toLocaleString() || '?'}</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    document.getElementById('show-fighter-pool').innerHTML = '<p class="muted">Error loading fighters.</p>';
+  }
+}
+
+function toggleShowFighter(id) {
+  const idx = state.showSelectedFighters.findIndex(f => f.id === id);
+  if (idx !== -1) {
+    state.showSelectedFighters.splice(idx, 1);
+  } else {
+    if (state.showSelectedFighters.length >= state.showFormatSize) return;
+    // Find fighter data from pool
+    const el = document.querySelector(`.show-pool-fighter[data-id="${id}"]`);
+    if (!el) return;
+    const name = el.querySelector('.show-fighter-info span:nth-child(2)')?.textContent || 'Unknown';
+    const ovr = el.querySelector('.show-fighter-ovr')?.textContent || '0';
+    state.showSelectedFighters.push({ id, name, overall: parseInt(ovr) });
+  }
+  // Refresh pool selection state
+  document.querySelectorAll('.show-pool-fighter').forEach(el => {
+    const fId = parseInt(el.dataset.id);
+    el.classList.toggle('selected', state.showSelectedFighters.some(f => f.id === fId));
+  });
+  renderShowSelected();
+}
+
+function renderShowSelected() {
+  const list = document.getElementById('show-selected-list');
+  document.getElementById('show-selected-count').textContent = state.showSelectedFighters.length;
+  const btn = document.getElementById('btn-start-show');
+  btn.disabled = state.showSelectedFighters.length !== state.showFormatSize;
+
+  if (state.showSelectedFighters.length === 0) {
+    list.innerHTML = '<p class="muted">Click fighters to add them.</p>';
+    return;
+  }
+  // Sort by overall desc (seed preview)
+  const sorted = [...state.showSelectedFighters].sort((a, b) => b.overall - a.overall);
+  list.innerHTML = sorted.map((f, i) => `
+    <div class="show-selected-fighter" onclick="toggleShowFighter(${f.id})">
+      <span class="contestant-seed">#${i + 1}</span>
+      <span>${esc(f.name)}</span>
+      <span class="show-fighter-ovr">${f.overall}</span>
+    </div>
+  `).join('');
+}
+
+async function startShowProduction() {
+  const name = document.getElementById('show-name-input').value.trim();
+  if (!name) { setStatus('Please enter a show name.', true); return; }
+  const wc = document.getElementById('show-wc-select').value;
+  const ids = state.showSelectedFighters.map(f => f.id);
+
+  try {
+    setStatus('Creating show...');
+    const result = await api('/api/show/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        weight_class: wc,
+        format_size: state.showFormatSize,
+        fighter_ids: ids,
+      }),
+    });
+    if (result.error) { setStatus(result.error, true); return; }
+    setStatus('Show created!');
+    state.activeShowId = result.id;
+    loadShowView();
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+function showActiveState(show) {
+  document.getElementById('show-setup').classList.add('hidden');
+  document.getElementById('show-active').classList.remove('hidden');
+  document.getElementById('show-completed').classList.add('hidden');
+
+  document.getElementById('show-active-name').textContent = show.name;
+  document.getElementById('show-active-wc').textContent = show.weight_class;
+  document.getElementById('show-ep-progress').textContent =
+    `Episode ${show.episodes_aired}/${show.total_episodes}`;
+  document.getElementById('show-hype-fill').style.width = `${show.show_hype}%`;
+  document.getElementById('show-hype-val').textContent = Math.round(show.show_hype);
+
+  // Render bracket
+  renderShowBracket(show.id, 'show-bracket-container');
+
+  // Render latest episode
+  renderLatestEpisode(show);
+
+  // Render contestants
+  renderContestants(show.contestants);
+}
+
+async function renderShowBracket(showId, containerId) {
+  try {
+    const data = await api(`/api/show/${showId}/bracket`);
+    const container = document.getElementById(containerId);
+    if (!data.rounds || data.rounds.length === 0) {
+      container.innerHTML = '<p class="muted">Bracket not yet available.</p>';
+      return;
+    }
+    let html = '<div class="show-bracket">';
+    for (const round of data.rounds) {
+      html += '<div class="bracket-round">';
+      html += `<div class="bracket-round-title">${esc(round.round_name)}</div>`;
+      for (const m of round.matchups) {
+        html += '<div class="bracket-matchup">';
+        const aWinner = m.winner === m.fighter_a?.id;
+        const bWinner = m.winner === m.fighter_b?.id;
+        const aClass = m.winner ? (aWinner ? 'winner' : 'loser') : '';
+        const bClass = m.winner ? (bWinner ? 'winner' : 'loser') : '';
+        const aName = m.fighter_a?.name || 'TBD';
+        const bName = m.fighter_b?.name || 'TBD';
+        const aSeed = m.fighter_a?.seed || '?';
+        const bSeed = m.fighter_b?.seed || '?';
+        html += `<div class="bracket-fighter ${aClass} ${m.is_walkover && !aWinner ? 'bye' : ''}">
+          <span><span class="bracket-seed">${aSeed}</span> ${esc(aName)}</span>
+          ${aWinner ? '<span>&#x2714;</span>' : ''}
+        </div>`;
+        html += `<div class="bracket-fighter ${bClass} ${m.is_walkover && !bWinner ? 'bye' : ''}">
+          <span><span class="bracket-seed">${bSeed}</span> ${esc(bName)}</span>
+          ${bWinner ? '<span>&#x2714;</span>' : ''}
+        </div>`;
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    // Winner column
+    if (data.winner) {
+      html += '<div class="bracket-round">';
+      html += '<div class="bracket-round-title">Champion</div>';
+      html += `<div class="bracket-matchup"><div class="bracket-fighter winner" style="text-align:center;font-size:15px">
+        ${esc(data.winner.name)}
+      </div></div>`;
+      html += '</div>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+  } catch (err) {
+    document.getElementById(containerId).innerHTML = '<p class="muted">Error loading bracket.</p>';
+  }
+}
+
+function renderLatestEpisode(show) {
+  const el = document.getElementById('show-latest-episode');
+  if (!show.episodes || show.episodes.length === 0) {
+    el.innerHTML = '<p class="muted">No episodes aired yet. Advance month to air the next episode.</p>';
+    return;
+  }
+  const ep = show.episodes[show.episodes.length - 1];
+  let html = `<div class="latest-ep-header">Latest: Episode ${ep.episode_number} — ${ep.episode_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</div>`;
+
+  // Shenanigans
+  const shenanigans = ep.shenanigans || [];
+  if (shenanigans.length > 0) {
+    for (const s of shenanigans) {
+      const cls = s.category === 'positive' ? 'positive' : 'negative';
+      const icon = s.category === 'positive' ? '&#x2B50;' : '&#x26A0;';
+      html += `<div class="shenanigan-card ${cls}">
+        <div class="shenanigan-header">
+          <span class="shenanigan-icon">${icon}</span>
+          <strong>${esc(s.fighter_name)}</strong>
+          ${s.tag ? `<span class="shenanigan-tag-badge">${esc(s.tag)}</span>` : ''}
+        </div>
+        <div class="shenanigan-desc">${esc(s.description)}</div>
+      </div>`;
+    }
+  }
+
+  // Fight results
+  const fights = ep.fight_results || [];
+  for (const fr of fights) {
+    const method = fr.is_walkover ? 'Walkover' : `${fr.method} R${fr.round}`;
+    html += `<div class="result-fight-card" style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span><strong>${esc(fr.winner)}</strong> def. ${esc(fr.loser || fr.fighter_b)}</span>
+        <span style="color:var(--muted);font-size:12px">${method}</span>
+      </div>
+      ${fr.narrative ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(fr.narrative)}</div>` : ''}
+    </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+function renderContestants(contestants) {
+  const el = document.getElementById('show-contestants-list');
+  if (!contestants || contestants.length === 0) {
+    el.innerHTML = '<p class="muted">No contestants.</p>';
+    return;
+  }
+  const sorted = [...contestants].sort((a, b) => a.seed - b.seed);
+  el.innerHTML = sorted.map(c => `
+    <div class="show-contestant-row ${c.contestant_status !== 'active' ? 'eliminated' : ''}">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="contestant-seed">#${c.seed}</span>
+        <span>${esc(c.name)}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span class="contestant-record">${c.show_wins}-${c.show_losses}</span>
+        <span style="font-size:11px;color:var(--muted)">${c.contestant_status}</span>
+        ${c.shenanigan_count > 0 ? `<span style="font-size:11px;color:var(--accent)">${c.shenanigan_count} drama</span>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function showCompletedState(show) {
+  document.getElementById('show-setup').classList.add('hidden');
+  document.getElementById('show-active').classList.add('hidden');
+  document.getElementById('show-completed').classList.remove('hidden');
+
+  // Champion banner
+  const winner = show.contestants?.find(c => c.id === show.winner_id || c.id === show.winner_id);
+  const winnerFighter = show.contestants?.find(c => {
+    return c.id === show.winner_id;
+  });
+  // Try to find winner by fighter_id matching show.winner_id
+  const winnerContestant = show.contestants?.find(c => c.id === show.winner_id)
+    || show.contestants?.find(c => c.fighter_id === show.winner_id);
+  document.getElementById('show-champion-name').textContent =
+    winnerContestant?.name || 'Champion';
+
+  // Bracket
+  renderShowBracket(show.id, 'show-completed-bracket');
+
+  // Signing list
+  try {
+    const contestants = await api(`/api/show/${show.id}/contestants`);
+    const list = document.getElementById('show-signing-list');
+    if (contestants.length === 0) {
+      list.innerHTML = '<p class="muted">All contestants already signed.</p>';
+    } else {
+      list.innerHTML = contestants.map(c => `
+        <div class="show-signing-row">
+          <div class="signing-info">
+            <span class="signing-name">${esc(c.name)}</span>
+            <span class="signing-meta">OVR ${c.overall} | ${c.show_wins}-${c.show_losses} show record | Seed #${c.seed}</span>
+            ${c.discount_pct > 0 ? `<span class="signing-discount">${c.placement} — ${c.discount_pct}% discount</span>` : `<span class="signing-meta">${c.placement}</span>`}
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span>$${c.modified_asking_salary?.toLocaleString()}/yr</span>
+            ${c.placement === 'Winner' ?
+              `<button class="btn btn-primary" onclick="signShowWinner(${show.id})">Sign Winner</button>` :
+              `<button class="btn btn-secondary" onclick="openPanel(${c.id},'free-agents')">View</button>`
+            }
+          </div>
+        </div>
+      `).join('');
+    }
+  } catch (err) {
+    document.getElementById('show-signing-list').innerHTML = '<p class="muted">Error loading contestants.</p>';
+  }
+
+  // Summary
+  const profit = show.total_revenue - show.total_production_spend;
+  document.getElementById('show-summary').innerHTML = `
+    <div class="show-summary-item">
+      <div class="show-summary-label">Total Cost</div>
+      <div class="show-summary-value">$${Math.round(show.total_production_spend).toLocaleString()}</div>
+    </div>
+    <div class="show-summary-item">
+      <div class="show-summary-label">Total Revenue</div>
+      <div class="show-summary-value">$${Math.round(show.total_revenue).toLocaleString()}</div>
+    </div>
+    <div class="show-summary-item">
+      <div class="show-summary-label">Profit</div>
+      <div class="show-summary-value" style="color:${profit >= 0 ? '#4caf50' : 'var(--accent)'}">$${Math.round(profit).toLocaleString()}</div>
+    </div>
+    <div class="show-summary-item">
+      <div class="show-summary-label">Show Hype</div>
+      <div class="show-summary-value">${Math.round(show.show_hype)}</div>
+    </div>
+  `;
+}
+
+async function signShowWinner(showId) {
+  try {
+    setStatus('Offering contract to winner...');
+    const result = await api(`/api/show/${showId}/sign-winner`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    setStatus(result.message || (result.accepted ? 'Contract signed!' : 'Offer rejected.'));
+    loadShowView();
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+async function cancelShow() {
+  if (!state.activeShowId) return;
+  if (!confirm('Cancel the show? This will cost -3 prestige with no refund.')) return;
+  try {
+    const result = await api(`/api/show/${state.activeShowId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    setStatus(result.message || 'Show cancelled.');
+    state.activeShowId = null;
+    loadShowView();
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+async function loadShowHistory() {
+  try {
+    const history = await api('/api/show/history');
+    const el = document.getElementById('show-history-list');
+    if (history.length === 0) {
+      el.innerHTML = '<p class="muted">No past shows.</p>';
+      return;
+    }
+    el.innerHTML = history.map(h => `
+      <div class="show-history-item" onclick="viewShowDetails(${h.id})" style="cursor:pointer">
+        <div>
+          <div class="show-hist-name">${esc(h.name)}</div>
+          <div class="show-hist-meta">${h.weight_class} | ${h.format_size} fighters | ${h.start_date || '?'} — ${h.end_date || '?'}</div>
+        </div>
+        <div style="text-align:right">
+          <div>${h.winner_name ? esc(h.winner_name) : h.status}</div>
+          <div class="show-hist-meta">Hype: ${Math.round(h.show_hype)}</div>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    document.getElementById('show-history-list').innerHTML = '<p class="muted">Error loading history.</p>';
+  }
+}
+
+async function viewShowDetails(showId) {
+  try {
+    const show = await api(`/api/show/${showId}`);
+    if (show.error) return;
+    state.activeShowId = showId;
+    if (show.status === 'Completed' || show.status === 'Cancelled') {
+      showCompletedState(show);
+    } else {
+      showActiveState(show);
+    }
+  } catch (err) {
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+async function loadShowWidget() {
+  try {
+    const data = await api('/api/show/active');
+    const widget = document.getElementById('show-widget');
+    if (!data.show) {
+      widget.classList.add('hidden');
+      return;
+    }
+    widget.classList.remove('hidden');
+    const show = data.show;
+    document.getElementById('show-widget-content').innerHTML = `
+      <div class="show-widget-info">
+        <div><strong>${esc(show.name)}</strong></div>
+        <div>Episode ${show.episodes_aired}/${show.total_episodes} | ${show.weight_class}</div>
+        <div class="show-hype-bar" style="margin-top:4px">
+          <span style="font-size:12px">Hype</span>
+          <div class="hype-bar-track" style="width:100px">
+            <div class="hype-bar-fill" style="width:${show.show_hype}%"></div>
+          </div>
+          <span style="font-size:12px">${Math.round(show.show_hype)}</span>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    document.getElementById('show-widget').classList.add('hidden');
+  }
+}
+
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
@@ -2350,6 +2797,25 @@ document.addEventListener('DOMContentLoaded', () => {
       dropdown.classList.add('hidden');
     }
   });
+
+  // Reality Show
+  document.getElementById('show-wc-select').addEventListener('change', () => {
+    state.showSelectedFighters = [];
+    loadShowEligibleFighters();
+    renderShowSelected();
+  });
+  document.querySelectorAll('.format-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.showFormatSize = parseInt(btn.dataset.size);
+      state.showSelectedFighters = [];
+      document.querySelectorAll('.format-btn').forEach(b => b.classList.toggle('active', b === btn));
+      updateShowFormatUI();
+      loadShowEligibleFighters();
+    });
+  });
+  document.getElementById('btn-start-show').addEventListener('click', startShowProduction);
+  document.getElementById('btn-cancel-show').addEventListener('click', cancelShow);
+  document.getElementById('show-widget').addEventListener('click', () => navigate('show'));
 
   // Close modals on overlay click
   document.getElementById('modal-overlay').addEventListener('click', e => {
