@@ -102,6 +102,7 @@ async function loadDashboard() {
   loadCornerstones();
   loadBroadcastWidget();
   loadRivalWidget();
+  loadSponsorshipWidget();
 }
 
 async function loadDashUpcoming() {
@@ -246,6 +247,8 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('panel-actions').classList.add('hidden');
   document.getElementById('panel-cs-badge').classList.add('hidden');
   document.getElementById('panel-offer-result').innerHTML = '';
+  document.getElementById('panel-sponsorships').innerHTML = '';
+  document.getElementById('panel-sponsorships').classList.add('hidden');
   document.getElementById('bar-popularity').style.width = '0%';
   document.getElementById('bar-hype').style.width       = '0%';
   document.getElementById('val-popularity').textContent = '';
@@ -398,6 +401,11 @@ async function showFighterPanel(fighterId, extraData) {
       });
     } else {
       actionsEl.classList.add('hidden');
+    }
+
+    // Load sponsorships for roster fighters
+    if (state.panelContext === 'roster') {
+      loadPanelSponsorships(fighterId);
     }
 
   } catch (err) {
@@ -2067,6 +2075,132 @@ async function removeFromCamp(fighterId) {
     selectDevFighter(fighterId);
   } catch (err) {
     setStatus('Error: ' + err.message, true);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Advance Month
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Sponsorship Widget & Panel
+// ---------------------------------------------------------------------------
+
+async function loadSponsorshipWidget() {
+  try {
+    const data = await api('/api/sponsorships/summary');
+    const widget = document.getElementById('sponsorship-widget');
+    const content = document.getElementById('sponsorship-widget-content');
+    if (data.active_count > 0) {
+      widget.classList.remove('hidden');
+      const earnersHtml = data.top_earners.map(e =>
+        `<div class="sponsor-earner-row">
+          <span class="sponsor-earner-name">${esc(e.name)}</span>
+          <span class="sponsor-earner-amount">${formatCurrency(e.monthly)}/mo</span>
+        </div>`
+      ).join('');
+      content.innerHTML = `
+        <div class="sponsor-widget-summary">
+          <div class="sponsor-widget-total">${formatCurrency(data.total_monthly)}<span class="sponsor-widget-label">/month</span></div>
+          <div class="sponsor-widget-count">${data.active_count} active deal${data.active_count !== 1 ? 's' : ''}</div>
+        </div>
+        ${earnersHtml ? `<div class="sponsor-widget-earners">${earnersHtml}</div>` : ''}
+      `;
+    } else {
+      widget.classList.add('hidden');
+    }
+  } catch (err) { /* silent */ }
+}
+
+async function loadPanelSponsorships(fighterId) {
+  const el = document.getElementById('panel-sponsorships');
+  try {
+    const data = await api(`/api/sponsorships/fighter/${fighterId}`);
+    if (data.error) {
+      el.classList.add('hidden');
+      return;
+    }
+    el.classList.remove('hidden');
+
+    let html = '<div class="sponsor-panel-title">Sponsorships</div>';
+
+    // Active sponsorships
+    if (data.active_sponsorships.length > 0) {
+      html += data.active_sponsorships.map(sp => `
+        <div class="sponsor-active-item">
+          <div class="sponsor-active-top">
+            <span class="sponsor-tier-badge">${esc(sp.tier)}</span>
+            <span class="sponsor-brand-name">${esc(sp.brand_name)}</span>
+          </div>
+          <div class="sponsor-active-details">
+            <span>${formatCurrency(sp.monthly_stipend)}/mo</span>
+            <span class="muted">${sp.months_remaining} months left</span>
+            <span class="muted">Paid: ${formatCurrency(sp.total_paid)}</span>
+          </div>
+        </div>
+      `).join('');
+      html += `<div class="sponsor-total-income">Total: ${formatCurrency(data.total_monthly_income)}/mo</div>`;
+    }
+
+    // Cornerstone note
+    if (data.is_cornerstone) {
+      html += '<div class="sponsor-cs-note">Cornerstone: +20% stipend, +10% acceptance</div>';
+    }
+
+    // Available tiers
+    html += '<div class="sponsor-available-title">Available Sponsors</div>';
+    html += data.available_tiers.map(t => {
+      const locked = !t.eligible;
+      return `
+        <div class="sponsor-tier-item ${locked ? 'locked' : ''}">
+          <div class="sponsor-tier-top">
+            <span class="sponsor-tier-badge">${esc(t.tier)}</span>
+            <span class="muted">${formatCurrency(t.monthly_stipend)}/mo &middot; ${t.duration_months}mo</span>
+          </div>
+          <div class="sponsor-requirements">
+            <span class="${t.hype_met ? 'met' : 'unmet'}">Hype: ${t.min_hype}+ ${t.hype_met ? '\u2713' : '\u2717'}</span>
+            <span class="${t.popularity_met ? 'met' : 'unmet'}">Pop: ${t.min_popularity}+ ${t.popularity_met ? '\u2713' : '\u2717'}</span>
+            ${t.already_has ? '<span class="unmet">Already active</span>' : ''}
+          </div>
+          ${t.eligible ? `<button class="btn btn-primary sponsor-seek-btn" data-tier="${esc(t.tier)}" data-fighter="${fighterId}" style="width:100%;margin-top:6px">Seek Sponsor</button>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    el.innerHTML = html;
+
+    // Attach seek buttons
+    el.querySelectorAll('.sponsor-seek-btn').forEach(btn => {
+      btn.addEventListener('click', () => seekSponsorship(Number(btn.dataset.fighter), btn.dataset.tier));
+    });
+  } catch (err) {
+    el.classList.add('hidden');
+  }
+}
+
+async function seekSponsorship(fighterId, tier) {
+  try {
+    const result = await api('/api/sponsorships/seek', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fighter_id: fighterId, tier: tier }),
+    });
+    if (result.success) {
+      setStatus(result.message);
+    } else {
+      setStatus(result.message, true);
+    }
+    // Reload the sponsorship panel
+    loadPanelSponsorships(fighterId);
+    loadSponsorshipWidget();
+  } catch (err) {
+    try {
+      const errData = JSON.parse(err.message);
+      setStatus(errData.message || 'Sponsorship attempt failed.', true);
+    } catch (_) {
+      setStatus('Error: ' + err.message, true);
+    }
+    loadPanelSponsorships(fighterId);
   }
 }
 

@@ -60,6 +60,12 @@ class BroadcastDealStatus(str, enum.Enum):
     CANCELLED = "Cancelled"
 
 
+class SponsorshipStatus(str, enum.Enum):
+    ACTIVE = "Active"
+    EXPIRED = "Expired"
+    CANCELLED = "Cancelled"
+
+
 class Archetype(str, enum.Enum):
     PHENOM         = "Phenom"
     LATE_BLOOMER   = "Late Bloomer"
@@ -138,6 +144,9 @@ class Fighter(Base):
     )
     fights_as_b: Mapped[List["Fight"]] = relationship(
         "Fight", foreign_keys="Fight.fighter_b_id", back_populates="fighter_b"
+    )
+    sponsorships: Mapped[List["Sponsorship"]] = relationship(
+        "Sponsorship", back_populates="fighter", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
@@ -445,4 +454,35 @@ class FighterDevelopment(Base):
 
     __table_args__ = (
         Index("ix_dev_fighter", "fighter_id"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sponsorships
+# ---------------------------------------------------------------------------
+
+class Sponsorship(Base):
+    """A sponsorship deal for an individual fighter."""
+
+    __tablename__ = "sponsorships"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
+    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    tier: Mapped[str] = Column(String(50), nullable=False)
+    brand_name: Mapped[str] = Column(String(100), nullable=False)
+    status: Mapped[str] = Column(Enum(SponsorshipStatus), default=SponsorshipStatus.ACTIVE)
+    monthly_stipend: Mapped[float] = Column(Float, nullable=False)
+    duration_months: Mapped[int] = Column(Integer, nullable=False)
+    start_date: Mapped[date] = Column(Date, nullable=False)
+    expiry_date: Mapped[date] = Column(Date, nullable=False)
+    min_hype: Mapped[float] = Column(Float, nullable=False)
+    min_popularity: Mapped[float] = Column(Float, nullable=False)
+    total_paid: Mapped[float] = Column(Float, default=0.0)
+
+    fighter: Mapped["Fighter"] = relationship("Fighter", back_populates="sponsorships")
+
+    __table_args__ = (
+        Index("ix_sponsorship_fighter", "fighter_id"),
+        Index("ix_sponsorship_org", "organization_id"),
     )

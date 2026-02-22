@@ -19,6 +19,7 @@ from models.models import (
     Fighter, Organization, Contract, Event, Fight,
     Ranking, WeightClass, ContractStatus, EventStatus, Notification, GameState,
     BroadcastDeal, BroadcastDealStatus,
+    Sponsorship, SponsorshipStatus,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
@@ -348,6 +349,65 @@ def _process_broadcast_deals(session: Session, sim_date: date, player_org: Organ
                     notifications.append(
                         f"WARNING: {deal.network_name} is concerned about your event pace ({deal.events_delivered} events, expected {expected_events:.0f}). Warning {deal.compliance_warnings}/2."
                     )
+
+    return notifications
+
+
+def _process_sponsorships(session: Session, sim_date: date, player_org: Organization) -> list[str]:
+    """Process sponsorship payments, expiry, and compliance checks."""
+    notifications = []
+    if not player_org:
+        return notifications
+
+    sponsorships = session.execute(
+        select(Sponsorship).where(
+            Sponsorship.organization_id == player_org.id,
+            Sponsorship.status == SponsorshipStatus.ACTIVE,
+        )
+    ).scalars().all()
+
+    total_income = 0.0
+    for sp in sponsorships:
+        fighter = session.get(Fighter, sp.fighter_id)
+
+        # 1. Expiry check
+        if sim_date >= sp.expiry_date:
+            sp.status = SponsorshipStatus.EXPIRED
+            notifications.append(
+                f"{sp.brand_name} sponsorship for {fighter.name if fighter else 'Unknown'} has expired ({sp.tier})."
+            )
+            continue
+
+        # 2. Contract check — fighter must still be on player roster
+        active_contract = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == sp.fighter_id,
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if not active_contract:
+            sp.status = SponsorshipStatus.CANCELLED
+            notifications.append(
+                f"{sp.brand_name} dropped {fighter.name if fighter else 'Unknown'} — no longer on roster."
+            )
+            continue
+
+        # 3. Compliance check — hype must not fall too far below minimum
+        if fighter and fighter.hype < sp.min_hype - 15:
+            sp.status = SponsorshipStatus.CANCELLED
+            notifications.append(
+                f"{sp.brand_name} dropped {fighter.name} — hype fell too low ({sp.tier})."
+            )
+            continue
+
+        # 4. Pay stipend
+        player_org.bank_balance += sp.monthly_stipend
+        sp.total_paid += sp.monthly_stipend
+        total_income += sp.monthly_stipend
+
+    if total_income > 0:
+        notifications.append(f"Sponsorship income this month: ${total_income:,.0f}")
 
     return notifications
 
@@ -736,6 +796,16 @@ def sim_month(
             session.add(Notification(
                 message=msg,
                 type="broadcast",
+                created_date=sim_date,
+            ))
+
+    # 1d. Process sponsorships (player org only)
+    if player_org:
+        sponsorship_notifications = _process_sponsorships(session, sim_date, player_org)
+        for msg in sponsorship_notifications:
+            session.add(Notification(
+                message=msg,
+                type="sponsorship",
                 created_date=sim_date,
             ))
 

@@ -150,7 +150,7 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 - ✅ **TV/streaming deals** — broadcast contracts requiring minimum card quality and event frequency. Revenue multiplier on successful events. Prestige-gated tiers (Regional/National/Premium). (f733e9f)
 - ✅ **Venue management** — prestige-gated venues, capacity shown in dropdown, Major Arena requires 65 prestige, Stadium requires 80. Sellout bonus and poor turnout prestige hit. (f733e9f)
 - ✅ **Rival promotion AI** — AI orgs compete for free agents, poach your fighters, respond to your prestige growth. Designated rival org tracked on dashboard. (23cc23a)
-- ⏳ **Sponsorship system** — fighters attract sponsors based on hype and popularity. Passive income between events.
+- ✅ **Sponsorship system** — per-fighter sponsorships across 4 tiers (Local Brand to Global Sponsor). Hype/popularity gated, cornerstone bonuses, monthly stipend payments, compliance checks. Dashboard widget + roster fighter panel integration. (sponsorship-system)
 - ⏳ **Reality TV show (Ultimate Fighter-style)** — player produces a tournament show with 8 or 16 free agent prospects. Runs over several simulated months with a bracket. Each episode tick: fighters gain small attribute improvements, hype builds for the show and fighters, narrative moments generate. Winner gets automatic contract offer, runners-up available at discount. Show costs money to produce but generates monthly hype and prestige. Satisfies broadcast deal event requirements.
   - **Shenanigans system** — each episode tick, fighters have a chance to trigger positive or negative random events. Good: steps up on short notice (hype spike, fan favorite tag), goes viral for training clip (popularity bump), calls out tournament favorite (rivalry created). Bad: house fight (suspended one episode), shows up out of shape (stamina penalty), quits the show (eliminated + permanent quitter tag on their career), breaks house rules (fine + hype hit). Events feed into existing narrative and tag system — tags follow fighters into their future careers. Player decisions: sign the talented quitter? Cut the troublemaker who keeps winning?
 
@@ -175,8 +175,8 @@ Desktop MMA management simulation game. Player manages an MMA promotion — sign
 ---
 
 ## Feature Priority Order (Current)
-1. Rival promotion AI
-2. Sponsorship system
+1. ~~Rival promotion AI~~ ✅
+2. ~~Sponsorship system~~ ✅
 3. Reality TV show (Ultimate Fighter-style) + shenanigans system
 4. Narrative expansion (more tags, career timeline, news ticker)
 5. Retirement system

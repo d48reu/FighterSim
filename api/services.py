@@ -18,6 +18,7 @@ from models.models import (
     WeightClass, ContractStatus, EventStatus, Notification, GameState,
     TrainingCamp, FighterDevelopment,
     BroadcastDeal, BroadcastDealStatus,
+    Sponsorship, SponsorshipStatus,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -824,6 +825,15 @@ def get_finances() -> dict:
             )
         ).scalar_one_or_none()
 
+        # Sponsorship income
+        active_sponsorships = session.execute(
+            select(Sponsorship).where(
+                Sponsorship.organization_id == player_org.id,
+                Sponsorship.status == SponsorshipStatus.ACTIVE,
+            )
+        ).scalars().all()
+        monthly_sponsorship_income = sum(sp.monthly_stipend for sp in active_sponsorships)
+
         result = {
             "bank_balance": round(player_org.bank_balance, 2),
             "monthly_payroll": round(monthly_payroll, 2),
@@ -834,6 +844,8 @@ def get_finances() -> dict:
             "broadcast_deal": active_deal is not None,
             "broadcast_tier": active_deal.tier if active_deal else None,
             "broadcast_fee_per_event": active_deal.fee_per_event if active_deal else 0,
+            "monthly_sponsorship_income": round(monthly_sponsorship_income, 2),
+            "active_sponsorships_count": len(active_sponsorships),
         }
         return result
 
@@ -2369,3 +2381,257 @@ def process_fighter_development(session, org_id: int, sim_date) -> list[dict]:
                 notifications.append(f"{fighter.name} is declining — consider adjusting training")
 
     return notifications
+
+
+# ---------------------------------------------------------------------------
+# Sponsorships
+# ---------------------------------------------------------------------------
+
+SPONSOR_TIERS = {
+    "Local Brand": {
+        "monthly_stipend": 1500,
+        "min_hype": 15,
+        "min_popularity": 15,
+        "duration_months": 4,
+        "brands": ["Joe's Gym Gear", "Metro MMA Supply", "Iron City Supplements"],
+    },
+    "Regional Sponsor": {
+        "monthly_stipend": 5000,
+        "min_hype": 30,
+        "min_popularity": 30,
+        "duration_months": 6,
+        "brands": ["Hayabusa Fight Wear", "Venum Training", "Bad Boy MMA"],
+    },
+    "National Brand": {
+        "monthly_stipend": 15000,
+        "min_hype": 50,
+        "min_popularity": 50,
+        "duration_months": 8,
+        "brands": ["Monster Energy", "Reebok Combat", "Under Armour Fight"],
+    },
+    "Global Sponsor": {
+        "monthly_stipend": 40000,
+        "min_hype": 70,
+        "min_popularity": 65,
+        "duration_months": 10,
+        "brands": ["Nike", "Gatorade", "Crypto.com", "Toyota"],
+    },
+}
+
+
+def get_fighter_sponsorships(fighter_id: int) -> dict:
+    """Return active sponsorships and available tiers for a fighter."""
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"error": "No player organization found."}
+
+        fighter = session.get(Fighter, fighter_id)
+        if not fighter:
+            return {"error": "Fighter not found."}
+
+        # Verify fighter is on player roster
+        contract = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter_id,
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if not contract:
+            return {"error": "Fighter is not on your roster."}
+
+        game_date = _get_game_date(session)
+
+        # Get active sponsorships
+        active_sponsorships = session.execute(
+            select(Sponsorship).where(
+                Sponsorship.fighter_id == fighter_id,
+                Sponsorship.status == SponsorshipStatus.ACTIVE,
+            )
+        ).scalars().all()
+
+        active_tiers = {sp.tier for sp in active_sponsorships}
+        active_list = []
+        total_monthly = 0.0
+        for sp in active_sponsorships:
+            months_remaining = max(0, (sp.expiry_date - game_date).days // 30)
+            active_list.append({
+                "id": sp.id,
+                "tier": sp.tier,
+                "brand_name": sp.brand_name,
+                "monthly_stipend": sp.monthly_stipend,
+                "months_remaining": months_remaining,
+                "total_paid": sp.total_paid,
+            })
+            total_monthly += sp.monthly_stipend
+
+        # Build available tiers
+        available_tiers = []
+        for tier_name, tier_data in SPONSOR_TIERS.items():
+            hype_met = fighter.hype >= tier_data["min_hype"]
+            pop_met = fighter.popularity >= tier_data["min_popularity"]
+            already_has = tier_name in active_tiers
+            eligible = hype_met and pop_met and not already_has
+            available_tiers.append({
+                "tier": tier_name,
+                "monthly_stipend": tier_data["monthly_stipend"],
+                "min_hype": tier_data["min_hype"],
+                "min_popularity": tier_data["min_popularity"],
+                "duration_months": tier_data["duration_months"],
+                "hype_met": hype_met,
+                "popularity_met": pop_met,
+                "already_has": already_has,
+                "eligible": eligible,
+            })
+
+        return {
+            "fighter_id": fighter.id,
+            "fighter_name": fighter.name,
+            "hype": round(fighter.hype, 1),
+            "popularity": round(fighter.popularity, 1),
+            "is_cornerstone": fighter.is_cornerstone,
+            "active_sponsorships": active_list,
+            "available_tiers": available_tiers,
+            "total_monthly_income": total_monthly,
+        }
+
+
+def seek_sponsorship(fighter_id: int, tier: str) -> dict:
+    """Attempt to secure a sponsorship deal for a fighter."""
+    if tier not in SPONSOR_TIERS:
+        return {"success": False, "message": f"Unknown sponsor tier: {tier}"}
+
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"success": False, "message": "No player organization found."}
+
+        fighter = session.get(Fighter, fighter_id)
+        if not fighter:
+            return {"success": False, "message": "Fighter not found."}
+
+        # Verify on roster
+        contract = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter_id,
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if not contract:
+            return {"success": False, "message": "Fighter is not on your roster."}
+
+        tier_data = SPONSOR_TIERS[tier]
+
+        # Check minimum requirements
+        if fighter.hype < tier_data["min_hype"]:
+            return {"success": False, "message": f"Fighter's hype ({fighter.hype:.1f}) is below the minimum ({tier_data['min_hype']})."}
+        if fighter.popularity < tier_data["min_popularity"]:
+            return {"success": False, "message": f"Fighter's popularity ({fighter.popularity:.1f}) is below the minimum ({tier_data['min_popularity']})."}
+
+        # Check no duplicate tier
+        existing = session.execute(
+            select(Sponsorship).where(
+                Sponsorship.fighter_id == fighter_id,
+                Sponsorship.tier == tier,
+                Sponsorship.status == SponsorshipStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return {"success": False, "message": f"Fighter already has an active {tier} sponsorship."}
+
+        # Acceptance probability
+        hype_surplus = fighter.hype - tier_data["min_hype"]
+        pop_surplus = fighter.popularity - tier_data["min_popularity"]
+        cornerstone_bonus = 0.10 if fighter.is_cornerstone else 0.0
+        acceptance_prob = min(0.90, 0.50 + hype_surplus / 15 * 0.20 + pop_surplus / 15 * 0.15 + cornerstone_bonus)
+
+        if random.random() >= acceptance_prob:
+            return {"success": False, "message": f"The brand wasn't interested right now. Try again after boosting hype or popularity."}
+
+        # Success — create sponsorship
+        from datetime import timedelta
+        game_date = _get_game_date(session)
+        brand_name = random.choice(tier_data["brands"])
+        duration = tier_data["duration_months"]
+        stipend = tier_data["monthly_stipend"]
+
+        # Cornerstone fighters get +20% stipend
+        if fighter.is_cornerstone:
+            stipend = round(stipend * 1.20, 2)
+
+        sponsorship = Sponsorship(
+            fighter_id=fighter_id,
+            organization_id=player_org.id,
+            tier=tier,
+            brand_name=brand_name,
+            status=SponsorshipStatus.ACTIVE,
+            monthly_stipend=stipend,
+            duration_months=duration,
+            start_date=game_date,
+            expiry_date=game_date + timedelta(days=duration * 30),
+            min_hype=tier_data["min_hype"],
+            min_popularity=tier_data["min_popularity"],
+            total_paid=0.0,
+        )
+        session.add(sponsorship)
+
+        session.add(Notification(
+            message=f"{brand_name} signed {fighter.name}! {tier} — ${stipend:,.0f}/month for {duration} months.",
+            type="sponsorship",
+            created_date=game_date,
+        ))
+
+        session.commit()
+        return {
+            "success": True,
+            "message": f"{brand_name} signed {fighter.name}! {tier} — ${stipend:,.0f}/month for {duration} months.",
+        }
+
+
+def get_sponsorship_summary() -> dict:
+    """Return summary of all active sponsorships for the player org."""
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {"total_monthly": 0, "active_count": 0, "top_earners": []}
+
+        sponsorships = session.execute(
+            select(Sponsorship).where(
+                Sponsorship.organization_id == player_org.id,
+                Sponsorship.status == SponsorshipStatus.ACTIVE,
+            )
+        ).scalars().all()
+
+        # Group by fighter
+        fighter_income: dict[int, float] = {}
+        for sp in sponsorships:
+            fighter_income[sp.fighter_id] = fighter_income.get(sp.fighter_id, 0) + sp.monthly_stipend
+
+        total_monthly = sum(fighter_income.values())
+        active_count = len(sponsorships)
+
+        # Top earners
+        top_earners = []
+        sorted_fighters = sorted(fighter_income.items(), key=lambda x: x[1], reverse=True)[:3]
+        for fid, income in sorted_fighters:
+            fighter = session.get(Fighter, fid)
+            if fighter:
+                top_earners.append({
+                    "fighter_id": fid,
+                    "name": fighter.name,
+                    "monthly": income,
+                })
+
+        return {
+            "total_monthly": total_monthly,
+            "active_count": active_count,
+            "top_earners": top_earners,
+        }

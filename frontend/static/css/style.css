@@ -2126,3 +2126,175 @@ tbody td { padding: 9px 10px; }
   font-size: 12px;
 }
 
+/* ---------------------------------------------------------------------------
+   Sponsorship Widget (Dashboard)
+   --------------------------------------------------------------------------- */
+
+.sponsorship-widget {
+  background: var(--surface);
+  border: 1px solid rgba(76, 175, 80, 0.25);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.sponsorship-widget h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.sponsor-widget-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sponsor-widget-total {
+  font-size: 22px;
+  font-weight: 700;
+  color: #4caf50;
+}
+
+.sponsor-widget-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+.sponsor-widget-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sponsor-widget-earners {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sponsor-earner-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.sponsor-earner-name { color: var(--text); }
+.sponsor-earner-amount { color: #4caf50; font-weight: 600; }
+
+/* ---------------------------------------------------------------------------
+   Sponsorship Panel (Fighter Side Panel)
+   --------------------------------------------------------------------------- */
+
+.panel-sponsorships {
+  padding: 0 0 8px;
+}
+
+.sponsor-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 12px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sponsor-active-item {
+  background: rgba(76, 175, 80, 0.08);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+
+.sponsor-active-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.sponsor-brand-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sponsor-active-details {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: #4caf50;
+}
+
+.sponsor-active-details .muted {
+  color: var(--muted);
+}
+
+.sponsor-total-income {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4caf50;
+  margin: 6px 0 10px;
+  text-align: right;
+}
+
+.sponsor-cs-note {
+  font-size: 11px;
+  color: #ffd700;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background: rgba(255, 215, 0, 0.08);
+  border-radius: 4px;
+}
+
+.sponsor-available-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 8px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sponsor-tier-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.sponsor-tier-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+
+.sponsor-tier-item.locked {
+  opacity: 0.5;
+}
+
+.sponsor-tier-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.sponsor-requirements {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
+.sponsor-requirements .met { color: #4caf50; }
+.sponsor-requirements .unmet { color: var(--accent); }
+

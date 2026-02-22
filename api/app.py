@@ -274,6 +274,32 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         return jsonify(result)
 
     # ------------------------------------------------------------------
+    # Sponsorships
+    # ------------------------------------------------------------------
+
+    @app.route("/api/sponsorships/fighter/<int:fighter_id>")
+    def fighter_sponsorships(fighter_id: int):
+        result = services.get_fighter_sponsorships(fighter_id)
+        if "error" in result:
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/sponsorships/seek", methods=["POST"])
+    def seek_sponsorship():
+        data = request.json
+        result = services.seek_sponsorship(
+            fighter_id=data["fighter_id"],
+            tier=data["tier"],
+        )
+        if not result.get("success"):
+            return jsonify(result), 400
+        return jsonify(result)
+
+    @app.route("/api/sponsorships/summary")
+    def sponsorship_summary():
+        return jsonify(services.get_sponsorship_summary())
+
+    # ------------------------------------------------------------------
     # Contract negotiation
     # ------------------------------------------------------------------
 
