@@ -150,23 +150,25 @@ def test_all_names_latin_script(faker_instances, rng):
 
 
 def test_deterministic_same_seed():
-    """Same seed must produce the exact same name sequence."""
-    instances1 = create_faker_instances(seed=99)
-    instances2 = create_faker_instances(seed=99)
-    rng1 = random.Random(99)
-    rng2 = random.Random(99)
+    """Same seed must produce the exact same name sequence.
 
-    names1 = []
-    names2 = []
-    used1 = set()
-    used2 = set()
-
+    Faker.seed() is global, so we must generate each run fully before
+    re-seeding and generating the comparison run.
+    """
     nationalities = ["American", "Brazilian", "Russian", "Japanese", "Dagestani",
                      "South Korean", "Georgian", "British", "Mexican", "Polish"]
 
-    for nat in nationalities:
-        names1.append(generate_name(nat, instances1, rng1, used1))
-        names2.append(generate_name(nat, instances2, rng2, used2))
+    # Run 1
+    instances1 = create_faker_instances(seed=99)
+    rng1 = random.Random(99)
+    used1 = set()
+    names1 = [generate_name(nat, instances1, rng1, used1) for nat in nationalities]
+
+    # Run 2 (re-seeds Faker globally)
+    instances2 = create_faker_instances(seed=99)
+    rng2 = random.Random(99)
+    used2 = set()
+    names2 = [generate_name(nat, instances2, rng2, used2) for nat in nationalities]
 
     assert names1 == names2, f"Determinism broken:\n{names1}\nvs\n{names2}"
 
