@@ -48,8 +48,8 @@ Plans:
 **Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 02-01-PLAN.md -- Core fabrication module: narrative templates, outcome resolver, event timeline, matchmaker, champion tracking, and fabricate_history() entry point
-- [ ] 02-02-PLAN.md -- Pipeline integration: wire into seed/run.py/test_cli.py, add all-org event browsing API, end-to-end validation
+- [x] 02-01-PLAN.md -- Core fabrication module: narrative templates, outcome resolver, event timeline, matchmaker, champion tracking, and fabricate_history() entry point
+- [x] 02-02-PLAN.md -- Pipeline integration: wire into seed/run.py/test_cli.py, add all-org event browsing API, end-to-end validation
 
 ### Phase 3: Fighter Identity
 **Goal**: Fighters feel like individuals with stories -- their bios reference real fights from their history, and notable career moments are highlighted
@@ -59,10 +59,11 @@ Plans:
   1. Fighter profile bios read as coherent short narratives that reference specific fights, opponents, and outcomes from their actual database history
   2. Fighter profiles display career highlights (notable KOs, upset victories, winning streaks) auto-extracted from their fabricated fight records
   3. Backstory content varies meaningfully between fighters -- different archetypes and career stages produce noticeably different narrative tones
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md -- Core narrative functions: Jinja2 fight-history paragraph generator and career highlight extractor in narrative.py
+- [ ] 03-02-PLAN.md -- Full-stack integration: wire into services/API, add highlights endpoint, frontend Career Highlights section, test_cli.py validation
 
 ### Phase 4: Player Origins
 **Goal**: New games begin with a choice that shapes the player's starting situation and tells them why their promotion exists
@@ -86,6 +87,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Fighter Generation | 2/2 | Complete | 2026-03-02 |
-| 2. Fight History | 1/2 | In Progress | - |
-| 3. Fighter Identity | 0/0 | Not started | - |
+| 2. Fight History | 3/3 | Complete | 2026-03-02 |
+| 3. Fighter Identity | 0/2 | Planned | - |
 | 4. Player Origins | 0/0 | Not started | - |
