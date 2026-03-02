@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-02T05:36:35Z"
+last_updated: "2026-03-02T06:02:00Z"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 5
+  completed_plans: 5
 ---
 
 # Project State
@@ -23,28 +23,28 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 2 of 4 (Fight History) -- COMPLETE
-Plan: 2 of 2 in current phase
+Plan: 3 of 3 in current phase
 Status: Phase 02 Complete
-Last activity: 2026-03-02 -- Plan 02-02 completed (seed pipeline integration + all-org API)
+Last activity: 2026-03-02 -- Plan 02-03 completed (career length realism + veteran matchmaker tuning)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: 5 min
-- Total execution time: 19 min
+- Total execution time: 23 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-fighter-generation | 2/2 | 10 min | 5 min |
-| 02-fight-history | 2/2 | 9 min | 4.5 min |
+| 02-fight-history | 3/3 | 13 min | 4.3 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5 min), 01-02 (5 min), 02-01 (5 min), 02-02 (4 min)
+- Last 5 plans: 01-01 (5 min), 01-02 (5 min), 02-01 (5 min), 02-02 (4 min), 02-03 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -73,6 +73,10 @@ Recent decisions affecting current work:
 - [02-02]: fabricate_history() called as post-seed step, not embedded inside seed_fighters()
 - [02-02]: Explicit session.commit() required after fabricate_history() (only flushes internally)
 - [02-02]: All-org event browsing uses include_fights=True for full fight details
+- [02-03]: History window extended from 3 years (2023-2025) to 5 years (2021-2025) for deeper career records
+- [02-03]: Event frequency increased from 6-8 weeks to ~2 weeks (10-18 day gaps)
+- [02-03]: Card size increased from 5-7 to 8-12 fights per event
+- [02-03]: Scan-for-best-opponent pairing replaces adjacent pairing to avoid rematch cap deadlocks
 
 ### Pending Todos
 
@@ -87,5 +91,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 02-02-PLAN.md (seed pipeline integration + all-org event browsing API)
-Resume file: .planning/phases/02-fight-history/02-02-SUMMARY.md
+Stopped at: Phase 3 context gathered
+Resume file: .planning/phases/03-fighter-identity/03-CONTEXT.md
