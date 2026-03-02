@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-02T05:29:03Z"
+last_updated: "2026-03-02T05:36:35Z"
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -22,29 +22,29 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 2 of 4 (Fight History)
-Plan: 1 of 2 in current phase
-Status: Plan 02-01 Complete
-Last activity: 2026-03-02 -- Plan 02-01 completed (fight history fabrication module)
+Phase: 2 of 4 (Fight History) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase 02 Complete
+Last activity: 2026-03-02 -- Plan 02-02 completed (seed pipeline integration + all-org API)
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 5 min
-- Total execution time: 15 min
+- Total execution time: 19 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-fighter-generation | 2/2 | 10 min | 5 min |
-| 02-fight-history | 1/2 | 5 min | 5 min |
+| 02-fight-history | 2/2 | 9 min | 4.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5 min), 01-02 (5 min), 02-01 (5 min)
+- Last 5 plans: 01-01 (5 min), 01-02 (5 min), 02-01 (5 min), 02-02 (4 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -70,6 +70,9 @@ Recent decisions affecting current work:
 - [02-01]: Player org fighters excluded from history fabrication (player earns own history)
 - [02-01]: Rivalry pairs seeded from same-org rosters with top-fighter priority
 - [02-01]: Title fights at events 3+ with 4-6 event intervals
+- [02-02]: fabricate_history() called as post-seed step, not embedded inside seed_fighters()
+- [02-02]: Explicit session.commit() required after fabricate_history() (only flushes internally)
+- [02-02]: All-org event browsing uses include_fights=True for full fight details
 
 ### Pending Todos
 
@@ -84,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 02-01-PLAN.md (fight history fabrication module)
-Resume file: .planning/phases/02-fight-history/02-01-SUMMARY.md
+Stopped at: Completed 02-02-PLAN.md (seed pipeline integration + all-org event browsing API)
+Resume file: .planning/phases/02-fight-history/02-02-SUMMARY.md
