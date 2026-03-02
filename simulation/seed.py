@@ -1,4 +1,8 @@
-"""Database seeding for MMA Management Simulator."""
+"""Database seeding for MMA Management Simulator.
+
+Refactored pipeline: quota-first archetype allocation, career-stage-aware
+generation, prestige-gated org distribution, integrated name_gen + stat_gen.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +10,7 @@ import json
 import random
 from datetime import date, timedelta
 
+import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,43 +19,17 @@ from models.models import (
     WeightClass, FighterStyle, ContractStatus, Archetype,
 )
 from simulation.traits import TRAITS, contradicts
+from simulation.name_gen import (
+    generate_name, create_faker_instances, pick_nationality,
+)
+from simulation.stat_gen import generate_stats, compute_overall
+from simulation.narrative import suggest_nicknames
 
-_FIRST_NAMES = [
-    "Carlos", "Luis", "Andre", "Marcus", "Kevin", "Jake", "Tony", "Darian",
-    "Ramon", "Victor", "Elias", "Jordan", "Miles", "Cole", "Dante", "Felix",
-    "Bruno", "Ivan", "Diego", "Marco", "Sergio", "Omar", "Javier", "Rafael",
-    "Kris", "Shane", "Derek", "Corey", "Trevor", "Nathan", "Brendan", "Kyle",
-    "Tyson", "Aaron", "Eric", "Jason", "Scott", "Chad", "Brett", "Sean",
-    "Yusuf", "Hamza", "Tariq", "Hassan", "Ibrahim", "Khalid", "Amir", "Samir",
-    "Wei", "Liang", "Chao", "Jin", "Ryu", "Ken", "Hiroshi", "Takeshi",
-    "Dmitri", "Alexei", "Pavel", "Nikolai", "Boris", "Yuri", "Andrei", "Sergei",
-    "Patrick", "Conor", "Seamus", "Declan", "Finn", "Ronan", "Cian", "Oisin",
-    "Lars", "Bjorn", "Erik", "Magnus", "Sven", "Gunnar", "Leif", "Ragnar",
-]
 
-_LAST_NAMES = [
-    "Silva", "Santos", "Lima", "Costa", "Pereira", "Ferreira", "Alves", "Souza",
-    "Johnson", "Williams", "Brown", "Davis", "Miller", "Wilson", "Moore", "Taylor",
-    "Garcia", "Martinez", "Lopez", "Gonzalez", "Hernandez", "Ramirez", "Torres", "Flores",
-    "Ali", "Hassan", "Khan", "Ahmed", "Malik", "Hussain", "Akhtar", "Sheikh",
-    "Zhang", "Wang", "Li", "Chen", "Liu", "Yang", "Huang", "Wu",
-    "Ivanov", "Petrov", "Volkov", "Sokolov", "Morozov", "Fedorov", "Popov", "Lebedev",
-    "Murphy", "Kelly", "O'Brien", "Walsh", "Ryan", "O'Connor", "Byrne", "McCarthy",
-    "Eriksson", "Lindqvist", "Andersson", "Johansson", "Carlsson", "Nilsson", "Larsson", "Olsson",
-    "Smith", "Jones", "Evans", "Thomas", "Roberts", "Harris", "Lewis", "Walker",
-    "Diaz", "Reyes", "Morales", "Jimenez", "Vargas", "Castillo", "Romero", "Gutierrez",
-]
+# ---------------------------------------------------------------------------
+# Constants (PRESERVED from original)
+# ---------------------------------------------------------------------------
 
-_NATIONALITIES = [
-    "American", "Brazilian", "Mexican", "Russian", "Irish", "British",
-    "Canadian", "Australian", "Swedish", "Norwegian", "Japanese", "South Korean",
-    "Georgian", "Dagestani", "Polish", "Dutch", "French", "German",
-    "Nigerian", "Cameroonian", "South African", "New Zealander", "Jamaican",
-]
-
-_USED_NAMES: set[str] = set()
-
-# Weight class upper limits (lbs) and natural weight ranges for seeding
 WEIGHT_CLASS_LIMITS: dict[str, int] = {
     "Flyweight": 125,
     "Lightweight": 155,
@@ -68,20 +47,243 @@ NATURAL_WEIGHT_RANGES: dict[str, tuple[int, int]] = {
 }
 
 
-def _random_name(rng: random.Random) -> str:
-    for _ in range(200):
-        name = f"{rng.choice(_FIRST_NAMES)} {rng.choice(_LAST_NAMES)}"
-        if name not in _USED_NAMES:
-            _USED_NAMES.add(name)
-            return name
-    # Fallback with suffix
-    name = f"{rng.choice(_FIRST_NAMES)} {rng.choice(_LAST_NAMES)} Jr."
-    _USED_NAMES.add(name)
-    return name
+# ---------------------------------------------------------------------------
+# Archetype quota allocation (pyramid rarity curve)
+# ---------------------------------------------------------------------------
 
+ARCHETYPE_QUOTAS: dict[str, float] = {
+    "Journeyman":     0.24,
+    "Gatekeeper":     0.23,
+    "Phenom":         0.22,
+    "Late Bloomer":   0.14,
+    "Shooting Star":  0.10,
+    "GOAT Candidate": 0.07,
+}
+
+
+def allocate_archetypes(count_per_class: int, np_rng: np.random.Generator) -> list[str]:
+    """Return a shuffled list of archetype assignments for one weight class.
+
+    Implements pyramid rarity curve with soft quotas (+/-2).
+    No single archetype exceeds 25% of count_per_class.
+    Journeyman absorbs remainder but is capped; excess goes to Gatekeeper.
+    """
+    max_per_archetype = int(count_per_class * 0.25)
+    slots: list[str] = []
+    remaining = count_per_class
+
+    for archetype, ratio in ARCHETYPE_QUOTAS.items():
+        if archetype == "Journeyman":
+            continue
+        base = round(count_per_class * ratio)
+        variance = int(np_rng.integers(-2, 3))  # -2 to +2
+        n = max(1, min(base + variance, remaining, max_per_archetype))
+        slots.extend([archetype] * n)
+        remaining -= n
+
+    # Fill remainder with Journeyman, capped at max_per_archetype
+    journeyman_count = min(remaining, max_per_archetype)
+    slots.extend(["Journeyman"] * journeyman_count)
+    remaining -= journeyman_count
+
+    # If still remaining, distribute to Gatekeeper and Phenom
+    overflow_targets = ["Gatekeeper", "Phenom", "Late Bloomer"]
+    oi = 0
+    while remaining > 0 and oi < len(overflow_targets):
+        target = overflow_targets[oi]
+        current = slots.count(target)
+        if current < max_per_archetype:
+            add = min(remaining, max_per_archetype - current)
+            slots.extend([target] * add)
+            remaining -= add
+        oi += 1
+
+    # Final safety: pad with Journeyman if somehow still short
+    if remaining > 0:
+        slots.extend(["Journeyman"] * remaining)
+
+    # Ensure exact count
+    slots = slots[:count_per_class]
+
+    np_rng.shuffle(slots)
+    return slots
+
+
+# ---------------------------------------------------------------------------
+# Career stage assignment (archetype-constrained)
+# ---------------------------------------------------------------------------
+
+# Validity matrix: which career stages are valid for each archetype
+_ARCHETYPE_VALID_STAGES: dict[str, list[str]] = {
+    "GOAT Candidate": ["prime", "veteran"],
+    "Late Bloomer":   ["prime", "veteran"],        # bloomed late, now may be aging
+    "Shooting Star":  ["prime", "transitional"],   # peak then decline
+    "Phenom":         ["prospect", "prime"],
+    "Gatekeeper":     ["prospect", "prime", "veteran", "transitional"],
+    "Journeyman":     ["prospect", "prime", "veteran", "transitional"],
+}
+
+# Career stage weights per archetype -- tuned so the overall distribution
+# across all archetypes approximates 20% prospect / 35% prime / 25% veteran / 20% transitional
+_CAREER_STAGE_WEIGHTS: dict[str, dict[str, float]] = {
+    "GOAT Candidate": {"prime": 0.55, "veteran": 0.45},
+    "Late Bloomer":   {"prime": 0.65, "veteran": 0.35},
+    "Shooting Star":  {"prime": 0.60, "transitional": 0.40},
+    "Phenom":         {"prospect": 0.60, "prime": 0.40},
+    "Gatekeeper":     {"prospect": 0.25, "prime": 0.20, "veteran": 0.30, "transitional": 0.25},
+    "Journeyman":     {"prospect": 0.25, "prime": 0.15, "veteran": 0.30, "transitional": 0.30},
+}
+
+# Age ranges per career stage
+_CAREER_STAGE_AGE_RANGES: dict[str, tuple[int, int]] = {
+    "prospect":      (20, 24),
+    "prime":         (25, 31),
+    "veteran":       (32, 37),
+    "transitional":  (27, 33),
+}
+
+
+def assign_career_stage(archetype: str, py_rng: random.Random) -> str:
+    """Return a career stage constrained by archetype validity matrix."""
+    weights_map = _CAREER_STAGE_WEIGHTS.get(archetype, _CAREER_STAGE_WEIGHTS["Journeyman"])
+    stages = list(weights_map.keys())
+    weights = list(weights_map.values())
+    return py_rng.choices(stages, weights=weights, k=1)[0]
+
+
+def _age_from_career_stage(career_stage: str, py_rng: random.Random) -> int:
+    """Derive age from career stage range."""
+    lo, hi = _CAREER_STAGE_AGE_RANGES[career_stage]
+    return py_rng.randint(lo, hi)
+
+
+# ---------------------------------------------------------------------------
+# Fight record generation (enhanced for career stage)
+# ---------------------------------------------------------------------------
+
+def _gen_record(age: int, career_stage: str, py_rng: random.Random) -> dict:
+    """Generate career-stage-appropriate fight record.
+
+    Prospects get 1-5 fights, prime 8-20, veterans 15-30, transitional 10-22.
+    """
+    if career_stage == "prospect":
+        total = py_rng.randint(1, 5)
+    elif career_stage == "prime":
+        total = py_rng.randint(8, 20)
+    elif career_stage == "veteran":
+        total = py_rng.randint(15, 30)
+    else:  # transitional
+        total = py_rng.randint(10, 22)
+
+    if total == 0:
+        return {"wins": 0, "losses": 0, "draws": 0, "ko_wins": 0, "sub_wins": 0}
+
+    wins = py_rng.randint(int(total * 0.4), max(int(total * 0.4), int(total * 0.75)))
+    losses = total - wins
+    draws = py_rng.randint(0, 1) if total > 5 else 0
+    wins = max(0, wins - draws)
+
+    ko_wins = int(wins * py_rng.uniform(0.1, 0.45))
+    sub_wins = int((wins - ko_wins) * py_rng.uniform(0.1, 0.4))
+    ko_wins = min(ko_wins, wins)
+    sub_wins = min(sub_wins, wins - ko_wins)
+
+    return {
+        "wins": wins, "losses": losses, "draws": draws,
+        "ko_wins": ko_wins, "sub_wins": sub_wins,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Prime window derivation
+# ---------------------------------------------------------------------------
+
+def _prime_window(career_stage: str, age: int, py_rng: random.Random) -> tuple[int, int]:
+    """Derive prime_start/prime_end based on career stage and age."""
+    if career_stage == "prospect":
+        prime_start = py_rng.randint(25, 27)
+        prime_end = prime_start + py_rng.randint(5, 8)
+    elif career_stage == "prime":
+        # Currently in prime
+        prime_start = py_rng.randint(max(23, age - 3), age)
+        prime_end = prime_start + py_rng.randint(5, 8)
+    elif career_stage == "veteran":
+        # Past prime
+        prime_start = py_rng.randint(24, 27)
+        prime_end = py_rng.randint(max(prime_start + 4, 29), min(prime_start + 8, age))
+    else:  # transitional
+        prime_start = py_rng.randint(25, 28)
+        prime_end = prime_start + py_rng.randint(4, 7)
+
+    return prime_start, prime_end
+
+
+# ---------------------------------------------------------------------------
+# Organization distribution (prestige-gated)
+# ---------------------------------------------------------------------------
+
+# Salary ranges per archetype (annual)
+_ARCHETYPE_SALARY: dict[str, tuple[int, int]] = {
+    "GOAT Candidate": (80_000, 200_000),
+    "Shooting Star":  (50_000, 120_000),
+    "Phenom":         (30_000, 80_000),
+    "Late Bloomer":   (15_000, 50_000),
+    "Gatekeeper":     (12_000, 40_000),
+    "Journeyman":     (8_000, 25_000),
+}
+
+
+def _assign_organization(
+    career_stage: str,
+    archetype_str: str,
+    orgs: list[Organization],
+    py_rng: random.Random,
+    free_agent_count: int,
+    total_fighters: int,
+    max_free_agents: int,
+) -> Organization | None:
+    """Assign fighter to an org based on prestige/career stage, or None for free agent.
+
+    Returns None if the fighter should be a free agent.
+    """
+    # Free agent logic: 10-15% target
+    # GOAT Candidates are never free agents
+    if archetype_str != "GOAT Candidate" and free_agent_count < max_free_agents:
+        # Weighted toward prospects and veterans
+        fa_chance = {
+            "prospect": 0.20,
+            "veteran": 0.18,
+            "transitional": 0.12,
+            "prime": 0.08,
+        }
+        if py_rng.random() < fa_chance.get(career_stage, 0.10):
+            return None
+
+    # Sort orgs by prestige descending
+    sorted_orgs = sorted(orgs, key=lambda o: o.prestige, reverse=True)
+
+    # Prestige-gated distribution weights based on career stage
+    if career_stage in ("prime", "veteran"):
+        # Better fighters go to higher-prestige orgs
+        # UCC: 40%, One: 25%, Bellator: 25%, Player: 10%
+        weights = [40, 25, 25, 10]
+    elif career_stage == "prospect":
+        # Prospects distributed more evenly, player gets more
+        # UCC: 10%, One: 20%, Bellator: 20%, Player: 50%
+        weights = [10, 20, 20, 50]
+    else:  # transitional
+        # Moderately distributed
+        # UCC: 20%, One: 25%, Bellator: 30%, Player: 25%
+        weights = [20, 25, 30, 25]
+
+    return py_rng.choices(sorted_orgs, weights=weights, k=1)[0]
+
+
+# ---------------------------------------------------------------------------
+# Preserved helper functions
+# ---------------------------------------------------------------------------
 
 def seed_organizations(session: Session) -> list[Organization]:
-    _USED_NAMES.clear()
     orgs = [
         Organization(name="Ultimate Combat Championship", prestige=90.0,
                      bank_balance=50_000_000.0, is_player=False),
@@ -107,81 +309,6 @@ def seed_organizations(session: Session) -> list[Organization]:
     session.flush()
 
     return orgs
-
-
-def _gen_record(age: int, rng: random.Random) -> dict:
-    """Generate age-appropriate fight record (assumes pro debut at 18-20)."""
-    max_fights_by_age = {
-        19: 3, 20: 5, 21: 7, 22: 9, 23: 12, 24: 15,
-        25: 18, 26: 22, 27: 26, 28: 30,
-    }
-    max_fights = max_fights_by_age.get(age, min(40, (age - 18) * 3))
-
-    if age <= 21:
-        total = rng.randint(0, min(6, max_fights))
-    elif age <= 23:
-        total = rng.randint(2, min(10, max_fights))
-    elif age <= 25:
-        total = rng.randint(4, min(16, max_fights))
-    elif age <= 28:
-        total = rng.randint(8, min(24, max_fights))
-    elif age <= 32:
-        total = rng.randint(12, min(32, max_fights))
-    else:
-        total = rng.randint(16, min(40, max_fights))
-
-    wins = rng.randint(int(total * 0.4), int(total * 0.75))
-    losses = total - wins
-    draws = rng.randint(0, 1) if total > 5 else 0
-    wins = max(0, wins - draws)
-
-    ko_wins = int(wins * rng.uniform(0.1, 0.45))
-    sub_wins = int((wins - ko_wins) * rng.uniform(0.1, 0.4))
-    ko_wins = min(ko_wins, wins)
-    sub_wins = min(sub_wins, wins - ko_wins)
-
-    return {
-        "wins": wins, "losses": losses, "draws": draws,
-        "ko_wins": ko_wins, "sub_wins": sub_wins,
-    }
-
-
-def _assign_archetype(
-    f: Fighter,
-    goat_counts: dict[str, int],
-    rng: random.Random,
-) -> Archetype:
-    """Assign archetype based on fighter attributes. GOAT Candidate capped at 2/wc."""
-    wc = f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class
-
-    if (
-        f.overall >= 75
-        and 22 <= f.age <= 26
-        and (f.prime_end - f.prime_start) >= 8
-        and goat_counts.get(wc, 0) < 2
-        and f.wins > f.losses * 2
-    ):
-        goat_counts[wc] = goat_counts.get(wc, 0) + 1
-        return Archetype.GOAT_CANDIDATE
-
-    if f.overall >= 70 and 19 <= f.age <= 24 and f.losses <= 2:
-        return Archetype.PHENOM
-
-    if f.overall >= 68 and f.prime_end <= 29 and f.cardio < 60 and f.wins > f.losses:
-        return Archetype.SHOOTING_STAR
-
-    if f.overall < 62 and 29 <= f.prime_start <= 31:
-        return Archetype.LATE_BLOOMER
-
-    career_fights = f.wins + f.losses + f.draws
-    gk_age_ok = f.age >= 28 or (f.age >= 25 and career_fights >= 10)
-    if gk_age_ok and 60 <= f.overall <= 68 and f.losses >= f.wins:
-        return Archetype.GATEKEEPER
-
-    if f.losses >= f.wins:
-        return Archetype.JOURNEYMAN
-
-    return Archetype.PHENOM
 
 
 def _starting_popularity_hype(archetype: Archetype, rng: random.Random) -> tuple[float, float]:
@@ -213,7 +340,6 @@ def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -
     elif archetype == Archetype.JOURNEYMAN:
         traits.append("journeyman_heart")
     elif archetype == Archetype.GOAT_CANDIDATE:
-        # Always gets one elite defensive trait
         anchor = rng.choice(["gas_tank", "iron_chin", "comeback_king"])
         traits.append(anchor)
 
@@ -261,7 +387,6 @@ def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -
     if fighter.grappling >= 80:
         pool = [(t, w + (2 if t == "ground_and_pound_specialist" else 0)) for t, w in pool]
 
-    # Pick additional traits from pool up to target count (1-3 total)
     target = rng.randint(1, 3)
     attempts = 0
     while len(traits) < target and pool and attempts < 20:
@@ -281,11 +406,7 @@ def _adjust_record_for_archetype(
     archetype: Archetype,
     rng: random.Random,
 ) -> None:
-    """Adjust W-L record so it fits the archetype narrative.
-
-    Keeps total fights the same; redistributes losses to wins
-    (and scales ko_wins/sub_wins proportionally) when needed.
-    """
+    """Adjust W-L record so it fits the archetype narrative."""
     total = f.wins + f.losses + f.draws
     if total == 0:
         return
@@ -295,9 +416,9 @@ def _adjust_record_for_archetype(
     elif archetype == Archetype.SHOOTING_STAR:
         min_rate = 0.60
     else:
-        return  # Other archetypes don't need adjustment
+        return
 
-    fight_total = f.wins + f.losses  # excluding draws
+    fight_total = f.wins + f.losses
     if fight_total == 0:
         return
 
@@ -305,101 +426,220 @@ def _adjust_record_for_archetype(
     if current_rate >= min_rate:
         return
 
-    # Calculate new wins needed for the minimum rate
     new_wins = max(f.wins, int(fight_total * min_rate) + 1)
-    new_wins = min(new_wins, fight_total)  # can't exceed total
+    new_wins = min(new_wins, fight_total)
     old_wins = f.wins
 
     f.wins = new_wins
     f.losses = fight_total - new_wins
 
-    # Scale ko_wins and sub_wins proportionally
     if old_wins > 0:
         ratio = new_wins / old_wins
         f.ko_wins = min(int(f.ko_wins * ratio), new_wins)
         f.sub_wins = min(int(f.sub_wins * ratio), new_wins - f.ko_wins)
     else:
-        # Had zero wins before, assign some finish methods
         f.ko_wins = int(new_wins * rng.uniform(0.15, 0.40))
         f.sub_wins = int((new_wins - f.ko_wins) * rng.uniform(0.1, 0.35))
 
+
+# ---------------------------------------------------------------------------
+# Archetype string -> Enum lookup
+# ---------------------------------------------------------------------------
+
+_ARCHETYPE_ENUM_MAP: dict[str, Archetype] = {
+    "Journeyman":     Archetype.JOURNEYMAN,
+    "Gatekeeper":     Archetype.GATEKEEPER,
+    "Phenom":         Archetype.PHENOM,
+    "Late Bloomer":   Archetype.LATE_BLOOMER,
+    "Shooting Star":  Archetype.SHOOTING_STAR,
+    "GOAT Candidate": Archetype.GOAT_CANDIDATE,
+}
+
+
+# ---------------------------------------------------------------------------
+# Main seed pipeline
+# ---------------------------------------------------------------------------
 
 def seed_fighters(
     session: Session,
     orgs: list[Organization],
     seed: int = 42,
-    count: int = 100,
+    count: int = 450,
 ) -> list[Fighter]:
-    rng = random.Random(seed)
-    ai_orgs = [o for o in orgs if not o.is_player]
+    """Seed fighters using quota-first archetype allocation.
+
+    Pipeline:
+    1. Initialize dual RNGs (stdlib + numpy) and Faker instances
+    2. Compute per-weight-class archetype quotas
+    3. Generate fighters per weight class with career-stage-aware stats
+    4. Distribute fighters to orgs based on prestige
+    5. Assign nicknames
+    """
+    # 1. Initialize RNGs
+    py_rng = random.Random(seed)
+    np_rng = np.random.default_rng(seed)
+    faker_instances = create_faker_instances(seed)
+
     weight_classes = list(WeightClass)
     styles = list(FighterStyle)
     fighters: list[Fighter] = []
-    # Use game start date, not real date
+    used_names: set[str] = set()
+
+    # Game start date for contract expiry
     game_state = session.get(GameState, 1)
     today = game_state.current_date if game_state else date(2026, 1, 1)
-    goat_counts: dict[str, int] = {}
 
-    for _ in range(count):
-        age = rng.randint(20, 37)
-        prime_start = rng.randint(24, 27)
-        prime_end = prime_start + rng.randint(4, 8)
+    # Compute per-weight-class count
+    count_per_class = count // len(weight_classes)
+    # Distribute remainder across first N classes
+    remainder = count - (count_per_class * len(weight_classes))
 
-        record = _gen_record(age, rng)
-        wc = rng.choice(weight_classes)
+    # Free agent tracking
+    target_free_agent_pct = py_rng.uniform(0.10, 0.15)
+    max_free_agents = int(count * target_free_agent_pct)
+    free_agent_count = 0
+
+    # 2-4. Generate fighters per weight class
+    for wc_idx, wc in enumerate(weight_classes):
+        class_count = count_per_class + (1 if wc_idx < remainder else 0)
         wc_val = wc.value if hasattr(wc, "value") else wc
+
+        # Allocate archetypes for this weight class
+        archetype_slots = allocate_archetypes(class_count, np_rng)
+
         limit = WEIGHT_CLASS_LIMITS.get(wc_val, 185)
         nat_lo, nat_hi = NATURAL_WEIGHT_RANGES.get(wc_val, (limit, limit + 20))
-        natural_wt = round(rng.uniform(nat_lo, nat_hi), 1)
 
-        f = Fighter(
-            name=_random_name(rng),
-            age=age,
-            nationality=rng.choice(_NATIONALITIES),
-            weight_class=wc,
-            style=rng.choice(styles),
-            striking=rng.randint(40, 92),
-            grappling=rng.randint(40, 92),
-            wrestling=rng.randint(40, 92),
-            cardio=rng.randint(40, 92),
-            chin=rng.randint(40, 92),
-            speed=rng.randint(40, 92),
-            prime_start=prime_start,
-            prime_end=prime_end,
-            wins=record["wins"],
-            losses=record["losses"],
-            draws=record["draws"],
-            ko_wins=record["ko_wins"],
-            sub_wins=record["sub_wins"],
-            natural_weight=natural_wt,
-            fighting_weight=float(limit),
-            confidence=70.0,
-        )
-        session.add(f)
-        session.flush()
+        for slot_idx in range(class_count):
+            archetype_str = archetype_slots[slot_idx]
 
-        archetype = _assign_archetype(f, goat_counts, rng)
-        _adjust_record_for_archetype(f, archetype, rng)
-        popularity, hype = _starting_popularity_hype(archetype, rng)
-        f.archetype = archetype
-        f.popularity = popularity
-        f.hype = hype
-        f.narrative_tags = "[]"
-        f.goat_score = 0.0
-        f.traits = json.dumps(_assign_traits(archetype, f, rng))
+            # Assign career stage (constrained by archetype)
+            career_stage = assign_career_stage(archetype_str, py_rng)
 
-        org = rng.choice(ai_orgs)
-        contract = Contract(
-            fighter_id=f.id,
-            organization_id=org.id,
-            status=ContractStatus.ACTIVE,
-            salary=round(rng.uniform(8_000, 120_000), 2),
-            fight_count_total=4,
-            fights_remaining=rng.randint(1, 4),
-            expiry_date=today + timedelta(days=rng.randint(90, 730)),
-        )
-        session.add(contract)
-        fighters.append(f)
+            # Derive age from career stage
+            age = _age_from_career_stage(career_stage, py_rng)
+
+            # Pick nationality and generate name
+            nationality = pick_nationality(py_rng)
+            name = generate_name(nationality, faker_instances, py_rng, used_names)
+
+            # Pick style
+            style_enum = py_rng.choice(styles)
+            style_str = style_enum.value if hasattr(style_enum, "value") else style_enum
+
+            # Generate stats using stat_gen module
+            stats = generate_stats(archetype_str, style_str, career_stage, np_rng)
+
+            # Generate fight record (career-stage-aware)
+            record = _gen_record(age, career_stage, py_rng)
+
+            # Prime window
+            prime_start, prime_end = _prime_window(career_stage, age, py_rng)
+
+            # Natural weight
+            natural_wt = round(py_rng.uniform(nat_lo, nat_hi), 1)
+
+            # Create Fighter
+            archetype_enum = _ARCHETYPE_ENUM_MAP[archetype_str]
+
+            f = Fighter(
+                name=name,
+                age=age,
+                nationality=nationality,
+                weight_class=wc,
+                style=style_enum,
+                striking=stats["striking"],
+                grappling=stats["grappling"],
+                wrestling=stats["wrestling"],
+                cardio=stats["cardio"],
+                chin=stats["chin"],
+                speed=stats["speed"],
+                prime_start=prime_start,
+                prime_end=prime_end,
+                wins=record["wins"],
+                losses=record["losses"],
+                draws=record["draws"],
+                ko_wins=record["ko_wins"],
+                sub_wins=record["sub_wins"],
+                natural_weight=natural_wt,
+                fighting_weight=float(limit),
+                confidence=70.0,
+                archetype=archetype_enum,
+            )
+            session.add(f)
+            session.flush()
+
+            # Adjust record for GOAT Candidates and Shooting Stars
+            _adjust_record_for_archetype(f, archetype_enum, py_rng)
+
+            # Popularity and hype
+            popularity, hype = _starting_popularity_hype(archetype_enum, py_rng)
+            f.popularity = popularity
+            f.hype = hype
+            f.narrative_tags = "[]"
+            f.goat_score = 0.0
+
+            # Traits
+            f.traits = json.dumps(_assign_traits(archetype_enum, f, py_rng))
+
+            # Assign nickname
+            nicknames = suggest_nicknames(f, session)
+            f.nickname = nicknames[0] if nicknames else "The Fighter"
+
+            # 5. Org distribution
+            org = _assign_organization(
+                career_stage, archetype_str, orgs, py_rng,
+                free_agent_count, len(fighters), max_free_agents,
+            )
+
+            if org is not None:
+                # Create contract
+                salary_lo, salary_hi = _ARCHETYPE_SALARY.get(
+                    archetype_str, (8_000, 25_000)
+                )
+                contract = Contract(
+                    fighter_id=f.id,
+                    organization_id=org.id,
+                    status=ContractStatus.ACTIVE,
+                    salary=round(py_rng.uniform(salary_lo, salary_hi), 2),
+                    fight_count_total=4,
+                    fights_remaining=py_rng.randint(1, 4),
+                    expiry_date=today + timedelta(days=py_rng.randint(90, 730)),
+                )
+                session.add(contract)
+            else:
+                free_agent_count += 1
+
+            fighters.append(f)
+
+    # Force remaining fighters to be free agents if we haven't hit minimum
+    # This ensures the 10-15% target is met
+    min_free_agents = int(count * 0.10)
+    if free_agent_count < min_free_agents:
+        # Find signed fighters that can be converted to free agents
+        # Prefer prospects and veterans for realism
+        signed_fighters = [
+            f for f in fighters
+            if f.id not in {fa.id for fa in fighters[:free_agent_count]}
+        ]
+        # Get fighters with contracts, sort by suitability for free agency
+        from sqlalchemy import and_
+        for f in fighters:
+            if free_agent_count >= min_free_agents:
+                break
+            arch_val = f.archetype.value if hasattr(f.archetype, 'value') else f.archetype
+            if arch_val == "GOAT Candidate":
+                continue
+            # Check if fighter has an active contract
+            existing_contract = session.execute(
+                select(Contract).where(
+                    Contract.fighter_id == f.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                )
+            ).scalars().first()
+            if existing_contract and (f.age <= 24 or f.age >= 32):
+                session.delete(existing_contract)
+                free_agent_count += 1
 
     # Seed training camps
     _seed_training_camps(session)
@@ -407,6 +647,10 @@ def seed_fighters(
     session.commit()
     return fighters
 
+
+# ---------------------------------------------------------------------------
+# Training camps (PRESERVED)
+# ---------------------------------------------------------------------------
 
 TRAINING_CAMPS = [
     # Tier 1
