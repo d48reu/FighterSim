@@ -62,6 +62,38 @@ class TestNames:
         names = [f.name for f in fighters]
         assert len(names) == len(set(names)), "Duplicate names found"
 
+    def test_nationality_name_correlation(self, seeded_session):
+        """Spot-check that nationality-appropriate names are generated.
+
+        Brazilian fighters should have Portuguese-sounding names,
+        Russian fighters should have Slavic-sounding names, etc.
+        """
+        fighters = seeded_session.execute(select(Fighter)).scalars().all()
+
+        # Known name fragments by nationality
+        brazilian_fragments = {"Silva", "Santos", "Costa", "Souza", "Lima",
+                               "Ferreira", "Alves", "Pereira", "Oliveira"}
+        russian_fragments = {"ov", "ev", "in", "ko"}  # common surname endings
+        dagestani_fragments = {"ov", "ev", "aev"}
+
+        # Check that at least some Brazilian fighters have Portuguese-sounding names
+        brazilians = [f for f in fighters if f.nationality == "Brazilian"]
+        if brazilians:
+            has_match = any(
+                any(frag.lower() in f.name.lower() for frag in brazilian_fragments)
+                for f in brazilians
+            )
+            assert has_match, "No Brazilian fighters have Portuguese-sounding last names"
+
+        # Check that Russian fighters have Slavic-sounding names
+        russians = [f for f in fighters if f.nationality == "Russian"]
+        if russians:
+            has_match = any(
+                any(frag in f.name.lower() for frag in russian_fragments)
+                for f in russians
+            )
+            assert has_match, "No Russian fighters have Slavic-sounding names"
+
     def test_names_are_latin_script(self, seeded_session):
         """All names should be ASCII Latin characters."""
         import re
