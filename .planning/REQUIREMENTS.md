@@ -17,12 +17,12 @@ Requirements for the world-building milestone. Each maps to roadmap phases.
 
 ### Pre-Generated History
 
-- [ ] **HIST-01**: Fighters have pre-existing fight records backed by real Fight rows in the database
-- [ ] **HIST-02**: Each weight class has an established champion at game start
-- [ ] **HIST-03**: Career lengths vary realistically (veterans 15-25 fights, prospects 1-3)
-- [ ] **HIST-04**: Pre-existing rivalries emerge from fabricated fight history
+- [x] **HIST-01**: Fighters have pre-existing fight records backed by real Fight rows in the database
+- [x] **HIST-02**: Each weight class has an established champion at game start
+- [x] **HIST-03**: Career lengths vary realistically (veterans 15-25 fights, prospects 1-3)
+- [x] **HIST-04**: Pre-existing rivalries emerge from fabricated fight history
 - [ ] **HIST-05**: Historical events with results are browsable from day one
-- [ ] **HIST-06**: Career timelines are populated from fabricated history
+- [x] **HIST-06**: Career timelines are populated from fabricated history
 
 ### Fighter Identity
 
@@ -82,12 +82,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FGEN-03 | Phase 1: Fighter Generation | Complete |
 | FGEN-04 | Phase 1: Fighter Generation | Complete |
 | FGEN-05 | Phase 1: Fighter Generation | Complete |
-| HIST-01 | Phase 2: Fight History | Pending |
-| HIST-02 | Phase 2: Fight History | Pending |
-| HIST-03 | Phase 2: Fight History | Pending |
-| HIST-04 | Phase 2: Fight History | Pending |
+| HIST-01 | Phase 2: Fight History | Complete |
+| HIST-02 | Phase 2: Fight History | Complete |
+| HIST-03 | Phase 2: Fight History | Complete |
+| HIST-04 | Phase 2: Fight History | Complete |
 | HIST-05 | Phase 2: Fight History | Pending |
-| HIST-06 | Phase 2: Fight History | Pending |
+| HIST-06 | Phase 2: Fight History | Complete |
 | IDEN-01 | Phase 3: Fighter Identity | Pending |
 | IDEN-02 | Phase 3: Fighter Identity | Pending |
 | PLYR-01 | Phase 4: Player Origins | Pending |

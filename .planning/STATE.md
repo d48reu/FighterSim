@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-02T04:14:03.349Z"
+status: in-progress
+last_updated: "2026-03-02T05:29:03Z"
 progress:
-  total_phases: 1
+  total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
 ---
 
 # Project State
@@ -18,32 +18,33 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** The world feels alive and inhabited -- fighters are people with backstories, personalities, and reputations, not procedurally generated stat blocks.
-**Current focus:** Phase 1: Fighter Generation
+**Current focus:** Phase 2: Fight History
 
 ## Current Position
 
-Phase: 1 of 4 (Fighter Generation)
-Plan: 2 of 2 in current phase (completed)
-Status: Phase 1 Complete
-Last activity: 2026-03-02 -- Plan 01-02 completed (seed pipeline refactor)
+Phase: 2 of 4 (Fight History)
+Plan: 1 of 2 in current phase
+Status: Plan 02-01 Complete
+Last activity: 2026-03-02 -- Plan 02-01 completed (fight history fabrication module)
 
-Progress: [███░░░░░░░] 25%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
+- Total plans completed: 3
 - Average duration: 5 min
-- Total execution time: 10 min
+- Total execution time: 15 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-fighter-generation | 2/2 | 10 min | 5 min |
+| 02-fight-history | 1/2 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5 min), 01-02 (5 min)
+- Last 5 plans: 01-01 (5 min), 01-02 (5 min), 02-01 (5 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -65,6 +66,10 @@ Recent decisions affecting current work:
 - [01-02]: Late Bloomer allowed as veteran stage, Shooting Star allowed as transitional stage to fix career stage distribution
 - [01-02]: Free agent selection never includes GOAT Candidates
 - [01-02]: Salary scaled by archetype (GOAT Candidates 80-200K, Journeymen 8-25K)
+- [02-01]: Record reconciliation -- update Fighter W/L/D to match actual Fight rows post-fabrication (event slots insufficient for full budgets)
+- [02-01]: Player org fighters excluded from history fabrication (player earns own history)
+- [02-01]: Rivalry pairs seeded from same-org rosters with top-fighter priority
+- [02-01]: Title fights at events 3+ with 4-6 event intervals
 
 ### Pending Todos
 
@@ -79,5 +84,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 01-02-PLAN.md (seed pipeline refactor) -- Phase 1 complete
-Resume file: .planning/phases/01-fighter-generation/01-02-SUMMARY.md
+Stopped at: Completed 02-01-PLAN.md (fight history fabrication module)
+Resume file: .planning/phases/02-fight-history/02-01-SUMMARY.md
