@@ -85,7 +85,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Fighter Generation | 0/2 | Planned | - |
+| 1. Fighter Generation | 1/2 | In Progress | - |
 | 2. Fight History | 0/0 | Not started | - |
 | 3. Fighter Identity | 0/0 | Not started | - |
 | 4. Player Origins | 0/0 | Not started | - |
