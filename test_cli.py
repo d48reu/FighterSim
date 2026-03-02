@@ -141,6 +141,41 @@ with SessionFactory() as session:
         if mismatch > 2:
             hist_errors.append(f"{wc.value}: win mismatch {mismatch} (attr={total_wins_attr}, fights={actual_wins})")
 
+    # 6. Career length realism check (HIST-03)
+    print("\n  Career length realism (HIST-03):")
+    from collections import defaultdict as dd
+    from models.models import Contract, ContractStatus, Organization
+    fight_counts_map = dd(int)
+    for fight in all_fights:
+        fight_counts_map[fight.fighter_a_id] += 1
+        fight_counts_map[fight.fighter_b_id] += 1
+
+    # Get AI-org fighters only
+    active_contracts = session.execute(
+        select(Contract).where(Contract.status == ContractStatus.ACTIVE)
+    ).scalars().all()
+    fighter_org_map = {c.fighter_id: c.organization_id for c in active_contracts}
+    ai_orgs = session.execute(
+        select(Organization).where(Organization.is_player == False)
+    ).scalars().all()
+    ai_org_ids = {o.id for o in ai_orgs}
+
+    all_fighters_list = session.execute(select(Fighter)).scalars().all()
+    ai_fighters_list = [f for f in all_fighters_list if fighter_org_map.get(f.id) in ai_org_ids]
+
+    vets_15plus = [f for f in ai_fighters_list if fight_counts_map.get(f.id, 0) >= 15]
+    prospects_1to5 = [f for f in ai_fighters_list if 1 <= fight_counts_map.get(f.id, 0) <= 5]
+    max_fights = max(fight_counts_map.values()) if fight_counts_map else 0
+
+    print(f"    Fighters with 15+ fights: {len(vets_15plus)}")
+    print(f"    Fighters with 1-5 fights: {len(prospects_1to5)}")
+    print(f"    Max fight count: {max_fights}")
+
+    if len(vets_15plus) < 50:
+        hist_errors.append(f"HIST-03: Only {len(vets_15plus)} fighters have 15+ fights (need 50+)")
+    if max_fights < 15:
+        hist_errors.append(f"HIST-03: Max fight count is {max_fights} (need 15+)")
+
     if hist_errors:
         print(f"\n  ✗ History validation: {len(hist_errors)} error(s):")
         for e in hist_errors:
