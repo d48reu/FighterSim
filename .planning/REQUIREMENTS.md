@@ -77,29 +77,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FGEN-01 | — | Pending |
-| FGEN-02 | — | Pending |
-| FGEN-03 | — | Pending |
-| FGEN-04 | — | Pending |
-| FGEN-05 | — | Pending |
-| HIST-01 | — | Pending |
-| HIST-02 | — | Pending |
-| HIST-03 | — | Pending |
-| HIST-04 | — | Pending |
-| HIST-05 | — | Pending |
-| HIST-06 | — | Pending |
-| IDEN-01 | — | Pending |
-| IDEN-02 | — | Pending |
-| PLYR-01 | — | Pending |
-| PLYR-02 | — | Pending |
-| PLYR-03 | — | Pending |
-| PLYR-04 | — | Pending |
+| FGEN-01 | Phase 1: Fighter Generation | Pending |
+| FGEN-02 | Phase 1: Fighter Generation | Pending |
+| FGEN-03 | Phase 1: Fighter Generation | Pending |
+| FGEN-04 | Phase 1: Fighter Generation | Pending |
+| FGEN-05 | Phase 1: Fighter Generation | Pending |
+| HIST-01 | Phase 2: Fight History | Pending |
+| HIST-02 | Phase 2: Fight History | Pending |
+| HIST-03 | Phase 2: Fight History | Pending |
+| HIST-04 | Phase 2: Fight History | Pending |
+| HIST-05 | Phase 2: Fight History | Pending |
+| HIST-06 | Phase 2: Fight History | Pending |
+| IDEN-01 | Phase 3: Fighter Identity | Pending |
+| IDEN-02 | Phase 3: Fighter Identity | Pending |
+| PLYR-01 | Phase 4: Player Origins | Pending |
+| PLYR-02 | Phase 4: Player Origins | Pending |
+| PLYR-03 | Phase 4: Player Origins | Pending |
+| PLYR-04 | Phase 4: Player Origins | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17 ⚠️
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after initial definition*
+*Last updated: 2026-03-01 after roadmap creation*
