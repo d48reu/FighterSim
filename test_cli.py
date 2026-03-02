@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 from models.database import create_db_engine, create_session_factory, Base
 from models.models import Fighter, WeightClass, GameState
 from simulation.seed import seed_organizations, seed_fighters
+from simulation.history import fabricate_history
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import rebuild_rankings, get_rankings
 from simulation.monthly_sim import sim_month
@@ -50,13 +51,101 @@ with SessionFactory() as session:
     fighters = seed_fighters(session, orgs, seed=42)
     print(f"✓ Created {len(orgs)} organizations")
     print(f"✓ Seeded {len(fighters)} fighters")
-    
+
     # Show breakdown by weight class
     for wc in WeightClass:
         count = session.execute(
             select(Fighter).where(Fighter.weight_class == wc)
         ).scalars().all()
         print(f"  {wc.value}: {len(count)} fighters")
+
+    # Fabricate pre-game fight history
+    history = fabricate_history(session, fighters, orgs, seed=42)
+    print(f"\n✓ Fabricated history: {history['events_created']} events, {history['fights_created']} fights")
+    print(f"  Champions crowned: {len(history.get('champions', {}))}")
+    print(f"  Rivalries detected: {len(history.get('rivalries', []))}")
+
+
+# ──────────────────────────────────────────────
+# 1b. Validate fabricated history
+# ──────────────────────────────────────────────
+
+print()
+print("=" * 60)
+print("STEP 1b: Validating fabricated history")
+print("=" * 60)
+
+from models.models import Event, Fight, EventStatus, FightMethod
+
+with SessionFactory() as session:
+    hist_errors = []
+
+    # 1. Count total events and fights
+    all_events = session.execute(
+        select(Event).where(Event.status == EventStatus.COMPLETED)
+    ).scalars().all()
+    all_fights = session.execute(select(Fight)).scalars().all()
+    print(f"  Total completed events: {len(all_events)}")
+    print(f"  Total fights: {len(all_fights)}")
+
+    if len(all_events) < 10:
+        hist_errors.append(f"Expected at least 10 events, got {len(all_events)}")
+    if len(all_fights) < 50:
+        hist_errors.append(f"Expected at least 50 fights, got {len(all_fights)}")
+
+    # 2. Check that title fights exist
+    title_fights = [f for f in all_fights if f.is_title_fight]
+    print(f"  Title fights: {len(title_fights)}")
+    if len(title_fights) == 0:
+        hist_errors.append("No title fights found in fabricated history")
+
+    # 3. Print a sample fighter's fight record
+    sample_fighter = session.execute(
+        select(Fighter).where(Fighter.wins > 0)
+    ).scalars().first()
+    if sample_fighter:
+        fighter_fights = [f for f in all_fights
+                         if f.fighter_a_id == sample_fighter.id
+                         or f.fighter_b_id == sample_fighter.id]
+        print(f"  Sample fighter: {sample_fighter.name} ({sample_fighter.wins}-{sample_fighter.losses}-{sample_fighter.draws})")
+        print(f"    Fight rows: {len(fighter_fights)}")
+
+    # 4. Check rival count
+    from simulation.narrative import update_rivalries
+    update_rivalries(session)
+    rival_fighters = session.execute(
+        select(Fighter).where(Fighter.rival_id.isnot(None))
+    ).scalars().all()
+    print(f"  Fighters with rivals: {len(rival_fighters)}")
+    if len(rival_fighters) == 0:
+        hist_errors.append("No rivalries detected after history fabrication")
+
+    # 5. Record consistency check per weight class
+    print("\n  Record consistency check:")
+    from models.models import Archetype
+    for wc in WeightClass:
+        wc_fighters = session.execute(
+            select(Fighter).where(Fighter.weight_class == wc)
+        ).scalars().all()
+        total_wins_attr = sum(f.wins for f in wc_fighters)
+        # Count actual Fight rows where these fighters won
+        wc_fighter_ids = {f.id for f in wc_fighters}
+        actual_wins = 0
+        for fight in all_fights:
+            if fight.winner_id in wc_fighter_ids:
+                actual_wins += 1
+        mismatch = abs(total_wins_attr - actual_wins)
+        status = "✓" if mismatch <= 2 else f"✗ mismatch={mismatch}"
+        print(f"    {wc.value}: attr_wins={total_wins_attr}, fight_wins={actual_wins} {status}")
+        if mismatch > 2:
+            hist_errors.append(f"{wc.value}: win mismatch {mismatch} (attr={total_wins_attr}, fights={actual_wins})")
+
+    if hist_errors:
+        print(f"\n  ✗ History validation: {len(hist_errors)} error(s):")
+        for e in hist_errors:
+            print(f"    - {e}")
+    else:
+        print("\n  HISTORY VALIDATION PASSED")
 
 
 # ──────────────────────────────────────────────

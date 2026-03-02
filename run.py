@@ -18,6 +18,7 @@ if DB_FILE.exists():
 from api.app import create_app
 import api.services as svc
 from simulation.seed import seed_organizations, seed_fighters
+from simulation.history import fabricate_history
 
 # Create app (this calls init_db, creating tables + session factory)
 app = create_app(DB_URL)
@@ -27,6 +28,12 @@ with svc._SessionFactory() as session:
     orgs = seed_organizations(session)
     fighters = seed_fighters(session, orgs, seed=42)
     print(f"Seeded {len(orgs)} orgs and {len(fighters)} fighters")
+
+    # Fabricate pre-game fight history
+    history = fabricate_history(session, fighters, orgs, seed=42)
+    print(f"Fabricated history: {history['events_created']} events, {history['fights_created']} fights")
+    print(f"Champions crowned: {len(history.get('champions', {}))}")
+    print(f"Rivalries detected: {len(history.get('rivalries', []))}")
 
 # Verify
 camps = svc.get_training_camps()

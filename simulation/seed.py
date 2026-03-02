@@ -24,6 +24,7 @@ from simulation.name_gen import (
 )
 from simulation.stat_gen import generate_stats, compute_overall
 from simulation.narrative import suggest_nicknames
+from simulation.history import fabricate_history
 
 
 # ---------------------------------------------------------------------------
