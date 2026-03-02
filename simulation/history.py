@@ -1,6 +1,6 @@
 """Fight history fabrication for FighterSim.
 
-Generates 2-3 years of pre-game fight history as real Fight+Event database rows.
+Generates 5 years of pre-game fight history (2021-2025) as real Fight+Event database rows.
 Transforms bare W/L/D numbers from seed pipeline into actual fight records with
 narratives, champions, and rivalries.
 
@@ -365,7 +365,7 @@ def _build_event_timeline(
 ) -> list[tuple[date, Organization]]:
     """Generate chronological event schedule for all AI orgs.
 
-    Each AI org gets an event every 6-8 weeks (42-56 day gaps).
+    Each AI org gets an event every ~2 weeks (10-18 day gaps).
     Player org is excluded.
     Returns list of (event_date, org) tuples sorted by date.
     """
@@ -377,7 +377,7 @@ def _build_event_timeline(
         current = start_date + timedelta(days=py_rng.randint(0, 14))
         while current < end_date:
             timeline.append((current, org))
-            gap_days = py_rng.randint(42, 56)  # 6-8 weeks
+            gap_days = py_rng.randint(10, 18)  # ~2 weeks per org
             current += timedelta(days=gap_days)
 
     timeline.sort(key=lambda t: t[0])
@@ -484,7 +484,7 @@ def _matchmake_card(
     fighter_lookup: dict[int, Fighter],
     py_rng: random.Random,
 ) -> list[dict]:
-    """Produce 5-7 fight specs for one event card.
+    """Produce 8-12 fight specs for one event card.
 
     Each fight spec: {fighter_a_id, fighter_b_id, weight_class, is_title_fight,
                       card_position, winner_id, is_draw, is_rivalry}
@@ -493,7 +493,7 @@ def _matchmake_card(
     """
     card: list[dict] = []
     booked_this_event: set[int] = set()
-    target_fights = py_rng.randint(5, 7)
+    target_fights = py_rng.randint(8, 12)
 
     # Get org's roster: only fighters with remaining fights in THIS org
     org_roster_by_wc: dict[str, list[Fighter]] = defaultdict(list)
@@ -652,41 +652,47 @@ def _matchmake_card(
         wc_val = wc.value
         available = [f for f in org_roster_by_wc.get(wc_val, [])
                      if f.id not in booked_this_event and remaining_fights.get(f.id, 0) > 0]
-        # Sort by id for determinism, then shuffle
-        available.sort(key=lambda f: f.id)
-        py_rng.shuffle(available)
+        # Sort by remaining fight budget (descending), with deterministic
+        # tiebreaker by id. This ensures high-budget veterans get booked first.
+        available.sort(key=lambda f: (-remaining_fights.get(f.id, 0), f.id))
 
-        i = 0
-        while i + 1 < len(available) and len(card) < target_fights:
-            f_a = available[i]
-            f_b = available[i + 1]
-
-            # Avoid rematching too often (max 3 fights between same pair)
-            pair_key = (min(f_a.id, f_b.id), max(f_a.id, f_b.id))
-            if matchup_history.get(pair_key, 0) >= 3:
-                i += 1
+        matched: set[int] = set()
+        for idx_a, f_a in enumerate(available):
+            if len(card) >= target_fights:
+                break
+            if f_a.id in matched:
                 continue
+            # Scan for best valid opponent (first unmatched, under rematch cap)
+            for idx_b in range(idx_a + 1, len(available)):
+                f_b = available[idx_b]
+                if f_b.id in matched:
+                    continue
+                pair_key = (min(f_a.id, f_b.id), max(f_a.id, f_b.id))
+                if matchup_history.get(pair_key, 0) >= 3:
+                    continue  # Try next opponent instead of giving up
 
-            winner_id, is_draw = _determine_winner(
-                f_a, f_b, remaining_wins, remaining_losses,
-                remaining_draws, py_rng
-            )
-            card.append({
-                "fighter_a_id": f_a.id,
-                "fighter_b_id": f_b.id,
-                "weight_class": wc_val,
-                "is_title_fight": False,
-                "card_position": len(card),
-                "winner_id": winner_id,
-                "is_draw": is_draw,
-                "is_rivalry": False,
-            })
-            booked_this_event.add(f_a.id)
-            booked_this_event.add(f_b.id)
-            _decrement_records(f_a.id, f_b.id, winner_id, is_draw,
-                               remaining_fights, remaining_wins, remaining_losses, remaining_draws)
-            matchup_history[pair_key] = matchup_history.get(pair_key, 0) + 1
-            i += 2
+                winner_id, is_draw = _determine_winner(
+                    f_a, f_b, remaining_wins, remaining_losses,
+                    remaining_draws, py_rng
+                )
+                card.append({
+                    "fighter_a_id": f_a.id,
+                    "fighter_b_id": f_b.id,
+                    "weight_class": wc_val,
+                    "is_title_fight": False,
+                    "card_position": len(card),
+                    "winner_id": winner_id,
+                    "is_draw": is_draw,
+                    "is_rivalry": False,
+                })
+                booked_this_event.add(f_a.id)
+                booked_this_event.add(f_b.id)
+                matched.add(f_a.id)
+                matched.add(f_b.id)
+                _decrement_records(f_a.id, f_b.id, winner_id, is_draw,
+                                   remaining_fights, remaining_wins, remaining_losses, remaining_draws)
+                matchup_history[pair_key] = matchup_history.get(pair_key, 0) + 1
+                break  # f_a is matched, move to next fighter
 
     # Fix card positions: title fight = highest, rest ordered
     non_title = [f for f in card if not f["is_title_fight"]]
@@ -928,7 +934,8 @@ def fabricate_history(
     rivalry_booked: dict[tuple[int, int], int] = {}
 
     # --- Build event timeline ---
-    history_start = date(2023, 1, 1)
+    # 5-year history window (2021-2025) for deeper career records
+    history_start = date(2021, 1, 1)
     history_end = date(2025, 12, 15)
     timeline = _build_event_timeline(orgs, history_start, history_end, py_rng)
 
