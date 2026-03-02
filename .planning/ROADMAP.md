@@ -12,7 +12,7 @@ FighterSim has strong mechanical systems but the world feels empty at game start
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Fighter Generation** - Overhaul seed to produce 400-500 fighters with authentic names, balanced archetypes, and career-stage-appropriate stats
+- [x] **Phase 1: Fighter Generation** - Overhaul seed to produce 400-500 fighters with authentic names, balanced archetypes, and career-stage-appropriate stats
 - [ ] **Phase 2: Fight History** - Fabricate 2-3 years of pre-game fight history with real database records, champions, and emergent rivalries
 - [ ] **Phase 3: Fighter Identity** - Generate composable backstories and career highlights from actual fight history data
 - [ ] **Phase 4: Player Origins** - Selectable starting scenarios with narrative intros and mechanical consequences
@@ -32,8 +32,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 01-01-PLAN.md -- Foundation modules: name generation (Faker locales + romanized lists) and stat generation (numpy distributions)
-- [ ] 01-02-PLAN.md -- Seed pipeline refactor: quota-first archetypes, career stages, org distribution, nicknames, full validation
+- [x] 01-01-PLAN.md -- Foundation modules: name generation (Faker locales + romanized lists) and stat generation (numpy distributions)
+- [x] 01-02-PLAN.md -- Seed pipeline refactor: quota-first archetypes, career stages, org distribution, nicknames, full validation
 
 ### Phase 2: Fight History
 **Goal**: The game world has years of pre-existing fight history that players can browse -- champions defended titles, rivalries formed, veterans accumulated records
@@ -85,7 +85,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Fighter Generation | 1/2 | In Progress | - |
+| 1. Fighter Generation | 2/2 | Complete | 2026-03-02 |
 | 2. Fight History | 0/0 | Not started | - |
 | 3. Fighter Identity | 0/0 | Not started | - |
 | 4. Player Origins | 0/0 | Not started | - |

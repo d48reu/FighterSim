@@ -10,9 +10,9 @@ Requirements for the world-building milestone. Each maps to roadmap phases.
 ### Fighter Generation
 
 - [x] **FGEN-01**: Fighter names match their nationality using locale-appropriate generation (Faker)
-- [ ] **FGEN-02**: Fighter pool scales to 400-500 fighters across 5 weight classes (80-100 per class)
-- [ ] **FGEN-03**: Archetype distribution uses quota system instead of waterfall scoring (no more 69% Phenom collapse)
-- [ ] **FGEN-04**: Fighters span realistic career stages at game start (prospects, prime, veterans, declining)
+- [x] **FGEN-02**: Fighter pool scales to 400-500 fighters across 5 weight classes (80-100 per class)
+- [x] **FGEN-03**: Archetype distribution uses quota system instead of waterfall scoring (no more 69% Phenom collapse)
+- [x] **FGEN-04**: Fighters span realistic career stages at game start (prospects, prime, veterans, declining)
 - [x] **FGEN-05**: Fighter stats correlate with archetype and career stage (numpy distributions, not uniform random)
 
 ### Pre-Generated History
@@ -78,9 +78,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FGEN-01 | Phase 1: Fighter Generation | Complete |
-| FGEN-02 | Phase 1: Fighter Generation | Pending |
-| FGEN-03 | Phase 1: Fighter Generation | Pending |
-| FGEN-04 | Phase 1: Fighter Generation | Pending |
+| FGEN-02 | Phase 1: Fighter Generation | Complete |
+| FGEN-03 | Phase 1: Fighter Generation | Complete |
+| FGEN-04 | Phase 1: Fighter Generation | Complete |
 | FGEN-05 | Phase 1: Fighter Generation | Complete |
 | HIST-01 | Phase 2: Fight History | Pending |
 | HIST-02 | Phase 2: Fight History | Pending |

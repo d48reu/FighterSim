@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 1 of 4 (Fighter Generation)
-Plan: 1 of 2 in current phase (completed)
-Status: Executing Phase 1
-Last activity: 2026-03-02 -- Plan 01-01 completed (foundation modules)
+Plan: 2 of 2 in current phase (completed)
+Status: Phase 1 Complete
+Last activity: 2026-03-02 -- Plan 01-02 completed (seed pipeline refactor)
 
-Progress: [██░░░░░░░░] 12.5%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
+- Total plans completed: 2
 - Average duration: 5 min
-- Total execution time: 5 min
+- Total execution time: 10 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-fighter-generation | 1/2 | 5 min | 5 min |
+| 01-fighter-generation | 2/2 | 10 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5 min)
-- Trend: -
+- Last 5 plans: 01-01 (5 min), 01-02 (5 min)
+- Trend: Stable
 
 *Updated after each plan completion*
 
@@ -48,6 +48,10 @@ Recent decisions affecting current work:
 - [01-01]: ASCII normalization via unicodedata NFD + special char table for non-decomposable chars (ø, ł, ß)
 - [01-01]: Faker.seed() is global/class-level -- must re-seed before creating new instances for determinism
 - [01-01]: Career stage modifiers use uniform range per-stat for natural variance within stage bounds
+- [01-02]: Archetype quotas rebalanced to respect 25% cap (Journeyman 24%, Gatekeeper 23%, Phenom 22%, Late Bloomer 14%, Shooting Star 10%, GOAT Candidate 7%)
+- [01-02]: Late Bloomer allowed as veteran stage, Shooting Star allowed as transitional stage to fix career stage distribution
+- [01-02]: Free agent selection never includes GOAT Candidates
+- [01-02]: Salary scaled by archetype (GOAT Candidates 80-200K, Journeymen 8-25K)
 
 ### Pending Todos
 
@@ -62,5 +66,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Completed 01-01-PLAN.md (foundation modules)
-Resume file: .planning/phases/01-fighter-generation/01-01-SUMMARY.md
+Stopped at: Completed 01-02-PLAN.md (seed pipeline refactor) -- Phase 1 complete
+Resume file: .planning/phases/01-fighter-generation/01-02-SUMMARY.md
