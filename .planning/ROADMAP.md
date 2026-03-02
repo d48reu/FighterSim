@@ -29,11 +29,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Archetype distribution across the full roster shows no single archetype exceeding 25% (no Phenom collapse)
   4. The fighters list contains a visible mix of prospects (low fight count age 20-24), prime fighters (age 25-31), veterans (age 32+), and declining fighters
   5. Fighter stats correlate with their archetype and career stage (prospects have lower stats with higher ceilings, veterans have developed but declining attributes)
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md -- Foundation modules: name generation (Faker locales + romanized lists) and stat generation (numpy distributions)
+- [ ] 01-02-PLAN.md -- Seed pipeline refactor: quota-first archetypes, career stages, org distribution, nicknames, full validation
 
 ### Phase 2: Fight History
 **Goal**: The game world has years of pre-existing fight history that players can browse -- champions defended titles, rivalries formed, veterans accumulated records
@@ -85,7 +85,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Fighter Generation | 0/0 | Not started | - |
+| 1. Fighter Generation | 0/2 | Planned | - |
 | 2. Fight History | 0/0 | Not started | - |
 | 3. Fighter Identity | 0/0 | Not started | - |
 | 4. Player Origins | 0/0 | Not started | - |
