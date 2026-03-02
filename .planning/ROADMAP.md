@@ -45,11 +45,11 @@ Plans:
   3. Veterans show 15-25 fight records while prospects show 1-3 fights, matching their career stage
   4. At least some fighter pairs are flagged as rivals (from repeated matchups or contentious finishes in fabricated history)
   5. Historical events with full cards and results are browsable in the events view from day one
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md -- Core fabrication module: narrative templates, outcome resolver, event timeline, matchmaker, champion tracking, and fabricate_history() entry point
+- [ ] 02-02-PLAN.md -- Pipeline integration: wire into seed/run.py/test_cli.py, add all-org event browsing API, end-to-end validation
 
 ### Phase 3: Fighter Identity
 **Goal**: Fighters feel like individuals with stories -- their bios reference real fights from their history, and notable career moments are highlighted
@@ -86,6 +86,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Fighter Generation | 2/2 | Complete | 2026-03-02 |
-| 2. Fight History | 0/0 | Not started | - |
+| 2. Fight History | 0/2 | Planning complete | - |
 | 3. Fighter Identity | 0/0 | Not started | - |
 | 4. Player Origins | 0/0 | Not started | - |
