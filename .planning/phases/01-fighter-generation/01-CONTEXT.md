@@ -17,13 +17,13 @@ Overhaul the seed pipeline to produce 400-500 fighters with authentic nationalit
 - MMA-realistic nationality pool: ~15-20 countries weighted by real-world MMA output (USA, Brazil, Russia/Dagestan get biggest shares ~15-20% each; smaller markets like Georgia, New Zealand get 2-5 fighters)
 - Use Faker with locale mapping so fighter names match their nationality (no more "Carlos Ivanov")
 - Generate archetype-based nicknames at seed time (e.g., knockout artist = "The Hammer") — Fighter model already has a nickname column (String 30)
-- Allow shared last names across fighters (realistic — multiple Silvas, Johnsons) but enforce unique full names
+- All unique names — Faker generates until no duplicates across the full roster. Retry with middle initials or alternate names if collisions occur
 - Current 23-nationality list gets trimmed/adjusted to MMA-prominent countries
 
 ### Career Stage Mix
 - Balanced ecosystem distribution: ~20% prospects (age 20-24, low fight count), ~35% prime (25-31, peak stats), ~25% veterans (32+, high fight count, declining), ~20% transitional
 - Prestige-gated organization distribution: top org (UCC, prestige 90) gets more prime/veteran talent; lower-prestige orgs get more prospects and journeymen; player promotion (prestige 50) starts with less proven fighters
-- Weight class variation in career demographics: heavier classes (Heavyweight) trend older/more veteran; lighter classes (Flyweight, Lightweight) skew younger — matches real MMA demographics
+- Same career stage distribution across all weight classes — consistent 20/35/25/20 split regardless of division
 - 10-15% of fighters (~40-60) start as free agents (unsigned), giving the player immediate roster-building options
 
 ### Archetype Rarity
