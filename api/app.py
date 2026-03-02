@@ -104,6 +104,13 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         limit = int(request.args.get("limit", 20))
         return jsonify(services.get_event_history(limit))
 
+    @app.route("/api/events/all-history")
+    def all_event_history():
+        """Browse event history across all organizations."""
+        org_id = request.args.get("organization_id", type=int)
+        limit = request.args.get("limit", 50, type=int)
+        return jsonify(services.get_all_event_history(organization_id=org_id, limit=limit))
+
     @app.route("/api/events/<int:event_id>")
     def get_event(event_id: int):
         event = services.get_event(event_id)

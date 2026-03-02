@@ -61,9 +61,10 @@ with SessionFactory() as session:
 
     # Fabricate pre-game fight history
     history = fabricate_history(session, fighters, orgs, seed=42)
+    session.commit()
     print(f"\n✓ Fabricated history: {history['events_created']} events, {history['fights_created']} fights")
     print(f"  Champions crowned: {len(history.get('champions', {}))}")
-    print(f"  Rivalries detected: {len(history.get('rivalries', []))}")
+    print(f"  Rivalries detected: {history.get('rivalries', 0)}")
 
 
 # ──────────────────────────────────────────────
@@ -114,7 +115,7 @@ with SessionFactory() as session:
     from simulation.narrative import update_rivalries
     update_rivalries(session)
     rival_fighters = session.execute(
-        select(Fighter).where(Fighter.rival_id.isnot(None))
+        select(Fighter).where(Fighter.rivalry_with.isnot(None))
     ).scalars().all()
     print(f"  Fighters with rivals: {len(rival_fighters)}")
     if len(rival_fighters) == 0:

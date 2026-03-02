@@ -1553,6 +1553,24 @@ def get_event_history(limit: int = 20) -> list[dict]:
         return [_event_dict(e, session, include_fights=False) for e in events]
 
 
+def get_all_event_history(organization_id: int = None, limit: int = 50) -> list[dict]:
+    """Get event history across all organizations, optionally filtered.
+
+    Unlike get_event_history() which is player-org-only, this returns
+    events from any org -- enabling browsing of pre-game historical events.
+    """
+    with _SessionFactory() as session:
+        query = select(Event).where(
+            Event.status == EventStatus.COMPLETED,
+        )
+        if organization_id:
+            query = query.where(Event.organization_id == organization_id)
+        query = query.order_by(Event.event_date.desc()).limit(limit)
+
+        events = session.execute(query).scalars().all()
+        return [_event_dict(e, session, include_fights=True) for e in events]
+
+
 def get_event(event_id: int) -> Optional[dict]:
     with _SessionFactory() as session:
         event = session.get(Event, event_id)

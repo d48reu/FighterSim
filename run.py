@@ -33,7 +33,7 @@ with svc._SessionFactory() as session:
     history = fabricate_history(session, fighters, orgs, seed=42)
     print(f"Fabricated history: {history['events_created']} events, {history['fights_created']} fights")
     print(f"Champions crowned: {len(history.get('champions', {}))}")
-    print(f"Rivalries detected: {len(history.get('rivalries', []))}")
+    print(f"Rivalries detected: {history.get('rivalries', 0)}")
 
 # Verify
 camps = svc.get_training_camps()
