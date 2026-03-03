@@ -13,9 +13,11 @@ FighterSim has strong mechanical systems but the world feels empty at game start
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Fighter Generation** - Overhaul seed to produce 400-500 fighters with authentic names, balanced archetypes, and career-stage-appropriate stats
-- [ ] **Phase 2: Fight History** - Fabricate 2-3 years of pre-game fight history with real database records, champions, and emergent rivalries
-- [ ] **Phase 3: Fighter Identity** - Generate composable backstories and career highlights from actual fight history data
+- [x] **Phase 2: Fight History** - Fabricate 2-3 years of pre-game fight history with real database records, champions, and emergent rivalries
+- [x] **Phase 3: Fighter Identity** - Generate composable backstories and career highlights from actual fight history data
 - [ ] **Phase 4: Player Origins** - Selectable starting scenarios with narrative intros and mechanical consequences
+- [ ] **Phase 5: Historical Events UI** - Frontend consumer for historical event browsing API (gap closure)
+- [ ] **Phase 6: Tech Debt Cleanup** - Address low-severity tech debt from milestone audit (gap closure)
 
 ## Phase Details
 
@@ -62,8 +64,8 @@ Plans:
 **Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 03-01-PLAN.md -- Core narrative functions: Jinja2 fight-history paragraph generator and career highlight extractor in narrative.py
-- [ ] 03-02-PLAN.md -- Full-stack integration: wire into services/API, add highlights endpoint, frontend Career Highlights section, test_cli.py validation
+- [x] 03-01-PLAN.md -- Core narrative functions: Jinja2 fight-history paragraph generator and career highlight extractor in narrative.py
+- [x] 03-02-PLAN.md -- Full-stack integration: wire into services/API, add highlights endpoint, frontend Career Highlights section, test_cli.py validation
 
 ### Phase 4: Player Origins
 **Goal**: New games begin with a choice that shapes the player's starting situation and tells them why their promotion exists
@@ -79,14 +81,46 @@ Plans:
 Plans:
 - [ ] 04-01: TBD
 
+### Phase 5: Historical Events UI
+**Goal**: Players can browse pre-generated fight history from the UI, not just the API
+**Depends on**: Phase 2
+**Requirements**: HIST-05 (strengthens existing API-level satisfaction with UI access)
+**Gap Closure:** Closes integration gap (GET /api/events/all-history has no frontend consumer) and flow gap (Historical Event Browsing breaks at frontend)
+**Success Criteria** (what must be TRUE):
+  1. A UI view exists that displays historical events with their fight cards and results
+  2. The view is reachable from the main navigation or events section
+  3. Historical events load from GET /api/events/all-history and render correctly
+**Plans**: TBD
+
+Plans:
+- [ ] 05-01: TBD
+
+### Phase 6: Tech Debt Cleanup
+**Goal**: Address low-severity tech debt items identified during milestone audit
+**Depends on**: Nothing (independent cleanup)
+**Requirements**: None (tech debt, not feature requirements)
+**Gap Closure:** Closes tech debt from v1.0 audit
+**Success Criteria** (what must be TRUE):
+  1. Dead imports removed from simulation/seed.py (fabricate_history line 27, compute_overall line 25)
+  2. 02-VERIFICATION.md updated to reflect HIST-03 closure by Plan 02-03
+  3. Career stage vocabulary documented or unified between seed.py and narrative.py
+  4. ROADMAP.md progress table accurately reflects all phase statuses
+  5. test_cli.py Step 5e archetype-record consistency check reviewed and resolved or documented
+**Plans**: TBD
+
+Plans:
+- [ ] 06-01: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Fighter Generation | 2/2 | Complete | 2026-03-02 |
 | 2. Fight History | 3/3 | Complete | 2026-03-02 |
-| 3. Fighter Identity | 0/2 | Planned | - |
+| 3. Fighter Identity | 2/2 | Complete | 2026-03-02 |
 | 4. Player Origins | 0/0 | Not started | - |
+| 5. Historical Events UI | 0/0 | Not started | - |
+| 6. Tech Debt Cleanup | 0/0 | Not started | - |
