@@ -29,6 +29,7 @@ from simulation.narrative import (
     apply_fight_tags, update_goat_scores, update_rivalries,
     generate_fighter_bio, get_tags, display_archetype, suggest_nicknames,
     generate_press_conference, generate_fight_headline,
+    generate_fight_history_paragraph, extract_career_highlights,
 )
 
 # ---------------------------------------------------------------------------
@@ -433,7 +434,19 @@ def get_fighter_bio(fighter_id: int) -> Optional[str]:
         f = session.get(Fighter, fighter_id)
         if not f:
             return None
-        return generate_fighter_bio(f)
+        character_sketch = generate_fighter_bio(f)
+        history_paragraph = generate_fight_history_paragraph(f, session)
+        if history_paragraph:
+            return character_sketch + "\n\n" + history_paragraph
+        return character_sketch
+
+
+def get_fighter_highlights(fighter_id: int) -> Optional[list[dict]]:
+    with _SessionFactory() as session:
+        f = session.get(Fighter, fighter_id)
+        if not f:
+            return None
+        return extract_career_highlights(f, session)
 
 
 def get_goat_scores(top_n: int = 10) -> list[dict]:

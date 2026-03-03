@@ -242,6 +242,13 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
             return jsonify({"error": "Fighter not found"}), 404
         return jsonify({"bio": bio})
 
+    @app.route("/api/fighters/<int:fighter_id>/highlights")
+    def fighter_highlights(fighter_id: int):
+        highlights = services.get_fighter_highlights(fighter_id)
+        if highlights is None:
+            return jsonify({"error": "Fighter not found"}), 404
+        return jsonify({"highlights": highlights})
+
     @app.route("/api/fighters/<int:fighter_id>/tags")
     def fighter_tags(fighter_id: int):
         tags = services.get_fighter_tags(fighter_id)
