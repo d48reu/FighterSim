@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FighterSim - Choose Your Origin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/origin.css">
+</head>
+<body>
+
+  <!-- Step 1: Origin Cards -->
+  <section id="step-cards" class="step active">
+    <h1 class="page-title">Choose Your Origin</h1>
+    <p class="page-subtitle">Every promotion starts with a story. What's yours?</p>
+    <div id="cards-container" class="cards-container">
+      <!-- Cards rendered by JS -->
+    </div>
+  </section>
+
+  <!-- Step 2: Name Input -->
+  <section id="step-name" class="step">
+    <h2 class="name-title">Name Your Promotion</h2>
+    <div class="name-form">
+      <input
+        type="text"
+        id="promotion-name"
+        placeholder="e.g. Thunder FC"
+        required
+        minlength="2"
+        maxlength="50"
+        pattern="[A-Za-z0-9 '\.\-]+"
+        autocomplete="off"
+      >
+      <button id="btn-confirm" class="btn-confirm" onclick="confirmOrigin()">Confirm</button>
+    </div>
+    <p id="name-error" class="error-msg"></p>
+  </section>
+
+  <!-- Step 3: Text Crawl -->
+  <section id="step-crawl" class="step">
+    <div class="crawl-container">
+      <p id="crawl-p1" class="crawl-text"></p>
+      <p id="crawl-p2" class="crawl-text"></p>
+      <button id="btn-begin" class="btn-begin" disabled>Begin</button>
+    </div>
+  </section>
+
+  <!-- Error overlay -->
+  <div id="error-overlay" class="error-overlay"></div>
+
+  <script src="/static/js/origin.js"></script>
+</body>
+</html>

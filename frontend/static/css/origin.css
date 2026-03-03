@@ -1,0 +1,388 @@
+/* ================================================================
+   FighterSim -- Origin Selection Page
+   Standalone dark cinematic UI for the first-time player experience.
+   ================================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* -- Design Tokens (mirrored from style.css) -- */
+
+:root {
+  --font-display: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
+  --font-body:    'Inter', 'Segoe UI', system-ui, sans-serif;
+
+  --bg:           #0a0a0f;
+  --bg-raised:    #12121a;
+  --bg-surface:   #1a1a26;
+  --bg-surface-2: #22222e;
+
+  --border:       #2a2a3a;
+  --border-light: #3a3a4a;
+
+  --text:           #f0f0f5;
+  --text-secondary: #a0a0b0;
+  --muted:          #666678;
+
+  --accent:      #e63946;
+  --accent-dim:  #c1121f;
+  --accent-glow: rgba(230,57,70,0.15);
+
+  --gold:        #fbbf24;
+  --positive:    #34d399;
+
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-lg:   0 12px 40px rgba(0,0,0,0.5);
+  --radius-lg:   12px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  overflow-x: hidden;
+}
+
+/* -- Step visibility -- */
+
+.step {
+  display: none;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.step.active {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: fadeUp 0.6s var(--ease-out) both;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* -- Page Title -- */
+
+.page-title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.page-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 48px;
+}
+
+/* -- Cards Container -- */
+
+.cards-container {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* -- Origin Card -- */
+
+.origin-card {
+  background: var(--bg-surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px;
+  width: 320px;
+  cursor: pointer;
+  transition: transform 0.3s var(--ease-out),
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.origin-card:hover {
+  transform: translateY(-6px) scale(1.02);
+  border-color: var(--border-light);
+  box-shadow: var(--shadow-lg);
+}
+
+.origin-card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 30px var(--accent-glow), var(--shadow-lg);
+  transform: translateY(-6px) scale(1.02);
+}
+
+.origin-card.selected::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent);
+}
+
+.card-label {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.card-tagline {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 24px;
+  min-height: 42px;
+}
+
+/* -- Stats Grid -- */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--gold);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+/* -- Step 2: Name Input -- */
+
+.name-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 24px;
+  color: var(--text);
+}
+
+.name-form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.name-form input {
+  background: var(--bg-surface);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 20px;
+  font-family: var(--font-body);
+  font-size: 18px;
+  color: var(--text);
+  width: 360px;
+  max-width: 100%;
+  outline: none;
+  transition: border-color 0.3s ease;
+}
+
+.name-form input:focus {
+  border-color: var(--accent);
+}
+
+.name-form input::placeholder {
+  color: var(--muted);
+}
+
+.btn-confirm {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 32px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.btn-confirm:hover {
+  background: var(--accent-dim);
+  transform: scale(1.03);
+}
+
+.error-msg {
+  color: var(--accent);
+  font-size: 13px;
+  margin-top: 12px;
+  min-height: 20px;
+}
+
+/* -- Step 3: Text Crawl -- */
+
+.crawl-container {
+  max-width: 700px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.crawl-text {
+  font-size: 18px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.crawl-text.crawl-reveal {
+  animation: crawlReveal 1.2s var(--ease-out) forwards;
+}
+
+.crawl-text.crawl-p1 {
+  animation-delay: 0.5s;
+}
+
+.crawl-text.crawl-p2 {
+  animation-delay: 2.5s;
+}
+
+@keyframes crawlReveal {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* -- Begin Button -- */
+
+.btn-begin {
+  background: transparent;
+  color: var(--gold);
+  border: 2px solid var(--gold);
+  border-radius: 8px;
+  padding: 16px 48px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: background 0.3s ease, color 0.3s ease, transform 0.15s ease;
+  margin-top: 16px;
+}
+
+.btn-begin.crawl-reveal {
+  animation: crawlReveal 1.2s var(--ease-out) forwards;
+  animation-delay: 4.5s;
+}
+
+.btn-begin:disabled {
+  cursor: not-allowed;
+  opacity: 0;
+}
+
+.btn-begin:not(:disabled).crawl-reveal {
+  /* After animation plays, button is visible -- add hover only when enabled */
+}
+
+.btn-begin:not(:disabled):hover {
+  background: var(--gold);
+  color: var(--bg);
+  transform: scale(1.05);
+}
+
+/* -- Error overlay -- */
+
+.error-overlay {
+  display: none;
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: var(--accent-dim);
+  color: var(--text);
+  padding: 16px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 100;
+  box-shadow: var(--shadow-lg);
+}
+
+.error-overlay.visible {
+  display: block;
+  animation: fadeUp 0.4s var(--ease-out) both;
+}
+
+/* -- Responsive -- */
+
+@media (max-width: 768px) {
+  .cards-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .origin-card {
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .page-title {
+    font-size: 28px;
+  }
+
+  .name-form input {
+    width: 100%;
+  }
+
+  .crawl-container {
+    padding: 0 16px;
+  }
+}

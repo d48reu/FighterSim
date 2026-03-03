@@ -5,6 +5,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, render_template
 
 from api import services
+from simulation.seed import ORIGIN_CONFIGS
 
 ROOT = Path(__file__).parent.parent
 
@@ -25,7 +26,9 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
 
     @app.route("/")
     def index():
-        return render_template("index.html")
+        if services.has_game_state():
+            return render_template("index.html")
+        return render_template("origin.html")
 
     # ------------------------------------------------------------------
     # Game State
@@ -34,6 +37,51 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     @app.route("/api/gamestate")
     def get_gamestate():
         return jsonify(services.get_gamestate())
+
+    # ------------------------------------------------------------------
+    # Origin Selection
+    # ------------------------------------------------------------------
+
+    @app.route("/api/origins")
+    def get_origins():
+        """Return available origin configs for the selection screen."""
+        origins = []
+        for key, cfg in ORIGIN_CONFIGS.items():
+            origins.append({
+                "key": key,
+                "label": cfg["label"],
+                "tagline": cfg["tagline"],
+                "budget": cfg["budget"],
+                "prestige": cfg["prestige"],
+                "roster_target": cfg["roster_target"],
+            })
+        return jsonify(origins)
+
+    @app.route("/api/origin", methods=["POST"])
+    def select_origin():
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        origin_type = data.get("origin_type", "")
+        promotion_name = data.get("promotion_name", "").strip()
+
+        # Validate origin
+        if origin_type not in ORIGIN_CONFIGS:
+            return jsonify({"error": "Invalid origin type"}), 400
+
+        # Validate name
+        if not promotion_name or len(promotion_name) < 2:
+            return jsonify({"error": "Promotion name must be at least 2 characters"}), 400
+        if len(promotion_name) > 50:
+            return jsonify({"error": "Promotion name must be 50 characters or less"}), 400
+
+        # Check not already seeded
+        if services.has_game_state():
+            return jsonify({"error": "Game already started"}), 409
+
+        task_id = services.start_new_game(origin_type, promotion_name)
+        return jsonify({"task_id": task_id, "status": "pending"})
 
     # ------------------------------------------------------------------
     # Fighters
