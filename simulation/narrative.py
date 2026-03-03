@@ -6,10 +6,18 @@ import json
 import random
 from typing import Optional
 
+from jinja2 import Environment
 from sqlalchemy import select, or_, and_, func
 from sqlalchemy.orm import Session
 
-from models.models import Fighter, Fight, Ranking, WeightClass, Archetype, FighterDevelopment, Organization
+from models.models import Fighter, Fight, Event, Ranking, WeightClass, Archetype, FighterDevelopment, Organization
+
+
+# ---------------------------------------------------------------------------
+# Jinja2 environment for fight-history narrative templates
+# ---------------------------------------------------------------------------
+
+_jinja_env = Environment()
 
 
 # ---------------------------------------------------------------------------
@@ -1536,3 +1544,928 @@ def generate_signing_headline(fighter: Fighter, org: Organization) -> Optional[s
         return None
     template = random.choice(HEADLINE_TEMPLATES["signing"])
     return template.format(name=fighter.name, org=org.name)
+
+
+# ============================================================================
+# Fight-History Paragraph Generator & Career Highlights Extractor
+# ============================================================================
+# Added in Phase 03-01. These functions query actual Fight rows and produce
+# narrative text referencing specific opponents, methods, and rounds.
+#
+# CRITICAL: NO Flask dependencies. Both public functions take a SQLAlchemy
+# session parameter. They do NOT import Flask.
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+# Helpers: method humanization and ordinal rounds
+# ---------------------------------------------------------------------------
+
+def _humanize_method(method_value: str) -> str:
+    """Map FightMethod value strings to natural-language verbs."""
+    _METHOD_MAP = {
+        "KO/TKO": "knocked out",
+        "Submission": "submitted",
+        "Unanimous Decision": "outpointed",
+        "Split Decision": "edged out",
+        "Majority Decision": "outworked",
+    }
+    return _METHOD_MAP.get(method_value, "defeated")
+
+
+def _ordinal_round(round_num: int) -> str:
+    """Map round number to an ordinal word. Rounds 1-5 get words; others get 'round N'."""
+    _ORDINALS = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth"}
+    return _ORDINALS.get(round_num, f"round {round_num}")
+
+
+# ---------------------------------------------------------------------------
+# Fight data query (single pass, batch opponent names)
+# ---------------------------------------------------------------------------
+
+def _query_fighter_fights(fighter_id: int, session, rivalry_with_id: int = None) -> list[dict]:
+    """Query all completed fights for a fighter, ordered chronologically.
+
+    Returns a list of dicts with keys:
+        fight_id, opponent_id, opponent_name, won, method, method_text,
+        round_ended, round_text, event_name, event_date, is_title_fight,
+        card_position, is_rivalry, running_win_streak, running_loss_streak
+    """
+    rows = session.execute(
+        select(Fight, Event)
+        .join(Event, Fight.event_id == Event.id)
+        .where(
+            or_(Fight.fighter_a_id == fighter_id, Fight.fighter_b_id == fighter_id),
+            Fight.winner_id.isnot(None),
+        )
+        .order_by(Event.event_date.asc(), Fight.id.asc())
+    ).all()
+
+    if not rows:
+        return []
+
+    # Collect opponent IDs for batch fetch
+    opponent_ids = set()
+    for fight, event in rows:
+        opp_id = fight.fighter_b_id if fight.fighter_a_id == fighter_id else fight.fighter_a_id
+        opponent_ids.add(opp_id)
+
+    # Batch fetch opponent names and compute overall from actual columns
+    name_map = {}
+    if opponent_ids:
+        opp_fighters = session.execute(
+            select(Fighter)
+            .where(Fighter.id.in_(list(opponent_ids)))
+        ).scalars().all()
+        name_map = {f.id: (f.name, f.overall) for f in opp_fighters}
+
+    # Build structured fight list
+    fights = []
+    win_streak = 0
+    loss_streak = 0
+    for fight, event in rows:
+        opp_id = fight.fighter_b_id if fight.fighter_a_id == fighter_id else fight.fighter_a_id
+        won = fight.winner_id == fighter_id
+        method_val = fight.method.value if hasattr(fight.method, "value") else str(fight.method) if fight.method else ""
+        round_num = fight.round_ended or 3
+
+        if won:
+            win_streak += 1
+            loss_streak = 0
+        else:
+            loss_streak += 1
+            win_streak = 0
+
+        opp_name, opp_overall = name_map.get(opp_id, (f"Fighter #{opp_id}", 50))
+
+        fights.append({
+            "fight_id": fight.id,
+            "opponent_id": opp_id,
+            "opponent_name": opp_name,
+            "opponent_overall": opp_overall,
+            "won": won,
+            "method": method_val,
+            "method_text": _humanize_method(method_val),
+            "round_ended": round_num,
+            "round_text": _ordinal_round(round_num),
+            "event_name": event.name,
+            "event_date": str(event.event_date) if event.event_date else "",
+            "is_title_fight": bool(fight.is_title_fight),
+            "card_position": fight.card_position or 0,
+            "is_rivalry": opp_id == rivalry_with_id if rivalry_with_id else False,
+            "running_win_streak": win_streak if won else 0,
+            "running_loss_streak": loss_streak if not won else 0,
+        })
+
+    return fights
+
+
+# ---------------------------------------------------------------------------
+# Champion status detection
+# ---------------------------------------------------------------------------
+
+def _detect_champion_status(fighter, session) -> str:
+    """Check Ranking table for champion status.
+
+    Returns 'current_champion', 'former_champion', or 'none'.
+    """
+    wc = fighter.weight_class
+    ranking = session.execute(
+        select(Ranking)
+        .where(Ranking.weight_class == wc, Ranking.fighter_id == fighter.id)
+    ).scalar_one_or_none()
+
+    if ranking and ranking.rank == 1:
+        return "current_champion"
+
+    # Check if fighter has any title fight wins (former champion)
+    title_wins = session.execute(
+        select(func.count())
+        .select_from(Fight)
+        .where(
+            or_(Fight.fighter_a_id == fighter.id, Fight.fighter_b_id == fighter.id),
+            Fight.is_title_fight == True,
+            Fight.winner_id == fighter.id,
+        )
+    ).scalar()
+
+    if title_wins and title_wins > 0:
+        return "former_champion"
+
+    return "none"
+
+
+# ---------------------------------------------------------------------------
+# Fight significance scoring (for selecting key references & highlights)
+# ---------------------------------------------------------------------------
+
+def _score_fight_for_highlight(fight_data: dict, fighter_overall: int, is_debut: bool) -> int:
+    """Score a fight for highlight significance. Higher = more notable."""
+    score = 0
+    if fight_data["is_title_fight"] and fight_data["won"]:
+        score += 100
+    elif fight_data["is_title_fight"] and not fight_data["won"]:
+        score += 90
+    if fight_data["won"] and fight_data["method"] in ("KO/TKO", "Submission") and fight_data["opponent_overall"] > fighter_overall:
+        score += 80
+    if fight_data["won"] and fight_data["opponent_overall"] > fighter_overall:
+        score += 70
+    if fight_data["is_rivalry"]:
+        score += 60
+    if fight_data["won"] and fight_data["running_win_streak"] >= 3:
+        score += 50
+    if is_debut and fight_data["won"]:
+        score += 30
+    return score
+
+
+# ---------------------------------------------------------------------------
+# Jinja2 fight-history templates — compiled at module load time
+# ---------------------------------------------------------------------------
+# Template naming: _HIST_{STAGE}_{ARCHETYPE}_{N}
+# Prospect templates are shared across all archetypes.
+# Prime and Veteran templates vary by archetype.
+# Champion/rivalry overlays are separate fragments.
+
+# ---- Prospect templates (shared, forward-looking) ----
+
+_HIST_PROSPECT_1 = _jinja_env.from_string(
+    "{% if debut_win %}"
+    "{{ name }} made a statement in the professional debut, "
+    "{{ debut_win.method_text }} {{ debut_win.opponent_name.split()[-1] }} "
+    "in the {{ debut_win.round_text }}. "
+    "{% endif %}"
+    "The sample size is small, but the early returns suggest "
+    "a fighter with something to prove in {{ division }}."
+)
+
+_HIST_PROSPECT_2 = _jinja_env.from_string(
+    "{% if debut_win %}"
+    "A {{ debut_win.round_text }}-round finish of {{ debut_win.opponent_name.split()[-1] }} "
+    "announced {{ name }}'s arrival in {{ division }}. "
+    "{% endif %}"
+    "Still early days, but there is potential here that bears watching."
+)
+
+_HIST_PROSPECT_3 = _jinja_env.from_string(
+    "{% if debut_win %}"
+    "{{ name }} showed what the debut was about when "
+    "{{ debut_win.opponent_name.split()[-1] }} went down in the {{ debut_win.round_text }}. "
+    "{% endif %}"
+    "The foundation is there. What gets built on it is the question."
+)
+
+# ---- Prime templates by archetype (present-tense dominance, 2-3 refs) ----
+
+# GOAT Candidate
+_HIST_PRIME_GOAT_1 = _jinja_env.from_string(
+    "{{ name }} added to a legacy of dominance when "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.method_text }} {{ ref.opponent_name.split()[-1] }} "
+    "in the {{ ref.round_text }}"
+    "{% endfor %}. "
+    "The {{ division }} division is running out of challenges."
+)
+
+_HIST_PRIME_GOAT_2 = _jinja_env.from_string(
+    "The names keep getting bigger and the results stay the same. "
+    "{{ name }} dismantled "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "with the kind of precision that forces the all-time conversation."
+)
+
+_HIST_PRIME_GOAT_3 = _jinja_env.from_string(
+    "What separates {{ name }} is the consistency. "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if loop.first %}The {{ ref.method_text | replace('knocked out', 'knockout of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'close decision over') | replace('outworked', 'workmanlike decision over') }} {{ ref.opponent_name.split()[-1] }}"
+    "{% elif loop.last %} and the {{ ref.round_text }}-round finish of {{ ref.opponent_name.split()[-1] }}"
+    "{% else %}, the win over {{ ref.opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% endfor %} "
+    "all point to a fighter operating at a level few in {{ division }} can match."
+)
+
+# Phenom
+_HIST_PRIME_PHENOM_1 = _jinja_env.from_string(
+    "{{ name }} continues to confound expectations in {{ division }}. "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.method_text | capitalize }} {{ ref.opponent_name.split()[-1] }} "
+    "in the {{ ref.round_text }}"
+    "{% endfor %} — "
+    "each performance looking easier than the last."
+)
+
+_HIST_PRIME_PHENOM_2 = _jinja_env.from_string(
+    "The ceiling keeps rising. {{ name }} made it look effortless against "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %}, "
+    "and the {{ division }} division is starting to take notice."
+)
+
+_HIST_PRIME_PHENOM_3 = _jinja_env.from_string(
+    "There is a fluency to how {{ name }} fights that separates the special from the good. "
+    "The {{ fight_refs[0].round_text }}-round finish of {{ fight_refs[0].opponent_name.split()[-1] }}"
+    "{% if fight_refs|length > 1 %}"
+    " and the dismantling of {{ fight_refs[1].opponent_name.split()[-1] }}"
+    "{% endif %}"
+    " are the latest evidence."
+)
+
+# Gatekeeper
+_HIST_PRIME_GATEKEEPER_1 = _jinja_env.from_string(
+    "{{ name }} proved once again why contenders in {{ division }} must go through this fighter. "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.method_text | capitalize }} {{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} — "
+    "the gatekeeper role is earned, not assigned."
+)
+
+_HIST_PRIME_GATEKEEPER_2 = _jinja_env.from_string(
+    "The measuring stick of {{ division }} has a name, and it is {{ name }}. "
+    "Wins over "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "tell the story of a fighter who defines what it takes to compete at this level."
+)
+
+_HIST_PRIME_GATEKEEPER_3 = _jinja_env.from_string(
+    "If you want to know where you stand in {{ division }}, "
+    "fight {{ name }}. "
+    "{{ fight_refs[0].opponent_name.split()[-1] }} found that out in the {{ fight_refs[0].round_text }}"
+    "{% if fight_refs|length > 1 %}"
+    ", and {{ fight_refs[1].opponent_name.split()[-1] }} learned the same lesson"
+    "{% endif %}."
+)
+
+# Journeyman
+_HIST_PRIME_JOURNEYMAN_1 = _jinja_env.from_string(
+    "{{ name }} reminded everyone in {{ division }} that there are no easy fights. "
+    "{% for ref in fight_refs[:2] %}"
+    "{% if not loop.first %} and {% endif %}"
+    "{{ ref.method_text | capitalize }} {{ ref.opponent_name.split()[-1] }} "
+    "in the {{ ref.round_text }}"
+    "{% endfor %} — "
+    "workmanlike, honest, and effective."
+)
+
+_HIST_PRIME_JOURNEYMAN_2 = _jinja_env.from_string(
+    "Nobody picks {{ name }} to win. That is becoming a mistake. "
+    "The {{ fight_refs[0].method_text | replace('knocked out', 'knockout of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} {{ fight_refs[0].opponent_name.split()[-1] }}"
+    "{% if fight_refs|length > 1 %}"
+    " and the win over {{ fight_refs[1].opponent_name.split()[-1] }}"
+    "{% endif %}"
+    " shocked the division and forced a conversation about underestimation."
+)
+
+_HIST_PRIME_JOURNEYMAN_3 = _jinja_env.from_string(
+    "The record will never be mistaken for a highlight reel, but {{ name }} keeps showing up "
+    "and keeps finding ways to win. "
+    "{% for ref in fight_refs[:2] %}"
+    "{% if not loop.first %} Then {% endif %}"
+    "{{ ref.method_text | capitalize }} {{ ref.opponent_name.split()[-1] }}. "
+    "{% endfor %}"
+    "That counts for something in {{ division }}."
+)
+
+# Late Bloomer
+_HIST_PRIME_LATEBLOOMER_1 = _jinja_env.from_string(
+    "{{ name }} continues to improve at an age when most fighters have plateaued. "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.method_text | capitalize }} {{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} — "
+    "the {{ division }} division is watching a fighter find another level."
+)
+
+_HIST_PRIME_LATEBLOOMER_2 = _jinja_env.from_string(
+    "It took time, but {{ name }} found the formula. "
+    "The win over {{ fight_refs[0].opponent_name.split()[-1] }}"
+    "{% if fight_refs|length > 1 %}"
+    " and the {{ fight_refs[1].round_text }}-round finish of {{ fight_refs[1].opponent_name.split()[-1] }}"
+    "{% endif %}"
+    " showed late-career growth that few expected."
+)
+
+_HIST_PRIME_LATEBLOOMER_3 = _jinja_env.from_string(
+    "The trajectory defies the sport's usual patterns. {{ name }} is getting better, "
+    "and the wins over "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "are the proof."
+)
+
+# Shooting Star
+_HIST_PRIME_SHOOTINGSTAR_1 = _jinja_env.from_string(
+    "{{ name }} burned bright against "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %}. "
+    "The flashes of brilliance in {{ division }} have been impossible to ignore."
+)
+
+_HIST_PRIME_SHOOTINGSTAR_2 = _jinja_env.from_string(
+    "When {{ name }} is on, there may not be a more exciting fighter in {{ division }}. "
+    "The {{ fight_refs[0].round_text }}-round finish of {{ fight_refs[0].opponent_name.split()[-1] }}"
+    "{% if fight_refs|length > 1 %}"
+    " and the win over {{ fight_refs[1].opponent_name.split()[-1] }}"
+    "{% endif %}"
+    " reminded fans of the potential."
+)
+
+_HIST_PRIME_SHOOTINGSTAR_3 = _jinja_env.from_string(
+    "The highlights are spectacular. {{ name }} showed flashes of brilliance "
+    "against "
+    "{% for ref in fight_refs[:2] %}"
+    "{% if not loop.first %} and {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "that suggest something special — if the consistency follows."
+)
+
+# ---- Veteran templates by archetype (retrospective, 3-4 refs) ----
+
+# GOAT Candidate
+_HIST_VET_GOAT_1 = _jinja_env.from_string(
+    "A career defined by sustained excellence. {{ name }}'s legacy in {{ division }} includes "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "the {{ ref.method_text | replace('knocked out', 'knockout of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} {{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %}. "
+    "The numbers speak for themselves."
+)
+
+_HIST_VET_GOAT_2 = _jinja_env.from_string(
+    "Over the years, {{ name }} has assembled a body of work in {{ division }} "
+    "that few can match. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if loop.first %}Wins over {{ ref.opponent_name.split()[-1] }}"
+    "{% elif loop.last %} and {{ ref.opponent_name.split()[-1] }}"
+    "{% else %}, {{ ref.opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% endfor %} "
+    "form the backbone of a resume built for the history books."
+)
+
+_HIST_VET_GOAT_3 = _jinja_env.from_string(
+    "The conversation about {{ name }}'s place in {{ division }} history is settled "
+    "for anyone paying attention. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} — "
+    "all beaten, most finished, none of it accidental."
+)
+
+# Phenom
+_HIST_VET_PHENOM_1 = _jinja_env.from_string(
+    "What began with extraordinary promise has become an extraordinary career. "
+    "{{ name }} in {{ division }}: "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.method_text }} {{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %}. "
+    "The early hype was justified."
+)
+
+_HIST_VET_PHENOM_2 = _jinja_env.from_string(
+    "{{ name }} was supposed to be special. The career in {{ division }} proved it. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if loop.first %}The {{ ref.round_text }}-round finish of {{ ref.opponent_name.split()[-1] }}"
+    "{% elif loop.last %} and the win over {{ ref.opponent_name.split()[-1] }}"
+    "{% else %}, the {{ ref.method_text | replace('knocked out', 'knockout of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} {{ ref.opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% endfor %} "
+    "are chapters in a story that lived up to the billing."
+)
+
+_HIST_VET_PHENOM_3 = _jinja_env.from_string(
+    "The {{ division }} division watched {{ name }} grow from prodigy to proven commodity. "
+    "Along the way, "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "all fell to a fighter who made difficulty look optional."
+)
+
+# Gatekeeper
+_HIST_VET_GATEKEEPER_1 = _jinja_env.from_string(
+    "Over the years, {{ name }} has served as the measuring stick in {{ division }}. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "all had to go through this fighter. Some made it. Most didn't."
+)
+
+_HIST_VET_GATEKEEPER_2 = _jinja_env.from_string(
+    "{{ name }}'s career in {{ division }} tells the story of the division itself. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if loop.first %}The {{ ref.method_text | replace('knocked out', 'stoppage of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'close fight with') | replace('outworked', 'win over') }} {{ ref.opponent_name.split()[-1] }}"
+    "{% elif loop.last %} and {{ ref.opponent_name.split()[-1] }}"
+    "{% else %}, {{ ref.opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% endfor %} "
+    "— each fight a statement about where the bar is set."
+)
+
+_HIST_VET_GATEKEEPER_3 = _jinja_env.from_string(
+    "Every generation of {{ division }} contenders has had to answer the same question: "
+    "can you beat {{ name }}? "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "all tried. The answers have been mixed, but the test remains."
+)
+
+# Journeyman
+_HIST_VET_JOURNEYMAN_1 = _jinja_env.from_string(
+    "{{ name }}'s {{ division }} career has been a testament to persistence. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "have all shared the cage with a fighter who never stopped competing, "
+    "win or lose."
+)
+
+_HIST_VET_JOURNEYMAN_2 = _jinja_env.from_string(
+    "The record will not land {{ name }} in the hall of fame, but it tells a story "
+    "the sport needs. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if loop.first %}The win over {{ ref.opponent_name.split()[-1] }}"
+    "{% elif loop.last %} and {{ ref.opponent_name.split()[-1] }}"
+    "{% else %}, {{ ref.opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% endfor %} "
+    "— honest work across a long {{ division }} career."
+)
+
+_HIST_VET_JOURNEYMAN_3 = _jinja_env.from_string(
+    "There are no shortcuts in {{ name }}'s career. "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.method_text | capitalize }} {{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %}. "
+    "Every win earned the hard way, every loss taken in stride."
+)
+
+# Late Bloomer
+_HIST_VET_LATEBLOOMER_1 = _jinja_env.from_string(
+    "{{ name }}'s career in {{ division }} is a reminder that timelines vary. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "all fell to a fighter who peaked when conventional wisdom said the window was closing."
+)
+
+_HIST_VET_LATEBLOOMER_2 = _jinja_env.from_string(
+    "The best version of {{ name }} arrived late. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if loop.first %}The {{ ref.round_text }}-round finish of {{ ref.opponent_name.split()[-1] }}"
+    "{% elif loop.last %} and the {{ ref.method_text | replace('knocked out', 'stoppage of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} {{ ref.opponent_name.split()[-1] }}"
+    "{% else %}, the win over {{ ref.opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% endfor %} "
+    "told a different story than the early career suggested."
+)
+
+_HIST_VET_LATEBLOOMER_3 = _jinja_env.from_string(
+    "Most fighters in {{ division }} peak in their late twenties. {{ name }} found another gear. "
+    "Victories over "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "came when others expected decline."
+)
+
+# Shooting Star
+_HIST_VET_SHOOTINGSTAR_1 = _jinja_env.from_string(
+    "{{ name }}'s {{ division }} career has been a study in volatility. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %} "
+    "all saw different versions of this fighter. The highs were spectacular. "
+    "The rest, less so."
+)
+
+_HIST_VET_SHOOTINGSTAR_2 = _jinja_env.from_string(
+    "There were moments when {{ name }} looked like the best fighter in {{ division }}. "
+    "{% for ref in fight_refs[:4] %}"
+    "{% if loop.first %}The {{ ref.round_text }}-round finish of {{ ref.opponent_name.split()[-1] }}"
+    "{% elif loop.last %} and the win over {{ ref.opponent_name.split()[-1] }}"
+    "{% else %}, {{ ref.opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% endfor %} "
+    "— those nights, the potential was undeniable."
+)
+
+_HIST_VET_SHOOTINGSTAR_3 = _jinja_env.from_string(
+    "The talent was always there. {{ name }} showed it against "
+    "{% for ref in fight_refs[:3] %}"
+    "{% if not loop.first and loop.last %} and {% elif not loop.first %}, {% endif %}"
+    "{{ ref.opponent_name.split()[-1] }}"
+    "{% endfor %}. "
+    "Whether it showed up consistently enough is the question the {{ division }} career leaves behind."
+)
+
+
+# ---- Overlay fragments ----
+
+_OVERLAY_CURRENT_CHAMPION = _jinja_env.from_string(
+    "{{ name }} currently holds the {{ division }} championship and "
+    "has defended it with the authority the division demands. "
+)
+
+_OVERLAY_FORMER_CHAMPION = _jinja_env.from_string(
+    "A former {{ division }} champion, {{ name }} once held the belt "
+    "and carries the confidence that comes with having worn the gold. "
+)
+
+_OVERLAY_RIVALRY_WITH_FIGHTS = _jinja_env.from_string(
+    "The rivalry with {{ rival_name }} has been a defining thread — "
+    "their {{ fight_count }} meeting{{ 's' if fight_count != 1 else '' }} "
+    "{% if fight_count == 1 %}was{% else %}have been{% endif %} "
+    "among the most compelling chapters in {{ name }}'s career. "
+)
+
+_OVERLAY_RIVALRY_WITHOUT_FIGHTS = _jinja_env.from_string(
+    "A simmering rivalry with {{ rival_name }} has added an edge "
+    "to {{ name }}'s recent trajectory. "
+)
+
+# ---- Minimal templates for 1-2 fight fighters ----
+
+_HIST_DEBUT_WIN = _jinja_env.from_string(
+    "{{ name }} opened the professional career with a statement, "
+    "{{ fight_refs[0].method_text }} {{ fight_refs[0].opponent_name.split()[-1] }} "
+    "in the {{ fight_refs[0].round_text }}."
+)
+
+_HIST_DEBUT_LOSS = _jinja_env.from_string(
+    "The professional debut was a learning experience for {{ name }}, "
+    "falling to {{ fight_refs[0].opponent_name.split()[-1] }} "
+    "in the {{ fight_refs[0].round_text }}."
+)
+
+_HIST_TWO_FIGHTS = _jinja_env.from_string(
+    "{{ name }}'s young career in {{ division }} is still taking shape. "
+    "{% if fight_refs[0].won %}"
+    "The {{ fight_refs[0].method_text | replace('knocked out', 'knockout of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} {{ fight_refs[0].opponent_name.split()[-1] }}"
+    "{% else %}"
+    "A loss to {{ fight_refs[0].opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% if fight_refs|length > 1 %}"
+    " and the "
+    "{% if fight_refs[1].won %}"
+    "{{ fight_refs[1].method_text | replace('knocked out', 'finish of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} {{ fight_refs[1].opponent_name.split()[-1] }}"
+    "{% else %}"
+    "setback against {{ fight_refs[1].opponent_name.split()[-1] }}"
+    "{% endif %}"
+    "{% endif %}"
+    " are the data points so far."
+)
+
+
+# ---- Template lookup tables ----
+
+_PROSPECT_TEMPLATES = [_HIST_PROSPECT_1, _HIST_PROSPECT_2, _HIST_PROSPECT_3]
+
+_PRIME_TEMPLATES = {
+    "GOAT Candidate": [_HIST_PRIME_GOAT_1, _HIST_PRIME_GOAT_2, _HIST_PRIME_GOAT_3],
+    "Phenom":         [_HIST_PRIME_PHENOM_1, _HIST_PRIME_PHENOM_2, _HIST_PRIME_PHENOM_3],
+    "Gatekeeper":     [_HIST_PRIME_GATEKEEPER_1, _HIST_PRIME_GATEKEEPER_2, _HIST_PRIME_GATEKEEPER_3],
+    "Journeyman":     [_HIST_PRIME_JOURNEYMAN_1, _HIST_PRIME_JOURNEYMAN_2, _HIST_PRIME_JOURNEYMAN_3],
+    "Late Bloomer":   [_HIST_PRIME_LATEBLOOMER_1, _HIST_PRIME_LATEBLOOMER_2, _HIST_PRIME_LATEBLOOMER_3],
+    "Shooting Star":  [_HIST_PRIME_SHOOTINGSTAR_1, _HIST_PRIME_SHOOTINGSTAR_2, _HIST_PRIME_SHOOTINGSTAR_3],
+}
+
+_VETERAN_TEMPLATES = {
+    "GOAT Candidate": [_HIST_VET_GOAT_1, _HIST_VET_GOAT_2, _HIST_VET_GOAT_3],
+    "Phenom":         [_HIST_VET_PHENOM_1, _HIST_VET_PHENOM_2, _HIST_VET_PHENOM_3],
+    "Gatekeeper":     [_HIST_VET_GATEKEEPER_1, _HIST_VET_GATEKEEPER_2, _HIST_VET_GATEKEEPER_3],
+    "Journeyman":     [_HIST_VET_JOURNEYMAN_1, _HIST_VET_JOURNEYMAN_2, _HIST_VET_JOURNEYMAN_3],
+    "Late Bloomer":   [_HIST_VET_LATEBLOOMER_1, _HIST_VET_LATEBLOOMER_2, _HIST_VET_LATEBLOOMER_3],
+    "Shooting Star":  [_HIST_VET_SHOOTINGSTAR_1, _HIST_VET_SHOOTINGSTAR_2, _HIST_VET_SHOOTINGSTAR_3],
+}
+
+
+# ---------------------------------------------------------------------------
+# Highlight mini-narrative templates
+# ---------------------------------------------------------------------------
+
+_HL_TITLE_WIN = _jinja_env.from_string(
+    "Claimed the {{ division }} championship with a "
+    "{{ ref.round_text }}-round {{ ref.method_text | replace('knocked out', 'knockout of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} "
+    "{{ ref.opponent_name }} at {{ ref.event_name }}"
+)
+
+_HL_TITLE_LOSS = _jinja_env.from_string(
+    "Fell short in a {{ division }} title bid against {{ ref.opponent_name }} at {{ ref.event_name }}"
+)
+
+_HL_FINISH_UPSET = _jinja_env.from_string(
+    "Stunned the division with a {{ ref.round_text }}-round "
+    "{{ ref.method_text | replace('knocked out', 'knockout of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} "
+    "{{ ref.opponent_name }} at {{ ref.event_name }}"
+)
+
+_HL_UPSET_WIN = _jinja_env.from_string(
+    "Pulled off an upset victory over {{ ref.opponent_name }} at {{ ref.event_name }}"
+)
+
+_HL_RIVALRY = _jinja_env.from_string(
+    "{% if ref.won %}"
+    "{{ ref.method_text | capitalize }} rival {{ ref.opponent_name }} at {{ ref.event_name }}"
+    "{% else %}"
+    "Dropped a hard-fought bout to rival {{ ref.opponent_name }} at {{ ref.event_name }}"
+    "{% endif %}"
+)
+
+_HL_STREAK = _jinja_env.from_string(
+    "Extended the win streak to {{ ref.running_win_streak }} with a "
+    "{{ ref.method_text | replace('knocked out', 'finish of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} "
+    "{{ ref.opponent_name }} at {{ ref.event_name }}"
+)
+
+_HL_DEBUT_WIN = _jinja_env.from_string(
+    "Made a winning debut with a {{ ref.round_text }}-round "
+    "{{ ref.method_text | replace('knocked out', 'knockout of') | replace('submitted', 'submission of') | replace('outpointed', 'decision over') | replace('edged out', 'decision over') | replace('outworked', 'decision over') }} "
+    "{{ ref.opponent_name }} at {{ ref.event_name }}"
+)
+
+_HL_GENERIC_WIN = _jinja_env.from_string(
+    "{{ ref.method_text | capitalize }} {{ ref.opponent_name }} "
+    "in the {{ ref.round_text }} at {{ ref.event_name }}"
+)
+
+
+# ---------------------------------------------------------------------------
+# Select key fight references for paragraph (most significant first)
+# ---------------------------------------------------------------------------
+
+def _select_key_fights(fights: list[dict], fighter_overall: int, max_refs: int) -> list[dict]:
+    """Select the most narratively significant fights for paragraph references.
+
+    Scoring: title fights > rivalry > KO/sub wins > recent wins.
+    Returns top `max_refs` fights sorted by significance score desc, then recency.
+    """
+    scored = []
+    for i, f in enumerate(fights):
+        score = 0
+        is_debut = (i == 0)
+        if f["is_title_fight"]:
+            score += 100
+        if f["is_rivalry"]:
+            score += 60
+        if f["won"] and f["method"] in ("KO/TKO", "Submission"):
+            score += 40
+        if f["won"] and f["opponent_overall"] > fighter_overall:
+            score += 30
+        if f["won"]:
+            score += 10
+        # Recency bonus: more recent fights get slight boost
+        score += i * 0.1
+        scored.append((score, i, f))
+
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    return [s[2] for s in scored[:max_refs]]
+
+
+# ---------------------------------------------------------------------------
+# Main public function: generate_fight_history_paragraph
+# ---------------------------------------------------------------------------
+
+def generate_fight_history_paragraph(fighter, session) -> str:
+    """Generate a fight-history paragraph referencing actual Fight rows.
+
+    Returns a string paragraph. Returns "" for fighters with no completed fights.
+
+    CRITICAL: NO Flask dependencies. Takes a SQLAlchemy session parameter.
+    """
+    rivalry_with_id = getattr(fighter, "rivalry_with", None)
+    fights = _query_fighter_fights(fighter.id, session, rivalry_with_id=rivalry_with_id)
+
+    if not fights:
+        return ""
+
+    # Get career context for stage/archetype routing
+    ctx = _get_career_context(fighter)
+    career_stage = ctx["career_stage"]
+    archetype = ctx["archetype"]
+    division = (
+        fighter.weight_class.value
+        if hasattr(fighter.weight_class, "value")
+        else str(fighter.weight_class)
+    ).lower()
+
+    # Determine reference count by career stage
+    if career_stage == "prospect":
+        max_refs = 1
+    elif career_stage == "developing":
+        max_refs = 2
+    elif career_stage == "established":
+        max_refs = 3
+    else:  # veteran, elder
+        max_refs = 4
+
+    # Deterministic template selection using fighter.id as seed
+    rng = random.Random(fighter.id)
+
+    # Handle 1-fight case (debut)
+    if len(fights) == 1:
+        if fights[0]["won"]:
+            tpl = _HIST_DEBUT_WIN
+        else:
+            tpl = _HIST_DEBUT_LOSS
+        paragraph = tpl.render(name=fighter.name, division=division, fight_refs=fights)
+    # Handle 2-fight case
+    elif len(fights) == 2:
+        # Select the most significant for fight_refs ordering
+        key_fights = _select_key_fights(fights, fighter.overall, 2)
+        paragraph = _HIST_TWO_FIGHTS.render(
+            name=fighter.name, division=division, fight_refs=key_fights,
+        )
+    # Handle 3+ fights: full template selection
+    else:
+        key_fights = _select_key_fights(fights, fighter.overall, max_refs)
+
+        # Select template based on career stage and archetype
+        if career_stage in ("prospect", "developing"):
+            # Find debut win for prospect template context
+            debut_win = fights[0] if fights[0]["won"] else None
+            tpl = rng.choice(_PROSPECT_TEMPLATES)
+            paragraph = tpl.render(
+                name=fighter.name, division=division,
+                debut_win=debut_win, fight_refs=key_fights,
+            )
+        elif career_stage == "established":
+            templates = _PRIME_TEMPLATES.get(archetype, _PRIME_TEMPLATES["Journeyman"])
+            tpl = rng.choice(templates)
+            paragraph = tpl.render(
+                name=fighter.name, division=division, fight_refs=key_fights,
+            )
+        else:  # veteran, elder
+            templates = _VETERAN_TEMPLATES.get(archetype, _VETERAN_TEMPLATES["Journeyman"])
+            tpl = rng.choice(templates)
+            paragraph = tpl.render(
+                name=fighter.name, division=division, fight_refs=key_fights,
+            )
+
+    # Champion overlay
+    champion_status = _detect_champion_status(fighter, session)
+    if champion_status == "current_champion":
+        overlay = _OVERLAY_CURRENT_CHAMPION.render(name=fighter.name, division=division)
+        paragraph = overlay + paragraph
+    elif champion_status == "former_champion":
+        overlay = _OVERLAY_FORMER_CHAMPION.render(name=fighter.name, division=division)
+        paragraph = overlay + paragraph
+
+    # Rivalry overlay
+    if rivalry_with_id:
+        rival = session.get(Fighter, rivalry_with_id)
+        if rival:
+            rival_name = rival.name
+            # Check for shared fights
+            shared_fights = [f for f in fights if f["is_rivalry"]]
+            if shared_fights:
+                rivalry_text = _OVERLAY_RIVALRY_WITH_FIGHTS.render(
+                    name=fighter.name, rival_name=rival_name,
+                    fight_count=len(shared_fights),
+                )
+            else:
+                rivalry_text = _OVERLAY_RIVALRY_WITHOUT_FIGHTS.render(
+                    name=fighter.name, rival_name=rival_name,
+                )
+            paragraph = paragraph + " " + rivalry_text
+
+    return paragraph.strip()
+
+
+# ---------------------------------------------------------------------------
+# Main public function: extract_career_highlights
+# ---------------------------------------------------------------------------
+
+def extract_career_highlights(fighter, session) -> list[dict]:
+    """Extract curated career highlights from fight history.
+
+    Returns a list of highlight dicts (max 6):
+        [{"fight_id": int, "text": str, "score": int, "event_name": str, "event_date": str}]
+
+    CRITICAL: NO Flask dependencies. Takes a SQLAlchemy session parameter.
+    """
+    rivalry_with_id = getattr(fighter, "rivalry_with", None)
+    fights = _query_fighter_fights(fighter.id, session, rivalry_with_id=rivalry_with_id)
+
+    if not fights:
+        return []
+
+    fighter_overall = fighter.overall
+    division = (
+        fighter.weight_class.value
+        if hasattr(fighter.weight_class, "value")
+        else str(fighter.weight_class)
+    ).lower()
+
+    # Score each fight
+    scored = []
+    for i, f in enumerate(fights):
+        is_debut = (i == 0)
+        score = _score_fight_for_highlight(f, fighter_overall, is_debut)
+        if score > 0:
+            scored.append((score, i, f))
+
+    # Sort by score descending, tiebreak by recency (higher index = more recent)
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+
+    # Cap at 6
+    top = scored[:6]
+
+    # Generate mini-narrative for each highlight
+    highlights = []
+    for score, idx, f in top:
+        # Determine the best highlight template
+        ref = f
+        if f["is_title_fight"] and f["won"]:
+            text = _HL_TITLE_WIN.render(ref=ref, division=division)
+        elif f["is_title_fight"] and not f["won"]:
+            text = _HL_TITLE_LOSS.render(ref=ref, division=division)
+        elif f["won"] and f["method"] in ("KO/TKO", "Submission") and f["opponent_overall"] > fighter_overall:
+            text = _HL_FINISH_UPSET.render(ref=ref, division=division)
+        elif f["won"] and f["opponent_overall"] > fighter_overall:
+            text = _HL_UPSET_WIN.render(ref=ref, division=division)
+        elif f["is_rivalry"]:
+            text = _HL_RIVALRY.render(ref=ref, division=division)
+        elif f["won"] and f["running_win_streak"] >= 3:
+            text = _HL_STREAK.render(ref=ref, division=division)
+        elif idx == 0 and f["won"]:
+            text = _HL_DEBUT_WIN.render(ref=ref, division=division)
+        else:
+            text = _HL_GENERIC_WIN.render(ref=ref, division=division)
+
+        highlights.append({
+            "fight_id": f["fight_id"],
+            "text": text,
+            "score": score,
+            "event_name": f["event_name"],
+            "event_date": f["event_date"],
+        })
+
+    return highlights
