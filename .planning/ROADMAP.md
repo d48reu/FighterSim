@@ -18,6 +18,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Player Origins** - Selectable starting scenarios with narrative intros and mechanical consequences
 - [ ] **Phase 5: Historical Events UI** - Frontend consumer for historical event browsing API (gap closure)
 - [ ] **Phase 6: Tech Debt Cleanup** - Address low-severity tech debt from milestone audit (gap closure)
+- [ ] **Phase 7: Origin Roster Rebalance** - Adjust origin starting roster sizes (Comeback 20-40, Matchmaker 60-80, Heir 100-120)
+- [ ] **Phase 8: UI Polish** - Column sorting, trait/archetype tooltips, fighter portraits
+- [ ] **Phase 9: Narrative Depth** - Varied post-fight recaps and pre-fight press conference flavor
+- [ ] **Phase 10: Fighter Camp & Scheduling** - Training camp requirement, wear & tear system, event planning delay
+- [ ] **Phase 11: Economics Rebalance** - Rework revenue formulas for deeper financial gameplay
 
 ## Phase Details
 
@@ -112,10 +117,76 @@ Plans:
 Plans:
 - [ ] 06-01: TBD
 
+### Phase 7: Origin Roster Rebalance
+**Goal**: Origin starting rosters feel appropriately scaled — Comeback is a scrappy underdog, Matchmaker has moderate depth, Heir inherits a stacked roster
+**Depends on**: Phase 4
+**Requirements**: ORIG-01
+**Success Criteria** (what must be TRUE):
+  1. Comeback origin seeds 20-40 fighters
+  2. Matchmaker origin seeds 60-80 fighters
+  3. Heir origin seeds 100-120 fighters
+  4. Fighter distribution across weight classes remains balanced within each origin
+**Plans**: TBD
+
+Plans:
+- [ ] 07-01: TBD
+
+### Phase 8: UI Polish
+**Goal**: The game interface feels polished — tables are sortable, unfamiliar terms are explained on hover, and fighters have visual identity
+**Depends on**: Nothing (independent)
+**Requirements**: UIPOL-01, UIPOL-02, UIPOL-03
+**Success Criteria** (what must be TRUE):
+  1. All table/column screens support click-to-sort on column headers
+  2. Hovering over trait names (e.g., "Iron Chin") and archetype names (e.g., "Phenom", "Pressure Fighter") shows a tooltip explaining what they mean
+  3. Fighter cards/profiles display a portrait image
+**Plans**: TBD
+
+Plans:
+- [ ] 08-01: TBD
+
+### Phase 9: Narrative Depth
+**Goal**: Fight narratives feel varied and the pre-fight experience builds anticipation
+**Depends on**: Nothing (independent)
+**Requirements**: NARR-01, NARR-02
+**Success Criteria** (what must be TRUE):
+  1. Post-fight recap text uses varied templates — no identical recap appearing more than once per event card
+  2. Pre-fight press conferences display narrative flavor text for upcoming matchups
+**Plans**: TBD
+
+Plans:
+- [ ] 09-01: TBD
+
+### Phase 10: Fighter Camp & Scheduling
+**Goal**: Fights require preparation — fighters need training camp time, accumulate wear and tear, and events can't be created and run on the same day
+**Depends on**: Nothing (independent)
+**Requirements**: SCHED-01, SCHED-02, SCHED-03
+**Success Criteria** (what must be TRUE):
+  1. Fighters require a minimum training camp period (X weeks) before being eligible for a booked fight
+  2. Fighters accumulate fatigue/damage from fights that requires recovery time
+  3. Events have a minimum planning delay between creation date and event date
+  4. UI reflects fighter availability status (in camp, recovering, available)
+**Plans**: TBD
+
+Plans:
+- [ ] 10-01: TBD
+
+### Phase 11: Economics Rebalance
+**Goal**: The financial model feels deeper and more meaningful — revenue sources are rebalanced and the player understands how money flows
+**Depends on**: Nothing (independent)
+**Requirements**: ECON-01, ECON-02
+**Success Criteria** (what must be TRUE):
+  1. PPV, gate, and broadcast revenue formulas are rebalanced for realistic feel
+  2. Financial breakdown is visible to the player (how revenue was calculated)
+  3. Economic decisions feel consequential — booking choices meaningfully affect the bottom line
+**Plans**: TBD
+
+Plans:
+- [ ] 11-01: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -125,3 +196,8 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 4. Player Origins | 2/2 | Complete | 2026-03-03 |
 | 5. Historical Events UI | 0/0 | Not started | - |
 | 6. Tech Debt Cleanup | 0/0 | Not started | - |
+| 7. Origin Roster Rebalance | 0/0 | Not started | - |
+| 8. UI Polish | 0/0 | Not started | - |
+| 9. Narrative Depth | 0/0 | Not started | - |
+| 10. Fighter Camp & Scheduling | 0/0 | Not started | - |
+| 11. Economics Rebalance | 0/0 | Not started | - |

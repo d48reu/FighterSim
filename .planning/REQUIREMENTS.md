@@ -36,6 +36,32 @@ Requirements for the world-building milestone. Each maps to roadmap phases.
 - [x] **PLYR-03**: Origins have mechanical consequences (different starting budget, roster size, reputation)
 - [x] **PLYR-04**: At least 3 distinct starting scenarios with meaningfully different gameplay
 
+### Origin Tuning
+
+- [ ] **ORIG-01**: Origin roster sizes rebalanced — Comeback 20-40, Matchmaker 60-80, Heir 100-120 fighters
+
+### UI Polish
+
+- [ ] **UIPOL-01**: Column sorting on all table screens (fighters, events, rankings, etc.)
+- [ ] **UIPOL-02**: Hover tooltips on traits and archetypes explaining what they mean
+- [ ] **UIPOL-03**: Fighter portraits displayed on fighter cards and profiles
+
+### Narrative
+
+- [ ] **NARR-01**: Varied post-fight recap templates — no repeated text within the same event
+- [ ] **NARR-02**: Pre-fight press conference narrative flavor text
+
+### Fighter Scheduling
+
+- [ ] **SCHED-01**: Training camp requirement — fighters need X weeks before a booked fight
+- [ ] **SCHED-02**: Wear & tear / fatigue accumulation and recovery system
+- [ ] **SCHED-03**: Minimum time delay between booking an event and event day
+
+### Economics
+
+- [ ] **ECON-01**: Rebalanced PPV, gate, and broadcast revenue formulas
+- [ ] **ECON-02**: Financial model transparency — player can see how revenue is calculated
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -95,12 +121,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLYR-03 | Phase 4: Player Origins | Complete |
 | PLYR-04 | Phase 4: Player Origins | Complete |
 
+| ORIG-01 | Phase 7: Origin Roster Rebalance | Pending |
+| UIPOL-01 | Phase 8: UI Polish | Pending |
+| UIPOL-02 | Phase 8: UI Polish | Pending |
+| UIPOL-03 | Phase 8: UI Polish | Pending |
+| NARR-01 | Phase 9: Narrative Depth | Pending |
+| NARR-02 | Phase 9: Narrative Depth | Pending |
+| SCHED-01 | Phase 10: Fighter Camp & Scheduling | Pending |
+| SCHED-02 | Phase 10: Fighter Camp & Scheduling | Pending |
+| SCHED-03 | Phase 10: Fighter Camp & Scheduling | Pending |
+| ECON-01 | Phase 11: Economics Rebalance | Pending |
+| ECON-02 | Phase 11: Economics Rebalance | Pending |
+
 **Coverage:**
-- v1 requirements: 17 total
-- Mapped to phases: 17 (HIST-05 spans Phase 2 + Phase 5)
+- v1 requirements: 17 total — 17/17 satisfied
+- v1.1 requirements: 11 total — 0/11 satisfied
+- Mapped to phases: 28
 - Unmapped: 0
-- Satisfied: 17/17
-- Pending: 0
 
 ---
 *Requirements defined: 2026-03-01*
