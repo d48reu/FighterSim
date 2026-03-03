@@ -76,10 +76,11 @@ Plans:
   2. Each origin displays a narrative intro explaining the promotion's backstory and why it exists
   3. Selecting different origins produces measurably different starting conditions (budget, roster size, reputation differ)
   4. The chosen origin is reflected in the game state -- a "shoestring startup" origin does not start with the same resources as an "established regional promotion"
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md -- Backend foundation: OriginType enum, ORIGIN_CONFIGS, parameterized seed pipeline, async start_new_game service, deferred-seeding run.py
+- [ ] 04-02-PLAN.md -- Frontend origin page + API routes: route-switching, POST /api/origin, origin.html with cards + name input + text crawl, human verification
 
 ### Phase 5: Historical Events UI
 **Goal**: Players can browse pre-generated fight history from the UI, not just the API
