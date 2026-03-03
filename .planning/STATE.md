@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-03T00:18:27.624Z"
+status: in-progress
+last_updated: "2026-03-03T01:38:30.000Z"
 progress:
-  total_phases: 3
+  total_phases: 4
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 9
+  completed_plans: 8
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** The world feels alive and inhabited -- fighters are people with backstories, personalities, and reputations, not procedurally generated stat blocks.
-**Current focus:** Phase 3: Fighter Identity
+**Current focus:** Phase 4: Player Origins
 
 ## Current Position
 
-Phase: 3 of 4 (Fighter Identity) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase 3 complete (fight-history narrative + API/frontend integration)
-Last activity: 2026-03-03 -- Plan 03-02 completed (bio API + highlights endpoint + frontend + test validation)
+Phase: 4 of 4 (Player Origins) -- IN PROGRESS
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: Plan 04-01 complete (origin backend foundation)
+Last activity: 2026-03-03 -- Plan 04-01 completed (OriginType enum + ORIGIN_CONFIGS + parameterized seed + deferred seeding)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 89%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 4.6 min
-- Total execution time: 32 min
+- Total plans completed: 8
+- Average duration: 4.4 min
+- Total execution time: 35 min
 
 **By Phase:**
 
@@ -43,9 +43,10 @@ Progress: [██████████] 100%
 | 01-fighter-generation | 2/2 | 10 min | 5 min |
 | 02-fight-history | 3/3 | 13 min | 4.3 min |
 | 03-fighter-identity | 2/2 | 9 min | 4.5 min |
+| 04-player-origins | 1/2 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (5 min), 02-02 (4 min), 02-03 (4 min), 03-01 (7 min), 03-02 (2 min)
+- Last 5 plans: 02-02 (4 min), 02-03 (4 min), 03-01 (7 min), 03-02 (2 min), 04-01 (3 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [03-01]: Key fight selection uses composite scoring (title > rivalry > KO/sub > upset > recency)
 - [03-02]: Highlights section hidden by default, only shown when highlights array is non-empty
 - [03-02]: Bio paragraph append uses double-newline separator for clean rendering
+- [04-01]: OriginType stored as String(50) not SQLAlchemy Enum for SQLite compatibility
+- [04-01]: enforce_roster_quality uses age vs prime_start for prospect detection (no career_stage column on Fighter)
+- [04-01]: run.py defers all seeding to origin selection POST endpoint (Plan 04-02)
 
 ### Pending Todos
 
@@ -97,5 +101,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 03-02-PLAN.md (Phase 3 complete)
-Resume file: .planning/phases/03-fighter-identity/03-02-SUMMARY.md
+Stopped at: Completed 04-01-PLAN.md
+Resume file: .planning/phases/04-player-origins/04-01-SUMMARY.md

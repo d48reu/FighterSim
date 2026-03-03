@@ -33,8 +33,8 @@ Requirements for the world-building milestone. Each maps to roadmap phases.
 
 - [ ] **PLYR-01**: Player selects from multiple background origins at game start
 - [ ] **PLYR-02**: Each origin provides a narrative intro explaining why the promotion exists
-- [ ] **PLYR-03**: Origins have mechanical consequences (different starting budget, roster size, reputation)
-- [ ] **PLYR-04**: At least 3 distinct starting scenarios with meaningfully different gameplay
+- [x] **PLYR-03**: Origins have mechanical consequences (different starting budget, roster size, reputation)
+- [x] **PLYR-04**: At least 3 distinct starting scenarios with meaningfully different gameplay
 
 ## v2 Requirements
 
@@ -92,8 +92,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | IDEN-02 | Phase 3: Fighter Identity | Complete |
 | PLYR-01 | Phase 4: Player Origins | Pending |
 | PLYR-02 | Phase 4: Player Origins | Pending |
-| PLYR-03 | Phase 4: Player Origins | Pending |
-| PLYR-04 | Phase 4: Player Origins | Pending |
+| PLYR-03 | Phase 4: Player Origins | Complete |
+| PLYR-04 | Phase 4: Player Origins | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total
