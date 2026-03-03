@@ -221,8 +221,9 @@ function pollSeedTask(taskId) {
           showError("Seeding failed: " + (data.error || "unknown error"));
         }
       })
-      .catch(() => {
-        // Retry on network hiccup
+      .catch(err => {
+        clearInterval(interval);
+        showError("Network error while checking seed status: " + err.message);
       });
   }, 500);
 }

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from models.models import (
     Fighter, Organization, Contract, GameState, TrainingCamp,
-    WeightClass, FighterStyle, ContractStatus, Archetype, OriginType,
+    WeightClass, FighterStyle, ContractStatus, Archetype,
 )
 from simulation.traits import TRAITS, contradicts
 from simulation.name_gen import (
@@ -370,12 +370,14 @@ def enforce_roster_target(session: Session, player_org_id: int, target: int) -> 
     if len(active_contracts) <= target:
         return 0
 
-    # Sort by ascending overall rating (weakest first) -- load fighter for each
-    def _fighter_overall(contract: Contract) -> int:
-        fighter = session.get(Fighter, contract.fighter_id)
-        return fighter.overall if fighter else 0
+    # Batch load fighter overalls to avoid N+1 queries
+    fighter_ids = [c.fighter_id for c in active_contracts]
+    rows = session.execute(
+        select(Fighter.id, Fighter.overall).where(Fighter.id.in_(fighter_ids))
+    ).all()
+    overall_map = {row.id: row.overall for row in rows}
 
-    active_contracts.sort(key=_fighter_overall)
+    active_contracts.sort(key=lambda c: overall_map.get(c.fighter_id, 0))
 
     # Release the weakest fighters beyond the target
     excess = len(active_contracts) - target
@@ -406,15 +408,21 @@ def enforce_roster_quality(session: Session, player_org_id: int, quality_type: s
         .all()
     )
 
+    # Batch load fighters to avoid N+1 queries
+    fighter_ids = [c.fighter_id for c in active_contracts]
+    fighters = session.execute(
+        select(Fighter).where(Fighter.id.in_(fighter_ids))
+    ).scalars().all()
+    fighter_map = {f.id: f for f in fighters}
+
     released = 0
 
     if quality_type == "hand_picked":
         # Release any prospect-stage fighters (keep prime + veteran only)
         for contract in active_contracts:
-            fighter = session.get(Fighter, contract.fighter_id)
+            fighter = fighter_map.get(contract.fighter_id)
             if not fighter:
                 continue
-            # Prospect: age < prime_start
             if fighter.age < fighter.prime_start:
                 session.delete(contract)
                 released += 1
@@ -422,11 +430,10 @@ def enforce_roster_quality(session: Session, player_org_id: int, quality_type: s
     elif quality_type == "scrappy":
         # Release any fighter with overall > 75 or archetype == GOAT_CANDIDATE
         for contract in active_contracts:
-            fighter = session.get(Fighter, contract.fighter_id)
+            fighter = fighter_map.get(contract.fighter_id)
             if not fighter:
                 continue
-            arch_val = fighter.archetype.value if hasattr(fighter.archetype, 'value') else str(fighter.archetype)
-            if fighter.overall > 75 or arch_val == "GOAT Candidate":
+            if fighter.overall > 75 or fighter.archetype == Archetype.GOAT_CANDIDATE:
                 session.delete(contract)
                 released += 1
 

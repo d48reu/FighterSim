@@ -60,6 +60,19 @@ python test_weight_cutting.py    # Test weight cutting mechanics
 - **Reality Show:** Ultimate Fighter-style system with shenanigans
 - **Rankings:** Dirty flag caching per weight class
 
+## Patterns to Follow
+
+- **Business logic** goes in `api/services.py`, never in routes (`api/app.py` is a thin controller)
+- **Fight engine** (`simulation/`) must have ZERO Flask imports — keep it decoupled
+- **Frontend** is vanilla JS — no frameworks, no React, no build step. Follow existing event listener patterns in `frontend/static/js/`
+- **CSS** uses design tokens (CSS custom properties) defined in existing stylesheets — reuse `--color-*`, `--font-*`, `--spacing-*` variables
+- **New models** go in `models/models.py` — all 25+ models live in one file with SQLAlchemy 2.0 patterns
+- **New enums** follow the existing pattern: Python Enum class in `models/models.py`
+- **Seed data** flows through `simulation/seed.py` — origin configs in `ORIGIN_CONFIGS` dict
+- **API routes** return JSON, follow existing naming convention: `GET /api/{resource}`, `POST /api/{action}`
+- **Tests** validate end-to-end via `test_cli.py` — add new validation steps there, not in separate test files
+- Use `python3` not `python` (WSL2)
+
 ## Roadmap
 
-See `ROADMAP.md` for completed features and remaining work (fighter portraits, fight visualization, sound design, save/load, tutorial, Steam prep).
+See `.planning/ROADMAP.md` for phased roadmap. Phases 1-4 complete, 5-11 remaining (historical UI, tech debt, origin rebalance, UI polish, narrative depth, fighter camp/scheduling, economics rebalance).

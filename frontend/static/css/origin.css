@@ -9,35 +9,7 @@
   padding: 0;
 }
 
-/* -- Design Tokens (mirrored from style.css) -- */
-
-:root {
-  --font-display: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
-  --font-body:    'Inter', 'Segoe UI', system-ui, sans-serif;
-
-  --bg:           #0a0a0f;
-  --bg-raised:    #12121a;
-  --bg-surface:   #1a1a26;
-  --bg-surface-2: #22222e;
-
-  --border:       #2a2a3a;
-  --border-light: #3a3a4a;
-
-  --text:           #f0f0f5;
-  --text-secondary: #a0a0b0;
-  --muted:          #666678;
-
-  --accent:      #e63946;
-  --accent-dim:  #c1121f;
-  --accent-glow: rgba(230,57,70,0.15);
-
-  --gold:        #fbbf24;
-  --positive:    #34d399;
-
-  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
-  --shadow-lg:   0 12px 40px rgba(0,0,0,0.5);
-  --radius-lg:   12px;
-}
+/* Design tokens inherited from style.css (loaded first in origin.html) */
 
 body {
   background: var(--bg);

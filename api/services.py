@@ -24,6 +24,11 @@ from models.models import (
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
+from simulation.seed import (
+    ORIGIN_CONFIGS, seed_organizations, seed_fighters,
+    enforce_roster_target, enforce_roster_quality,
+)
+from simulation.history import fabricate_history
 from simulation.rankings import rebuild_rankings, get_rankings as _get_rankings, mark_rankings_dirty
 from simulation.narrative import (
     apply_fight_tags, update_goat_scores, update_rivalries,
@@ -88,11 +93,18 @@ def _get_game_date(session) -> date:
     return gs.current_date if gs else date.today()
 
 
+_game_started: bool = False
+
 def has_game_state() -> bool:
-    """Check if a game has been started (GameState row exists)."""
+    """Check if a game has been started (GameState row exists). Cached after first True."""
+    global _game_started
+    if _game_started:
+        return True
     with _SessionFactory() as session:
-        gs = session.get(GameState, 1)
-        return gs is not None
+        result = session.get(GameState, 1) is not None
+    if result:
+        _game_started = True
+    return result
 
 
 def get_gamestate() -> dict:
@@ -449,12 +461,6 @@ def start_new_game(origin_type: str, promotion_name: str) -> str:
 
 def _run_new_game(task_id: str, origin_type: str, promotion_name: str) -> None:
     try:
-        from simulation.seed import (
-            ORIGIN_CONFIGS, seed_organizations, seed_fighters,
-            enforce_roster_target, enforce_roster_quality,
-        )
-        from simulation.history import fabricate_history
-
         config = ORIGIN_CONFIGS[origin_type]
 
         with _SessionFactory() as session:
