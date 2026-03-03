@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-03T01:38:30.000Z"
+last_updated: "2026-03-03T02:11:00.000Z"
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** The world feels alive and inhabited -- fighters are people with backstories, personalities, and reputations, not procedurally generated stat blocks.
-**Current focus:** Phase 4: Player Origins
+**Current focus:** Phase 4: Player Origins -- COMPLETE
 
 ## Current Position
 
-Phase: 4 of 4 (Player Origins) -- IN PROGRESS
-Plan: 1 of 2 in current phase -- COMPLETE
-Status: Plan 04-01 complete (origin backend foundation)
-Last activity: 2026-03-03 -- Plan 04-01 completed (OriginType enum + ORIGIN_CONFIGS + parameterized seed + deferred seeding)
+Phase: 4 of 4 (Player Origins) -- COMPLETE
+Plan: 2 of 2 in current phase -- COMPLETE
+Status: Phase 4 complete (all origin plans delivered)
+Last activity: 2026-03-03 -- Plan 04-02 completed (origin selection frontend with cinematic text crawl)
 
-Progress: [████████░░] 89%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 4.4 min
-- Total execution time: 35 min
+- Total execution time: 40 min
 
 **By Phase:**
 
@@ -43,10 +43,10 @@ Progress: [████████░░] 89%
 | 01-fighter-generation | 2/2 | 10 min | 5 min |
 | 02-fight-history | 3/3 | 13 min | 4.3 min |
 | 03-fighter-identity | 2/2 | 9 min | 4.5 min |
-| 04-player-origins | 1/2 | 3 min | 3 min |
+| 04-player-origins | 2/2 | 8 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (4 min), 02-03 (4 min), 03-01 (7 min), 03-02 (2 min), 04-01 (3 min)
+- Last 5 plans: 02-03 (4 min), 03-01 (7 min), 03-02 (2 min), 04-01 (3 min), 04-02 (5 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -87,6 +87,9 @@ Recent decisions affecting current work:
 - [04-01]: OriginType stored as String(50) not SQLAlchemy Enum for SQLite compatibility
 - [04-01]: enforce_roster_quality uses age vs prime_start for prospect detection (no career_stage column on Fighter)
 - [04-01]: run.py defers all seeding to origin selection POST endpoint (Plan 04-02)
+- [04-02]: Origin configs served via GET /api/origins so frontend never hardcodes origin data
+- [04-02]: Text crawl narratives stored client-side in origin.js (no server round-trip for static prose)
+- [04-02]: Dual-gate Begin button: both seed task completion AND animation timer must fire before enabling
 
 ### Pending Todos
 
@@ -101,5 +104,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 04-01-PLAN.md
-Resume file: .planning/phases/04-player-origins/04-01-SUMMARY.md
+Stopped at: Completed 04-02-PLAN.md (Phase 4 complete)
+Resume file: .planning/phases/04-player-origins/04-02-SUMMARY.md

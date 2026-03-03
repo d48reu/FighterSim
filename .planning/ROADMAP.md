@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Fighter Generation** - Overhaul seed to produce 400-500 fighters with authentic names, balanced archetypes, and career-stage-appropriate stats
 - [x] **Phase 2: Fight History** - Fabricate 2-3 years of pre-game fight history with real database records, champions, and emergent rivalries
 - [x] **Phase 3: Fighter Identity** - Generate composable backstories and career highlights from actual fight history data
-- [ ] **Phase 4: Player Origins** - Selectable starting scenarios with narrative intros and mechanical consequences
+- [x] **Phase 4: Player Origins** - Selectable starting scenarios with narrative intros and mechanical consequences
 - [ ] **Phase 5: Historical Events UI** - Frontend consumer for historical event browsing API (gap closure)
 - [ ] **Phase 6: Tech Debt Cleanup** - Address low-severity tech debt from milestone audit (gap closure)
 
@@ -79,8 +79,8 @@ Plans:
 **Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 04-01-PLAN.md -- Backend foundation: OriginType enum, ORIGIN_CONFIGS, parameterized seed pipeline, async start_new_game service, deferred-seeding run.py
-- [ ] 04-02-PLAN.md -- Frontend origin page + API routes: route-switching, POST /api/origin, origin.html with cards + name input + text crawl, human verification
+- [x] 04-01-PLAN.md -- Backend foundation: OriginType enum, ORIGIN_CONFIGS, parameterized seed pipeline, async start_new_game service, deferred-seeding run.py
+- [x] 04-02-PLAN.md -- Frontend origin page + API routes: route-switching, POST /api/origin, origin.html with cards + name input + text crawl, human verification
 
 ### Phase 5: Historical Events UI
 **Goal**: Players can browse pre-generated fight history from the UI, not just the API
@@ -122,6 +122,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Fighter Generation | 2/2 | Complete | 2026-03-02 |
 | 2. Fight History | 3/3 | Complete | 2026-03-02 |
 | 3. Fighter Identity | 2/2 | Complete | 2026-03-02 |
-| 4. Player Origins | 0/0 | Not started | - |
+| 4. Player Origins | 2/2 | Complete | 2026-03-03 |
 | 5. Historical Events UI | 0/0 | Not started | - |
 | 6. Tech Debt Cleanup | 0/0 | Not started | - |

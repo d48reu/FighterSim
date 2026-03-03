@@ -31,8 +31,8 @@ Requirements for the world-building milestone. Each maps to roadmap phases.
 
 ### Player Experience
 
-- [ ] **PLYR-01**: Player selects from multiple background origins at game start
-- [ ] **PLYR-02**: Each origin provides a narrative intro explaining why the promotion exists
+- [x] **PLYR-01**: Player selects from multiple background origins at game start
+- [x] **PLYR-02**: Each origin provides a narrative intro explaining why the promotion exists
 - [x] **PLYR-03**: Origins have mechanical consequences (different starting budget, roster size, reputation)
 - [x] **PLYR-04**: At least 3 distinct starting scenarios with meaningfully different gameplay
 
@@ -90,8 +90,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HIST-06 | Phase 2: Fight History | Complete |
 | IDEN-01 | Phase 3: Fighter Identity | Complete |
 | IDEN-02 | Phase 3: Fighter Identity | Complete |
-| PLYR-01 | Phase 4: Player Origins | Pending |
-| PLYR-02 | Phase 4: Player Origins | Pending |
+| PLYR-01 | Phase 4: Player Origins | Complete |
+| PLYR-02 | Phase 4: Player Origins | Complete |
 | PLYR-03 | Phase 4: Player Origins | Complete |
 | PLYR-04 | Phase 4: Player Origins | Complete |
 
@@ -99,8 +99,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 - v1 requirements: 17 total
 - Mapped to phases: 17 (HIST-05 spans Phase 2 + Phase 5)
 - Unmapped: 0
-- Satisfied: 13/17
-- Pending: 4 (PLYR-01 through PLYR-04 in Phase 4)
+- Satisfied: 17/17
+- Pending: 0
 
 ---
 *Requirements defined: 2026-03-01*
