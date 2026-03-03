@@ -82,6 +82,12 @@ class Archetype(str, enum.Enum):
     SHOOTING_STAR  = "Shooting Star"
 
 
+class OriginType(str, enum.Enum):
+    THE_HEIR = "The Heir"
+    THE_MATCHMAKER = "The Matchmaker"
+    THE_COMEBACK = "The Comeback"
+
+
 # ---------------------------------------------------------------------------
 # Fighter
 # ---------------------------------------------------------------------------
@@ -393,6 +399,7 @@ class GameState(Base):
     id: Mapped[int] = Column(Integer, primary_key=True)
     current_date: Mapped[date] = Column(Date, nullable=False)
     player_org_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    origin_type: Mapped[Optional[str]] = Column(String(50), nullable=True)
 
 
 # ---------------------------------------------------------------------------

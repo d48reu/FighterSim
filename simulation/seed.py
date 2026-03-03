@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from models.models import (
     Fighter, Organization, Contract, GameState, TrainingCamp,
-    WeightClass, FighterStyle, ContractStatus, Archetype,
+    WeightClass, FighterStyle, ContractStatus, Archetype, OriginType,
 )
 from simulation.traits import TRAITS, contradicts
 from simulation.name_gen import (
@@ -234,6 +234,38 @@ _ARCHETYPE_SALARY: dict[str, tuple[int, int]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Origin configurations (player starting conditions)
+# ---------------------------------------------------------------------------
+
+ORIGIN_CONFIGS = {
+    "The Heir": {
+        "label": "The Heir",
+        "tagline": "Inherited a mid-tier promotion. Prove you belong.",
+        "budget": 8_000_000,
+        "prestige": 55.0,
+        "roster_target": 20,
+        "roster_quality": "inherited",
+    },
+    "The Matchmaker": {
+        "label": "The Matchmaker",
+        "tagline": "10 years booking for UCC. Now building your own vision.",
+        "budget": 4_000_000,
+        "prestige": 40.0,
+        "roster_target": 12,
+        "roster_quality": "hand_picked",
+    },
+    "The Comeback": {
+        "label": "The Comeback",
+        "tagline": "Washed-out fighter. Nobody believes in you.",
+        "budget": 1_500_000,
+        "prestige": 25.0,
+        "roster_target": 6,
+        "roster_quality": "scrappy",
+    },
+}
+
+
 def _assign_organization(
     career_stage: str,
     archetype_str: str,
@@ -284,7 +316,13 @@ def _assign_organization(
 # Preserved helper functions
 # ---------------------------------------------------------------------------
 
-def seed_organizations(session: Session) -> list[Organization]:
+def seed_organizations(
+    session: Session,
+    player_org_name: str = "Player Promotion",
+    player_org_prestige: float = 50.0,
+    player_org_balance: float = 5_000_000.0,
+    origin_type: str | None = None,
+) -> list[Organization]:
     orgs = [
         Organization(name="Ultimate Combat Championship", prestige=90.0,
                      bank_balance=50_000_000.0, is_player=False),
@@ -292,8 +330,8 @@ def seed_organizations(session: Session) -> list[Organization]:
                      bank_balance=20_000_000.0, is_player=False),
         Organization(name="One Championship", prestige=75.0,
                      bank_balance=25_000_000.0, is_player=False),
-        Organization(name="Player Promotion", prestige=50.0,
-                     bank_balance=5_000_000.0, is_player=True),
+        Organization(name=player_org_name, prestige=player_org_prestige,
+                     bank_balance=player_org_balance, is_player=True),
     ]
     for org in orgs:
         session.add(org)
@@ -305,11 +343,95 @@ def seed_organizations(session: Session) -> list[Organization]:
         id=1,
         current_date=date(2026, 1, 1),
         player_org_id=player_org.id if player_org else None,
+        origin_type=origin_type,
     )
     session.add(game_state)
     session.flush()
 
     return orgs
+
+
+def enforce_roster_target(session: Session, player_org_id: int, target: int) -> int:
+    """Release excess fighters from player org to hit roster target. Returns released count."""
+    # Get all active contracts for the player org, joined with Fighter
+    active_contracts = (
+        session.execute(
+            select(Contract)
+            .join(Fighter, Contract.fighter_id == Fighter.id)
+            .where(
+                Contract.organization_id == player_org_id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if len(active_contracts) <= target:
+        return 0
+
+    # Sort by ascending overall rating (weakest first) -- load fighter for each
+    def _fighter_overall(contract: Contract) -> int:
+        fighter = session.get(Fighter, contract.fighter_id)
+        return fighter.overall if fighter else 0
+
+    active_contracts.sort(key=_fighter_overall)
+
+    # Release the weakest fighters beyond the target
+    excess = len(active_contracts) - target
+    released = 0
+    for contract in active_contracts[:excess]:
+        session.delete(contract)
+        released += 1
+
+    session.flush()
+    return released
+
+
+def enforce_roster_quality(session: Session, player_org_id: int, quality_type: str) -> int:
+    """Adjust roster composition to match origin theme. Returns number of releases."""
+    if quality_type == "inherited":
+        # Natural distribution is fine for The Heir
+        return 0
+
+    active_contracts = (
+        session.execute(
+            select(Contract)
+            .where(
+                Contract.organization_id == player_org_id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    released = 0
+
+    if quality_type == "hand_picked":
+        # Release any prospect-stage fighters (keep prime + veteran only)
+        for contract in active_contracts:
+            fighter = session.get(Fighter, contract.fighter_id)
+            if not fighter:
+                continue
+            # Prospect: age < prime_start
+            if fighter.age < fighter.prime_start:
+                session.delete(contract)
+                released += 1
+
+    elif quality_type == "scrappy":
+        # Release any fighter with overall > 75 or archetype == GOAT_CANDIDATE
+        for contract in active_contracts:
+            fighter = session.get(Fighter, contract.fighter_id)
+            if not fighter:
+                continue
+            arch_val = fighter.archetype.value if hasattr(fighter.archetype, 'value') else str(fighter.archetype)
+            if fighter.overall > 75 or arch_val == "GOAT Candidate":
+                session.delete(contract)
+                released += 1
+
+    session.flush()
+    return released
 
 
 def _starting_popularity_hype(archetype: Archetype, rng: random.Random) -> tuple[float, float]:
