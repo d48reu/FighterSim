@@ -26,8 +26,8 @@ Requirements for the world-building milestone. Each maps to roadmap phases.
 
 ### Fighter Identity
 
-- [ ] **IDEN-01**: Fighters have composable backstories built from Jinja2 templates that reference actual fight history
-- [ ] **IDEN-02**: Career highlights are auto-extracted from fabricated fight history (notable KOs, upsets, streaks)
+- [x] **IDEN-01**: Fighters have composable backstories built from Jinja2 templates that reference actual fight history
+- [x] **IDEN-02**: Career highlights are auto-extracted from fabricated fight history (notable KOs, upsets, streaks)
 
 ### Player Experience
 
@@ -88,8 +88,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HIST-04 | Phase 2: Fight History | Complete |
 | HIST-05 | Phase 2: Fight History | Complete |
 | HIST-06 | Phase 2: Fight History | Complete |
-| IDEN-01 | Phase 3: Fighter Identity | Pending |
-| IDEN-02 | Phase 3: Fighter Identity | Pending |
+| IDEN-01 | Phase 3: Fighter Identity | Complete |
+| IDEN-02 | Phase 3: Fighter Identity | Complete |
 | PLYR-01 | Phase 4: Player Origins | Pending |
 | PLYR-02 | Phase 4: Player Origins | Pending |
 | PLYR-03 | Phase 4: Player Origins | Pending |

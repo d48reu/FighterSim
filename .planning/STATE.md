@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-02T06:02:00Z"
+last_updated: "2026-03-03T00:06:03Z"
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** The world feels alive and inhabited -- fighters are people with backstories, personalities, and reputations, not procedurally generated stat blocks.
-**Current focus:** Phase 2: Fight History
+**Current focus:** Phase 3: Fighter Identity
 
 ## Current Position
 
-Phase: 2 of 4 (Fight History) -- COMPLETE
-Plan: 3 of 3 in current phase
-Status: Phase 02 Complete
-Last activity: 2026-03-02 -- Plan 02-03 completed (career length realism + veteran matchmaker tuning)
+Phase: 3 of 4 (Fighter Identity)
+Plan: 1 of 2 in current phase -- COMPLETE
+Status: Plan 03-01 complete (fight-history paragraph + career highlights)
+Last activity: 2026-03-02 -- Plan 03-01 completed (Jinja2 fight-history paragraph generator + career highlights extractor)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 86%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 5 min
-- Total execution time: 23 min
+- Total execution time: 30 min
 
 **By Phase:**
 
@@ -42,9 +42,10 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 01-fighter-generation | 2/2 | 10 min | 5 min |
 | 02-fight-history | 3/3 | 13 min | 4.3 min |
+| 03-fighter-identity | 1/2 | 7 min | 7 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (5 min), 01-02 (5 min), 02-01 (5 min), 02-02 (4 min), 02-03 (4 min)
+- Last 5 plans: 01-02 (5 min), 02-01 (5 min), 02-02 (4 min), 02-03 (4 min), 03-01 (7 min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -77,6 +78,9 @@ Recent decisions affecting current work:
 - [02-03]: Event frequency increased from 6-8 weeks to ~2 weeks (10-18 day gaps)
 - [02-03]: Card size increased from 5-7 to 8-12 fights per event
 - [02-03]: Scan-for-best-opponent pairing replaces adjacent pairing to avoid rematch cap deadlocks
+- [03-01]: Fighter.overall is a @property -- batch queries use full Fighter objects instead of column projection
+- [03-01]: 54 Jinja2 templates total (3 prospect + 18 prime + 18 veteran + 4 overlays + 3 minimal + 8 highlight)
+- [03-01]: Key fight selection uses composite scoring (title > rivalry > KO/sub > upset > recency)
 
 ### Pending Todos
 
@@ -86,10 +90,10 @@ None yet.
 
 - Monthly sim performance at 500 fighters is untested (flagged in research, profile early in Phase 1)
 - ~~Faker locale gaps for Dagestani/Cameroonian/Jamaican fighters need proxy locale validation~~ (RESOLVED in 01-01: Dagestani uses hardcoded romanized names, Cameroonian uses fr_FR proxy, Jamaican uses en_GB proxy -- all verified)
-- Template content volume for Phase 3 (50-100 fragments) is a writing task beyond code work
+- ~~Template content volume for Phase 3 (50-100 fragments) is a writing task beyond code work~~ (RESOLVED in 03-01: 54 Jinja2 templates covering all archetype x stage combinations, moderate variation approach kept it manageable)
 
 ## Session Continuity
 
 Last session: 2026-03-02
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-fighter-identity/03-CONTEXT.md
+Stopped at: Completed 03-01-PLAN.md
+Resume file: .planning/phases/03-fighter-identity/03-01-SUMMARY.md
