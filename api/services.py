@@ -88,6 +88,13 @@ def _get_game_date(session) -> date:
     return gs.current_date if gs else date.today()
 
 
+def has_game_state() -> bool:
+    """Check if a game has been started (GameState row exists)."""
+    with _SessionFactory() as session:
+        gs = session.get(GameState, 1)
+        return gs is not None
+
+
 def get_gamestate() -> dict:
     with _SessionFactory() as session:
         gs = session.get(GameState, 1)
@@ -421,6 +428,62 @@ def _run_advance_month(task_id: str, seed: int) -> None:
         with _SessionFactory() as session:
             summary = sim_month(session, seed=seed)
         _task_done(task_id, summary)
+    except Exception as e:
+        _task_error(task_id, str(e))
+
+
+# ---------------------------------------------------------------------------
+# Async: new game (origin-driven seed pipeline)
+# ---------------------------------------------------------------------------
+
+def start_new_game(origin_type: str, promotion_name: str) -> str:
+    """Start async game seeding with origin parameters."""
+    task_id = _new_task()
+    threading.Thread(
+        target=_run_new_game,
+        args=(task_id, origin_type, promotion_name),
+        daemon=True,
+    ).start()
+    return task_id
+
+
+def _run_new_game(task_id: str, origin_type: str, promotion_name: str) -> None:
+    try:
+        from simulation.seed import (
+            ORIGIN_CONFIGS, seed_organizations, seed_fighters,
+            enforce_roster_target, enforce_roster_quality,
+        )
+        from simulation.history import fabricate_history
+
+        config = ORIGIN_CONFIGS[origin_type]
+
+        with _SessionFactory() as session:
+            orgs = seed_organizations(
+                session,
+                player_org_name=promotion_name,
+                player_org_prestige=config["prestige"],
+                player_org_balance=config["budget"],
+                origin_type=origin_type,
+            )
+            fighters = seed_fighters(session, orgs, seed=42)
+
+            # Enforce roster size and quality for player org
+            player_org = next(o for o in orgs if o.is_player)
+            released = enforce_roster_target(session, player_org.id, config["roster_target"])
+            quality_adj = enforce_roster_quality(session, player_org.id, config["roster_quality"])
+
+            # Fabricate history
+            history = fabricate_history(session, fighters, orgs, seed=42)
+
+        _task_done(task_id, {
+            "fighters_seeded": len(fighters),
+            "events_created": history.get("events_created", 0),
+            "fights_created": history.get("fights_created", 0),
+            "roster_released": released,
+            "roster_quality_adjusted": quality_adj,
+            "origin": origin_type,
+            "promotion_name": promotion_name,
+        })
     except Exception as e:
         _task_error(task_id, str(e))
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start the FighterSim server with a fresh seeded database."""
+"""Start the FighterSim server with a fresh database (seeding deferred to origin selection)."""
 
 import os
 import sys
@@ -16,28 +16,10 @@ if DB_FILE.exists():
     os.remove(DB_FILE)
 
 from api.app import create_app
-import api.services as svc
-from simulation.seed import seed_organizations, seed_fighters
-from simulation.history import fabricate_history
 
-# Create app (this calls init_db, creating tables + session factory)
+# Create app (creates tables, no seeding -- origin selection triggers seed)
 app = create_app(DB_URL)
 
-# Seed using the app's session factory
-with svc._SessionFactory() as session:
-    orgs = seed_organizations(session)
-    fighters = seed_fighters(session, orgs, seed=42)
-    print(f"Seeded {len(orgs)} orgs and {len(fighters)} fighters")
-
-    # Fabricate pre-game fight history
-    history = fabricate_history(session, fighters, orgs, seed=42)
-    print(f"Fabricated history: {history['events_created']} events, {history['fights_created']} fights")
-    print(f"Champions crowned: {len(history.get('champions', {}))}")
-    print(f"Rivalries detected: {history.get('rivalries', 0)}")
-
-# Verify
-camps = svc.get_training_camps()
-print(f"Training camps: {len(camps)}")
-
 print("\nStarting server at http://127.0.0.1:5000")
+print("Select your origin to begin a new game.")
 app.run(host="127.0.0.1", port=5000, debug=False)
