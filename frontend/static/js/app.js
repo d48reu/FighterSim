@@ -257,6 +257,8 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('panel-offer-result').innerHTML = '';
   document.getElementById('panel-sponsorships').innerHTML = '';
   document.getElementById('panel-sponsorships').classList.add('hidden');
+  document.getElementById('panel-highlights').classList.add('hidden');
+  document.getElementById('highlights-list').innerHTML = '';
   document.getElementById('panel-timeline').classList.add('hidden');
   document.getElementById('timeline-list').innerHTML = '';
   document.getElementById('bar-popularity').style.width = '0%';
@@ -265,10 +267,11 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('val-hype').textContent       = '';
 
   try {
-    const [fighter, bioData, tagsData] = await Promise.all([
+    const [fighter, bioData, tagsData, highlightsData] = await Promise.all([
       api(`/api/fighters/${fighterId}`),
       api(`/api/fighters/${fighterId}/bio`),
       api(`/api/fighters/${fighterId}/tags`),
+      api(`/api/fighters/${fighterId}/highlights`),
     ]);
 
     document.getElementById('panel-name').textContent     = fighter.name;
@@ -346,6 +349,20 @@ async function showFighterPanel(fighterId, extraData) {
       : '<span class="muted" style="font-size:12px">No narrative tags yet</span>';
 
     document.getElementById('panel-bio').textContent = bioData.bio || '\u2014';
+
+    // Career Highlights
+    const highlightsSection = document.getElementById('panel-highlights');
+    const highlightsList = document.getElementById('highlights-list');
+    const highlights = (highlightsData && highlightsData.highlights) || [];
+    if (highlights.length > 0) {
+        highlightsSection.classList.remove('hidden');
+        highlightsList.innerHTML = highlights.map(h =>
+            `<li class="highlight-item">${esc(h.text)}</li>`
+        ).join('');
+    } else {
+        highlightsSection.classList.add('hidden');
+        highlightsList.innerHTML = '';
+    }
 
     // Context-specific actions
     const actionsEl = document.getElementById('panel-actions');

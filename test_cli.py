@@ -185,6 +185,57 @@ with SessionFactory() as session:
 
 
 # ──────────────────────────────────────────────
+# 1c. Fighter Identity validation (Phase 3)
+# ──────────────────────────────────────────────
+
+print()
+print("=" * 60)
+print("STEP 1c: Fighter Identity (IDEN-01, IDEN-02)")
+print("=" * 60)
+
+from simulation.narrative import generate_fight_history_paragraph, extract_career_highlights
+
+with SessionFactory() as session:
+    # Test a sample of fighters
+    sample_fighters = session.execute(select(Fighter).limit(30)).scalars().all()
+    bio_with_history = 0
+    highlights_generated = 0
+    iden_errors = []
+
+    for f in sample_fighters:
+        fight_count = f.wins + f.losses + f.draws
+
+        # IDEN-01: Bio should include fight-history paragraph for fighters with 3+ fights
+        para = generate_fight_history_paragraph(f, session)
+        if fight_count >= 3 and len(para) < 30:
+            iden_errors.append(f"IDEN-01 FAIL: {f.name} ({fight_count} fights) has short/empty history paragraph")
+        if fight_count >= 3 and len(para) >= 30:
+            bio_with_history += 1
+
+        # IDEN-02: Highlights for fighters with fights
+        highlights = extract_career_highlights(f, session)
+        if fight_count >= 5 and len(highlights) == 0:
+            iden_errors.append(f"IDEN-02 FAIL: {f.name} ({fight_count} fights) has no highlights")
+        if len(highlights) > 6:
+            iden_errors.append(f"IDEN-02 FAIL: {f.name} has {len(highlights)} highlights (max 6)")
+        if len(highlights) > 0:
+            highlights_generated += 1
+            # Verify highlight dict structure
+            for h in highlights:
+                if not all(k in h for k in ("fight_id", "text", "score")):
+                    iden_errors.append(f"IDEN-02 FAIL: {f.name} highlight missing keys: {h}")
+
+    print(f"  Fighters with history paragraphs: {bio_with_history}/{len(sample_fighters)}")
+    print(f"  Fighters with highlights: {highlights_generated}/{len(sample_fighters)}")
+    if iden_errors:
+        for e in iden_errors:
+            print(f"  {e}")
+        print(f"  IDENTITY VALIDATION: {len(iden_errors)} errors")
+    else:
+        print("  IDENTITY VALIDATION: PASSED")
+
+
+# ──────────────────────────────────────────────
 # 2. Simulate a 10-fight event card
 # ──────────────────────────────────────────────
 

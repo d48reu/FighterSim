@@ -581,6 +581,37 @@ tbody td { padding: 9px 10px; }
   line-height: 1.65;
 }
 
+.panel-highlights-section {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: var(--card-bg, #1a1a2e);
+  border-radius: 6px;
+}
+
+.highlights-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0 0;
+}
+
+.highlight-item {
+  padding: 0.4rem 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #b0b0b0);
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.05));
+  line-height: 1.4;
+}
+
+.highlight-item:last-child {
+  border-bottom: none;
+}
+
+.highlight-item::before {
+  content: "\2605 ";
+  color: var(--accent, #e94560);
+  font-size: 0.75rem;
+}
+
 /* ── Fighters table: clickable rows ──────────────── */
 
 #fighters-tbody tr { cursor: pointer; }
