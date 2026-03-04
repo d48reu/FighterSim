@@ -14,27 +14,55 @@ from sqlalchemy.orm import sessionmaker
 
 from models.database import Base
 from models.models import (
-    Fighter, Organization, Contract, Event, Fight,
-    WeightClass, ContractStatus, EventStatus, Notification, GameState,
-    TrainingCamp, FighterDevelopment,
-    BroadcastDeal, BroadcastDealStatus,
-    Sponsorship, SponsorshipStatus,
-    RealityShow, ShowContestant, ShowEpisode, ShowStatus,
-    NewsHeadline, LegendCoach,
+    Fighter,
+    Organization,
+    Contract,
+    Event,
+    Fight,
+    WeightClass,
+    ContractStatus,
+    EventStatus,
+    Notification,
+    GameState,
+    TrainingCamp,
+    FighterDevelopment,
+    BroadcastDeal,
+    BroadcastDealStatus,
+    Sponsorship,
+    SponsorshipStatus,
+    RealityShow,
+    ShowContestant,
+    ShowStatus,
+    NewsHeadline,
+    LegendCoach,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
 from simulation.seed import (
-    ORIGIN_CONFIGS, seed_organizations, seed_fighters,
-    enforce_roster_target, enforce_roster_quality,
+    ORIGIN_CONFIGS,
+    seed_organizations,
+    seed_fighters,
+    enforce_roster_target,
+    enforce_roster_quality,
 )
 from simulation.history import fabricate_history
-from simulation.rankings import rebuild_rankings, get_rankings as _get_rankings, mark_rankings_dirty
+from simulation.rankings import (
+    rebuild_rankings,
+    get_rankings as _get_rankings,
+    mark_rankings_dirty,
+)
 from simulation.narrative import (
-    apply_fight_tags, update_goat_scores, update_rivalries,
-    generate_fighter_bio, get_tags, display_archetype, suggest_nicknames,
-    generate_press_conference, generate_fight_headline,
-    generate_fight_history_paragraph, extract_career_highlights,
+    apply_fight_tags,
+    update_goat_scores,
+    update_rivalries,
+    generate_fighter_bio,
+    get_tags,
+    display_archetype,
+    suggest_nicknames,
+    generate_press_conference,
+    generate_fight_headline,
+    generate_fight_history_paragraph,
+    extract_career_highlights,
 )
 
 # ---------------------------------------------------------------------------
@@ -60,6 +88,7 @@ def init_db(db_url: str) -> None:
 # ---------------------------------------------------------------------------
 # Task helpers
 # ---------------------------------------------------------------------------
+
 
 def _new_task() -> str:
     task_id = uuid.uuid4().hex[:8]
@@ -87,6 +116,7 @@ def get_task(task_id: str) -> Optional[dict]:
 # Game State
 # ---------------------------------------------------------------------------
 
+
 def _get_game_date(session) -> date:
     """Return current game date from GameState, falling back to today."""
     gs = session.get(GameState, 1)
@@ -94,6 +124,7 @@ def _get_game_date(session) -> date:
 
 
 _game_started: bool = False
+
 
 def has_game_state() -> bool:
     """Check if a game has been started (GameState row exists). Cached after first True."""
@@ -122,6 +153,7 @@ def get_gamestate() -> dict:
 # Fighters
 # ---------------------------------------------------------------------------
 
+
 def get_fighters(weight_class: Optional[str] = None, limit: int = 100) -> list[dict]:
     with _SessionFactory() as session:
         q = select(Fighter)
@@ -144,7 +176,9 @@ def _fighter_dict(f: Fighter) -> dict:
         "nickname": f.nickname,
         "age": f.age,
         "nationality": f.nationality,
-        "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
+        "weight_class": f.weight_class.value
+        if hasattr(f.weight_class, "value")
+        else f.weight_class,
         "style": f.style.value if hasattr(f.style, "value") else f.style,
         "striking": f.striking,
         "grappling": f.grappling,
@@ -170,10 +204,12 @@ def _fighter_dict(f: Fighter) -> dict:
         "natural_weight": f.natural_weight,
         "fighting_weight": f.fighting_weight,
         "cut_severity": get_cut_severity(f),
-        "is_retired": getattr(f, 'is_retired', False),
-        "retired_date": f.retired_date.isoformat() if getattr(f, 'retired_date', None) else None,
-        "legacy_score": round(getattr(f, 'legacy_score', 0.0), 1),
-        "peak_overall": getattr(f, 'peak_overall', 0) or f.overall,
+        "is_retired": getattr(f, "is_retired", False),
+        "retired_date": f.retired_date.isoformat()
+        if getattr(f, "retired_date", None)
+        else None,
+        "legacy_score": round(getattr(f, "legacy_score", 0.0), 1),
+        "peak_overall": getattr(f, "peak_overall", 0) or f.overall,
     }
 
 
@@ -210,7 +246,11 @@ def get_cut_severity(fighter: Fighter) -> str:
         return "easy"
     if fighter.natural_weight <= fighter.fighting_weight:
         return "easy"
-    cut_pct = (fighter.natural_weight - fighter.fighting_weight) / fighter.natural_weight * 100
+    cut_pct = (
+        (fighter.natural_weight - fighter.fighting_weight)
+        / fighter.natural_weight
+        * 100
+    )
     if cut_pct < 5:
         return "easy"
     elif cut_pct < 10:
@@ -225,6 +265,7 @@ def get_cut_severity(fighter: Fighter) -> str:
 # Organization
 # ---------------------------------------------------------------------------
 
+
 def get_player_org() -> Optional[dict]:
     with _SessionFactory() as session:
         org = session.execute(
@@ -238,7 +279,9 @@ def get_player_org() -> Optional[dict]:
                     Contract.organization_id == org.id,
                     Contract.status == ContractStatus.ACTIVE,
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         return {
             "id": org.id,
@@ -252,6 +295,7 @@ def get_player_org() -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # Rankings
 # ---------------------------------------------------------------------------
+
 
 def get_rankings_for_class(weight_class_str: str) -> list[dict]:
     try:
@@ -267,6 +311,7 @@ def get_rankings_for_class(weight_class_str: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Async: simulate event
 # ---------------------------------------------------------------------------
+
 
 def start_simulate_event() -> str:
     task_id = _new_task()
@@ -301,7 +346,10 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
             ).all()
 
             if len(available) < 2:
-                _task_error(task_id, "Not enough available fighters on your roster (need at least 2)")
+                _task_error(
+                    task_id,
+                    "Not enough available fighters on your roster (need at least 2)",
+                )
                 return
 
             rng = random.Random(seed)
@@ -328,7 +376,7 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
             for i, fa in enumerate(fighters):
                 if fa.id in paired:
                     continue
-                for fb in fighters[i + 1:]:
+                for fb in fighters[i + 1 :]:
                     if fb.id in paired or fb.weight_class != fa.weight_class:
                         continue
 
@@ -343,7 +391,9 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
                     session.flush()
 
                     result = simulate_fight(
-                        _to_stats(fa), _to_stats(fb), seed=rng.randint(0, 999_999),
+                        _to_stats(fa),
+                        _to_stats(fb),
+                        seed=rng.randint(0, 999_999),
                         cut_severity_a=get_cut_severity(fa),
                         cut_severity_b=get_cut_severity(fb),
                     )
@@ -365,31 +415,50 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
 
                     for contract, f in available:
                         if f.id in (fa.id, fb.id):
-                            contract.fights_remaining = max(0, contract.fights_remaining - 1)
+                            contract.fights_remaining = max(
+                                0, contract.fights_remaining - 1
+                            )
 
                     mark_rankings_dirty(session, WeightClass(fa.weight_class))
                     apply_fight_tags(winner, loser, fight, session)
 
                     # Generate headline
                     game_date = _get_game_date(session)
-                    headline_text = generate_fight_headline(winner, loser, fight, session)
+                    headline_text = generate_fight_headline(
+                        winner, loser, fight, session
+                    )
                     if headline_text:
-                        cat = "title" if fight.is_title_fight else ("upset" if loser.overall - winner.overall >= 10 else "fight_result")
-                        session.add(NewsHeadline(
-                            headline=headline_text, category=cat,
-                            game_date=game_date, fighter_id=winner.id, event_id=event.id,
-                        ))
+                        cat = (
+                            "title"
+                            if fight.is_title_fight
+                            else (
+                                "upset"
+                                if loser.overall - winner.overall >= 10
+                                else "fight_result"
+                            )
+                        )
+                        session.add(
+                            NewsHeadline(
+                                headline=headline_text,
+                                category=cat,
+                                game_date=game_date,
+                                fighter_id=winner.id,
+                                event_id=event.id,
+                            )
+                        )
 
-                    fight_results.append({
-                        "fighter_a": fa.name,
-                        "fighter_b": fb.name,
-                        "winner": winner.name,
-                        "loser": loser.name,
-                        "method": result.method,
-                        "round": result.round_ended,
-                        "time": result.time_ended,
-                        "narrative": result.narrative,
-                    })
+                    fight_results.append(
+                        {
+                            "fighter_a": fa.name,
+                            "fighter_b": fb.name,
+                            "winner": winner.name,
+                            "loser": loser.name,
+                            "method": result.method,
+                            "round": result.round_ended,
+                            "time": result.time_ended,
+                            "narrative": result.narrative,
+                        }
+                    )
 
                     paired.add(fa.id)
                     paired.add(fb.id)
@@ -400,11 +469,14 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
                     break
 
             session.commit()
-            _task_done(task_id, {
-                "event_name": event.name,
-                "fights_simulated": len(fight_results),
-                "fights": fight_results,
-            })
+            _task_done(
+                task_id,
+                {
+                    "event_name": event.name,
+                    "fights_simulated": len(fight_results),
+                    "fights": fight_results,
+                },
+            )
     except Exception as e:
         _task_error(task_id, str(e))
 
@@ -412,9 +484,14 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
 def _to_stats(f: Fighter) -> FighterStats:
     style = f.style.value if hasattr(f.style, "value") else str(f.style)
     return FighterStats(
-        id=f.id, name=f.name,
-        striking=f.striking, grappling=f.grappling, wrestling=f.wrestling,
-        cardio=f.cardio, chin=f.chin, speed=f.speed,
+        id=f.id,
+        name=f.name,
+        striking=f.striking,
+        grappling=f.grappling,
+        wrestling=f.wrestling,
+        cardio=f.cardio,
+        chin=f.chin,
+        speed=f.speed,
         traits=_get_traits_list(f),
         style=style,
         confidence=getattr(f, "confidence", 70.0) or 70.0,
@@ -424,6 +501,7 @@ def _to_stats(f: Fighter) -> FighterStats:
 # ---------------------------------------------------------------------------
 # Async: advance month
 # ---------------------------------------------------------------------------
+
 
 def start_advance_month() -> str:
     task_id = _new_task()
@@ -447,6 +525,7 @@ def _run_advance_month(task_id: str, seed: int) -> None:
 # ---------------------------------------------------------------------------
 # Async: new game (origin-driven seed pipeline)
 # ---------------------------------------------------------------------------
+
 
 def start_new_game(origin_type: str, promotion_name: str) -> str:
     """Start async game seeding with origin parameters."""
@@ -475,21 +554,28 @@ def _run_new_game(task_id: str, origin_type: str, promotion_name: str) -> None:
 
             # Enforce roster size and quality for player org
             player_org = next(o for o in orgs if o.is_player)
-            released = enforce_roster_target(session, player_org.id, config["roster_target"])
-            quality_adj = enforce_roster_quality(session, player_org.id, config["roster_quality"])
+            released = enforce_roster_target(
+                session, player_org.id, config["roster_target"]
+            )
+            quality_adj = enforce_roster_quality(
+                session, player_org.id, config["roster_quality"]
+            )
 
             # Fabricate history
             history = fabricate_history(session, fighters, orgs, seed=42)
 
-        _task_done(task_id, {
-            "fighters_seeded": len(fighters),
-            "events_created": history.get("events_created", 0),
-            "fights_created": history.get("fights_created", 0),
-            "roster_released": released,
-            "roster_quality_adjusted": quality_adj,
-            "origin": origin_type,
-            "promotion_name": promotion_name,
-        })
+        _task_done(
+            task_id,
+            {
+                "fighters_seeded": len(fighters),
+                "events_created": history.get("events_created", 0),
+                "fights_created": history.get("fights_created", 0),
+                "roster_released": released,
+                "roster_quality_adjusted": quality_adj,
+                "origin": origin_type,
+                "promotion_name": promotion_name,
+            },
+        )
     except Exception as e:
         _task_error(task_id, str(e))
 
@@ -497,6 +583,7 @@ def _run_new_game(task_id: str, origin_type: str, promotion_name: str) -> None:
 # ---------------------------------------------------------------------------
 # Narrative: fighter bio, GOAT scores, rivalries, tags
 # ---------------------------------------------------------------------------
+
 
 def get_fighter_bio(fighter_id: int) -> Optional[str]:
     with _SessionFactory() as session:
@@ -532,7 +619,9 @@ def get_goat_scores(top_n: int = 10) -> list[dict]:
                 "rank": i + 1,
                 "id": f.id,
                 "name": f.name,
-                "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
+                "weight_class": f.weight_class.value
+                if hasattr(f.weight_class, "value")
+                else f.weight_class,
                 "archetype": display_archetype(f),
                 "record": f.record,
                 "overall": f.overall,
@@ -547,9 +636,7 @@ def get_rivalries() -> list[dict]:
     with _SessionFactory() as session:
         # Find fighters who have a rivalry_with set
         rivals = (
-            session.execute(
-                select(Fighter).where(Fighter.rivalry_with.isnot(None))
-            )
+            session.execute(select(Fighter).where(Fighter.rivalry_with.isnot(None)))
             .scalars()
             .all()
         )
@@ -563,11 +650,19 @@ def get_rivalries() -> list[dict]:
             if pair in seen:
                 continue
             seen.add(pair)
-            result.append({
-                "fighter_a": {"id": f.id, "name": f.name, "record": f.record},
-                "fighter_b": {"id": other.id, "name": other.name, "record": other.record},
-                "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
-            })
+            result.append(
+                {
+                    "fighter_a": {"id": f.id, "name": f.name, "record": f.record},
+                    "fighter_b": {
+                        "id": other.id,
+                        "name": other.name,
+                        "record": other.record,
+                    },
+                    "weight_class": f.weight_class.value
+                    if hasattr(f.weight_class, "value")
+                    else f.weight_class,
+                }
+            )
         return result
 
 
@@ -582,12 +677,17 @@ def get_fighter_tags(fighter_id: int) -> Optional[list[str]]:
 def get_news_feed(limit: int = 15) -> list[dict]:
     """Return recent news headlines for the dashboard."""
     from sqlalchemy import select
+
     with _SessionFactory() as session:
-        headlines = session.execute(
-            select(NewsHeadline)
-            .order_by(NewsHeadline.game_date.desc(), NewsHeadline.id.desc())
-            .limit(limit)
-        ).scalars().all()
+        headlines = (
+            session.execute(
+                select(NewsHeadline)
+                .order_by(NewsHeadline.game_date.desc(), NewsHeadline.id.desc())
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
         return [
             {
                 "id": h.id,
@@ -604,6 +704,7 @@ def get_news_feed(limit: int = 15) -> list[dict]:
 def get_fighter_timeline(fighter_id: int) -> Optional[dict]:
     """Return chronological fight history with running record for a fighter."""
     from sqlalchemy import or_
+
     with _SessionFactory() as session:
         f = session.get(Fighter, fighter_id)
         if not f:
@@ -631,21 +732,29 @@ def get_fighter_timeline(fighter_id: int) -> Optional[dict]:
                 wins += 1
             else:
                 losses += 1
-            method = fight.method.value if hasattr(fight.method, "value") else str(fight.method) if fight.method else ""
-            timeline.append({
-                "fight_id": fight.id,
-                "event_name": event.name,
-                "event_date": event.event_date.isoformat(),
-                "opponent_name": opponent.name if opponent else "Unknown",
-                "opponent_overall": opponent.overall if opponent else 0,
-                "result": "W" if won else "L",
-                "method": method,
-                "round": fight.round_ended,
-                "time": fight.time_ended,
-                "is_title_fight": fight.is_title_fight,
-                "running_record": f"{wins}-{losses}",
-                "narrative_snippet": (fight.narrative or "")[:120],
-            })
+            method = (
+                fight.method.value
+                if hasattr(fight.method, "value")
+                else str(fight.method)
+                if fight.method
+                else ""
+            )
+            timeline.append(
+                {
+                    "fight_id": fight.id,
+                    "event_name": event.name,
+                    "event_date": event.event_date.isoformat(),
+                    "opponent_name": opponent.name if opponent else "Unknown",
+                    "opponent_overall": opponent.overall if opponent else 0,
+                    "result": "W" if won else "L",
+                    "method": method,
+                    "round": fight.round_ended,
+                    "time": fight.time_ended,
+                    "is_title_fight": fight.is_title_fight,
+                    "running_record": f"{wins}-{losses}",
+                    "narrative_snippet": (fight.narrative or "")[:120],
+                }
+            )
 
         return {
             "fighter_id": fighter_id,
@@ -658,6 +767,7 @@ def get_fighter_timeline(fighter_id: int) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 # Nickname system
 # ---------------------------------------------------------------------------
+
 
 def get_nickname_suggestions(fighter_id: int) -> list[str]:
     with _SessionFactory() as session:
@@ -673,15 +783,23 @@ def set_nickname(fighter_id: int, nickname: str) -> dict:
         if not f:
             return {"success": False, "message": "Fighter not found."}
         if len(nickname) > 30:
-            return {"success": False, "message": "Nickname must be 30 characters or less."}
+            return {
+                "success": False,
+                "message": "Nickname must be 30 characters or less.",
+            }
         f.nickname = nickname.strip() if nickname.strip() else None
         session.commit()
-        return {"success": True, "message": f"Nickname set to \"{f.nickname}\".", "fighter": _fighter_dict(f)}
+        return {
+            "success": True,
+            "message": f'Nickname set to "{f.nickname}".',
+            "fighter": _fighter_dict(f),
+        }
 
 
 # ---------------------------------------------------------------------------
 # Contract negotiation: free agents, roster, offers, releases, renewals
 # ---------------------------------------------------------------------------
+
 
 def _asking_salary(fighter: Fighter) -> int:
     ovr = fighter.overall
@@ -718,15 +836,15 @@ def get_free_agents(
     sort_by: Optional[str] = None,
 ) -> list[dict]:
     with _SessionFactory() as session:
-        from sqlalchemy import and_, or_
-
         # Subquery: fighter IDs with an active contract
         active_ids = (
             session.execute(
                 select(Contract.fighter_id).where(
                     Contract.status == ContractStatus.ACTIVE
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         active_set = set(active_ids)
 
@@ -741,7 +859,7 @@ def get_free_agents(
         for f in fighters:
             if f.id in active_set:
                 continue
-            if getattr(f, 'is_retired', False):
+            if getattr(f, "is_retired", False):
                 continue
             if min_overall and f.overall < min_overall:
                 continue
@@ -788,7 +906,9 @@ def get_roster() -> list[dict]:
             d["salary"] = contract.salary
             d["fights_remaining"] = contract.fights_remaining
             d["fight_count_total"] = contract.fight_count_total
-            d["expiry_date"] = contract.expiry_date.isoformat() if contract.expiry_date else None
+            d["expiry_date"] = (
+                contract.expiry_date.isoformat() if contract.expiry_date else None
+            )
             results.append(d)
         return results
 
@@ -810,7 +930,9 @@ _OFFER_REJECTED_MSGS = [
 ]
 
 
-def make_contract_offer(fighter_id: int, salary: float, fight_count: int, length_months: int) -> dict:
+def make_contract_offer(
+    fighter_id: int, salary: float, fight_count: int, length_months: int
+) -> dict:
     with _SessionFactory() as session:
         fighter = session.get(Fighter, fighter_id)
         if not fighter:
@@ -830,11 +952,17 @@ def make_contract_offer(fighter_id: int, salary: float, fight_count: int, length
             )
         ).scalar_one_or_none()
         if existing:
-            return {"accepted": False, "message": f"{fighter.name} already has an active contract."}
+            return {
+                "accepted": False,
+                "message": f"{fighter.name} already has an active contract.",
+            }
 
         # Affordability check
         if player_org.bank_balance < salary * 3:
-            return {"accepted": False, "message": "You can't afford this contract. Need at least 3x the salary in the bank."}
+            return {
+                "accepted": False,
+                "message": "You can't afford this contract. Need at least 3x the salary in the bank.",
+            }
 
         asking = _asking_salary(fighter)
         salary_factor = salary / asking if asking > 0 else 1.0
@@ -848,6 +976,7 @@ def make_contract_offer(fighter_id: int, salary: float, fight_count: int, length
 
         if random.random() < acceptance_prob:
             from datetime import timedelta
+
             game_date = _get_game_date(session)
             expiry = game_date + timedelta(days=length_months * 30)
             contract = Contract(
@@ -884,7 +1013,10 @@ def release_fighter(fighter_id: int) -> dict:
             )
         ).scalar_one_or_none()
         if not contract:
-            return {"success": False, "message": "No active contract found for this fighter."}
+            return {
+                "success": False,
+                "message": "No active contract found for this fighter.",
+            }
 
         fighter = session.get(Fighter, fighter_id)
         contract.status = ContractStatus.TERMINATED
@@ -904,6 +1036,7 @@ def release_fighter(fighter_id: int) -> dict:
 
 def get_expiring_contracts() -> list[dict]:
     from datetime import timedelta
+
     with _SessionFactory() as session:
         player_org = session.execute(
             select(Organization).where(Organization.is_player == True)
@@ -928,12 +1061,16 @@ def get_expiring_contracts() -> list[dict]:
                 d = _fighter_dict(fighter)
                 d["salary"] = contract.salary
                 d["fights_remaining"] = contract.fights_remaining
-                d["expiry_date"] = contract.expiry_date.isoformat() if contract.expiry_date else None
+                d["expiry_date"] = (
+                    contract.expiry_date.isoformat() if contract.expiry_date else None
+                )
                 results.append(d)
         return results
 
 
-def renew_contract(fighter_id: int, salary: float, fight_count: int, length_months: int) -> dict:
+def renew_contract(
+    fighter_id: int, salary: float, fight_count: int, length_months: int
+) -> dict:
     with _SessionFactory() as session:
         player_org = session.execute(
             select(Organization).where(Organization.is_player == True)
@@ -956,7 +1093,10 @@ def renew_contract(fighter_id: int, salary: float, fight_count: int, length_mont
             return {"accepted": False, "message": "No active contract to renew."}
 
         if player_org.bank_balance < salary * 3:
-            return {"accepted": False, "message": "You can't afford this renewal. Need at least 3x the salary in the bank."}
+            return {
+                "accepted": False,
+                "message": "You can't afford this renewal. Need at least 3x the salary in the bank.",
+            }
 
         asking = _asking_salary(fighter)
         salary_factor = salary / asking if asking > 0 else 1.0
@@ -971,6 +1111,7 @@ def renew_contract(fighter_id: int, salary: float, fight_count: int, length_mont
 
         if random.random() < acceptance_prob:
             from datetime import timedelta
+
             game_date = _get_game_date(session)
             contract.expiry_date = game_date + timedelta(days=length_months * 30)
             contract.salary = salary
@@ -992,16 +1133,22 @@ def get_finances() -> dict:
         if not player_org:
             return {}
 
-        active_contracts = session.execute(
-            select(Contract).where(
-                Contract.organization_id == player_org.id,
-                Contract.status == ContractStatus.ACTIVE,
+        active_contracts = (
+            session.execute(
+                select(Contract).where(
+                    Contract.organization_id == player_org.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         total_salaries = sum(c.salary for c in active_contracts)
         monthly_payroll = total_salaries / 12
-        projected_fight_costs = sum(c.salary * c.fights_remaining for c in active_contracts)
+        projected_fight_costs = sum(
+            c.salary * c.fights_remaining for c in active_contracts
+        )
 
         # Broadcast deal info
         active_deal = session.execute(
@@ -1012,13 +1159,19 @@ def get_finances() -> dict:
         ).scalar_one_or_none()
 
         # Sponsorship income
-        active_sponsorships = session.execute(
-            select(Sponsorship).where(
-                Sponsorship.organization_id == player_org.id,
-                Sponsorship.status == SponsorshipStatus.ACTIVE,
+        active_sponsorships = (
+            session.execute(
+                select(Sponsorship).where(
+                    Sponsorship.organization_id == player_org.id,
+                    Sponsorship.status == SponsorshipStatus.ACTIVE,
+                )
             )
-        ).scalars().all()
-        monthly_sponsorship_income = sum(sp.monthly_stipend for sp in active_sponsorships)
+            .scalars()
+            .all()
+        )
+        monthly_sponsorship_income = sum(
+            sp.monthly_stipend for sp in active_sponsorships
+        )
 
         # Active show info
         active_show_info = None
@@ -1029,7 +1182,7 @@ def get_finances() -> dict:
             )
         ).scalar_one_or_none()
         if active_show:
-            total_episodes = (4 if active_show.format_size == 8 else 5)
+            total_episodes = 4 if active_show.format_size == 8 else 5
             active_show_info = {
                 "name": active_show.name,
                 "episodes_remaining": total_episodes - active_show.episodes_aired,
@@ -1037,9 +1190,13 @@ def get_finances() -> dict:
             }
 
         # Legend coach costs
-        legend_coaches = session.execute(
-            select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
-        ).scalars().all()
+        legend_coaches = (
+            session.execute(
+                select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
+            )
+            .scalars()
+            .all()
+        )
         monthly_legend_coach_cost = sum(c.salary for c in legend_coaches)
 
         result = {
@@ -1063,12 +1220,16 @@ def get_finances() -> dict:
 
 def get_notifications() -> list[dict]:
     with _SessionFactory() as session:
-        notifs = session.execute(
-            select(Notification)
-            .where(Notification.read == False)
-            .order_by(Notification.created_date.desc())
-            .limit(20)
-        ).scalars().all()
+        notifs = (
+            session.execute(
+                select(Notification)
+                .where(Notification.read == False)
+                .order_by(Notification.created_date.desc())
+                .limit(20)
+            )
+            .scalars()
+            .all()
+        )
         return [
             {
                 "id": n.id,
@@ -1096,12 +1257,54 @@ def mark_notification_read(notification_id: int) -> dict:
 # ---------------------------------------------------------------------------
 
 VENUES = [
-    {"name": "Local Gym",         "capacity": 500,   "ticket_price": 30,  "rental_cost": 5000,    "min_prestige": 0,  "requires_tv_deal": False},
-    {"name": "Convention Center", "capacity": 2000,  "ticket_price": 40,  "rental_cost": 20000,   "min_prestige": 20, "requires_tv_deal": False},
-    {"name": "Municipal Arena",   "capacity": 5000,  "ticket_price": 50,  "rental_cost": 60000,   "min_prestige": 35, "requires_tv_deal": False},
-    {"name": "Sports Complex",    "capacity": 10000, "ticket_price": 55,  "rental_cost": 120000,  "min_prestige": 50, "requires_tv_deal": False},
-    {"name": "Major Arena",       "capacity": 18000, "ticket_price": 65,  "rental_cost": 250000,  "min_prestige": 65, "requires_tv_deal": True},
-    {"name": "Stadium",           "capacity": 45000, "ticket_price": 75,  "rental_cost": 500000,  "min_prestige": 80, "requires_tv_deal": True},
+    {
+        "name": "Local Gym",
+        "capacity": 500,
+        "ticket_price": 30,
+        "rental_cost": 5000,
+        "min_prestige": 0,
+        "requires_tv_deal": False,
+    },
+    {
+        "name": "Convention Center",
+        "capacity": 2000,
+        "ticket_price": 40,
+        "rental_cost": 20000,
+        "min_prestige": 20,
+        "requires_tv_deal": False,
+    },
+    {
+        "name": "Municipal Arena",
+        "capacity": 5000,
+        "ticket_price": 50,
+        "rental_cost": 60000,
+        "min_prestige": 35,
+        "requires_tv_deal": False,
+    },
+    {
+        "name": "Sports Complex",
+        "capacity": 10000,
+        "ticket_price": 55,
+        "rental_cost": 120000,
+        "min_prestige": 50,
+        "requires_tv_deal": False,
+    },
+    {
+        "name": "Major Arena",
+        "capacity": 18000,
+        "ticket_price": 65,
+        "rental_cost": 250000,
+        "min_prestige": 65,
+        "requires_tv_deal": True,
+    },
+    {
+        "name": "Stadium",
+        "capacity": 45000,
+        "ticket_price": 75,
+        "rental_cost": 500000,
+        "min_prestige": 80,
+        "requires_tv_deal": True,
+    },
 ]
 
 BROADCAST_TIERS = {
@@ -1151,20 +1354,32 @@ BROADCAST_TIERS = {
 def _fight_dict(fight: Fight, session) -> dict:
     fa = session.get(Fighter, fight.fighter_a_id)
     fb = session.get(Fighter, fight.fighter_b_id)
-    wc = fight.weight_class.value if hasattr(fight.weight_class, "value") else fight.weight_class
+    wc = (
+        fight.weight_class.value
+        if hasattr(fight.weight_class, "value")
+        else fight.weight_class
+    )
     d = {
         "id": fight.id,
-        "fighter_a": _fighter_dict(fa) if fa else {"id": fight.fighter_a_id, "name": "Unknown"},
-        "fighter_b": _fighter_dict(fb) if fb else {"id": fight.fighter_b_id, "name": "Unknown"},
+        "fighter_a": _fighter_dict(fa)
+        if fa
+        else {"id": fight.fighter_a_id, "name": "Unknown"},
+        "fighter_b": _fighter_dict(fb)
+        if fb
+        else {"id": fight.fighter_b_id, "name": "Unknown"},
         "weight_class": wc,
         "card_position": fight.card_position,
         "is_title_fight": fight.is_title_fight,
         "winner_id": fight.winner_id,
-        "method": fight.method.value if hasattr(fight.method, "value") else fight.method,
+        "method": fight.method.value
+        if hasattr(fight.method, "value")
+        else fight.method,
         "round_ended": fight.round_ended,
         "time_ended": fight.time_ended,
         "narrative": fight.narrative,
-        "press_conference": json.loads(fight.press_conference) if fight.press_conference else None,
+        "press_conference": json.loads(fight.press_conference)
+        if fight.press_conference
+        else None,
     }
     return d
 
@@ -1175,7 +1390,9 @@ def _event_dict(event: Event, session, include_fights=True) -> dict:
         "name": event.name,
         "event_date": event.event_date.isoformat(),
         "venue": event.venue,
-        "status": event.status.value if hasattr(event.status, "value") else event.status,
+        "status": event.status.value
+        if hasattr(event.status, "value")
+        else event.status,
         "has_press_conference": event.has_press_conference,
         "gate_revenue": round(event.gate_revenue, 2),
         "ppv_buys": event.ppv_buys,
@@ -1185,6 +1402,8 @@ def _event_dict(event: Event, session, include_fights=True) -> dict:
         "venue_capacity": event.venue_capacity,
         "total_revenue": round(event.total_revenue, 2),
         "fight_count": len(event.fights),
+        "organization_id": event.organization_id,
+        "organization_name": event.organization.name if event.organization else None,
     }
     if include_fights:
         d["fights"] = [_fight_dict(f, session) for f in event.fights]
@@ -1192,8 +1411,16 @@ def _event_dict(event: Event, session, include_fights=True) -> dict:
         main_event = max(event.fights, key=lambda f: f.card_position)
         if main_event.winner_id:
             winner = session.get(Fighter, main_event.winner_id)
-            method = main_event.method.value if hasattr(main_event.method, "value") else main_event.method
-            d["main_event_result"] = f"{winner.name if winner else 'Unknown'} via {method}" if method else None
+            method = (
+                main_event.method.value
+                if hasattr(main_event.method, "value")
+                else main_event.method
+            )
+            d["main_event_result"] = (
+                f"{winner.name if winner else 'Unknown'} via {method}"
+                if method
+                else None
+            )
         else:
             d["main_event_result"] = None
     else:
@@ -1222,12 +1449,16 @@ def get_bookable_fighters() -> list[dict]:
         ).all()
 
         # Find fighter IDs already booked on scheduled events
-        scheduled_events = session.execute(
-            select(Event).where(
-                Event.organization_id == player_org.id,
-                Event.status == EventStatus.SCHEDULED,
+        scheduled_events = (
+            session.execute(
+                select(Event).where(
+                    Event.organization_id == player_org.id,
+                    Event.status == EventStatus.SCHEDULED,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         booked_ids = set()
         for ev in scheduled_events:
             for fight in ev.fights:
@@ -1246,7 +1477,10 @@ def get_bookable_fighters() -> list[dict]:
                 .join(Event, Fight.event_id == Event.id)
                 .where(
                     Event.status == EventStatus.COMPLETED,
-                    ((Fight.fighter_a_id == fighter.id) | (Fight.fighter_b_id == fighter.id)),
+                    (
+                        (Fight.fighter_a_id == fighter.id)
+                        | (Fight.fighter_b_id == fighter.id)
+                    ),
                     Fight.winner_id.isnot(None),
                 )
                 .order_by(Event.event_date.desc())
@@ -1255,7 +1489,9 @@ def get_bookable_fighters() -> list[dict]:
 
             if last_fight:
                 last_event = session.get(Event, last_fight.event_id)
-                days_since = (game_date - last_event.event_date).days if last_event else 999
+                days_since = (
+                    (game_date - last_event.event_date).days if last_event else 999
+                )
             else:
                 days_since = 999
 
@@ -1271,6 +1507,7 @@ def get_bookable_fighters() -> list[dict]:
 
 def create_event(name: str, venue: str, event_date_str: str) -> dict:
     from datetime import datetime
+
     with _SessionFactory() as session:
         player_org = session.execute(
             select(Organization).where(Organization.is_player == True)
@@ -1295,7 +1532,9 @@ def create_event(name: str, venue: str, event_date_str: str) -> dict:
         return _event_dict(event, session)
 
 
-def add_fight_to_event(event_id: int, fighter_a_id: int, fighter_b_id: int, is_title_fight: bool = False) -> dict:
+def add_fight_to_event(
+    event_id: int, fighter_a_id: int, fighter_b_id: int, is_title_fight: bool = False
+) -> dict:
     with _SessionFactory() as session:
         event = session.get(Event, event_id)
         if not event:
@@ -1315,8 +1554,16 @@ def add_fight_to_event(event_id: int, fighter_a_id: int, fighter_b_id: int, is_t
             return {"error": "One or both fighters not found."}
 
         # Check same weight class
-        fa_wc = fa.weight_class.value if hasattr(fa.weight_class, "value") else fa.weight_class
-        fb_wc = fb.weight_class.value if hasattr(fb.weight_class, "value") else fb.weight_class
+        fa_wc = (
+            fa.weight_class.value
+            if hasattr(fa.weight_class, "value")
+            else fa.weight_class
+        )
+        fb_wc = (
+            fb.weight_class.value
+            if hasattr(fb.weight_class, "value")
+            else fb.weight_class
+        )
         if fa_wc != fb_wc:
             return {"error": "Fighters must be in the same weight class."}
 
@@ -1338,7 +1585,9 @@ def add_fight_to_event(event_id: int, fighter_a_id: int, fighter_b_id: int, is_t
                 )
             ).scalar_one_or_none()
             if not contract:
-                return {"error": f"{fname} does not have a valid contract with fights remaining."}
+                return {
+                    "error": f"{fname} does not have a valid contract with fights remaining."
+                }
 
         card_position = len(event.fights)
         fight = Fight(
@@ -1424,7 +1673,8 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                 missed_b = rng.random() < MISS_WEIGHT_PROB.get(sev_b, 0.0)
 
                 result = simulate_fight(
-                    _to_stats(fa), _to_stats(fb),
+                    _to_stats(fa),
+                    _to_stats(fb),
                     seed=rng.randint(0, 999_999),
                     cut_severity_a=sev_a,
                     cut_severity_b=sev_b,
@@ -1455,16 +1705,26 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                         )
                     ).scalar_one_or_none()
                     if contract:
-                        contract.fights_remaining = max(0, contract.fights_remaining - 1)
+                        contract.fights_remaining = max(
+                            0, contract.fights_remaining - 1
+                        )
                         total_fighter_salaries += contract.salary
 
                 # Missed weight fine: 20% of purse to opponent
                 missed_weight_info = []
                 if missed_a:
-                    fine = total_fighter_salaries * 0.20 if total_fighter_salaries > 0 else 5000
+                    fine = (
+                        total_fighter_salaries * 0.20
+                        if total_fighter_salaries > 0
+                        else 5000
+                    )
                     missed_weight_info.append({"fighter": fa.name, "fine": fine})
                 if missed_b:
-                    fine = total_fighter_salaries * 0.20 if total_fighter_salaries > 0 else 5000
+                    fine = (
+                        total_fighter_salaries * 0.20
+                        if total_fighter_salaries > 0
+                        else 5000
+                    )
                     missed_weight_info.append({"fighter": fb.name, "fine": fine})
 
                 mark_rankings_dirty(session, WeightClass(fa.weight_class))
@@ -1474,37 +1734,56 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                 game_date = _get_game_date(session)
                 headline_text = generate_fight_headline(winner, loser, fight, session)
                 if headline_text:
-                    cat = "title" if fight.is_title_fight else ("upset" if loser.overall - winner.overall >= 10 else "fight_result")
-                    session.add(NewsHeadline(
-                        headline=headline_text, category=cat,
-                        game_date=game_date, fighter_id=winner.id, event_id=event.id,
-                    ))
+                    cat = (
+                        "title"
+                        if fight.is_title_fight
+                        else (
+                            "upset"
+                            if loser.overall - winner.overall >= 10
+                            else "fight_result"
+                        )
+                    )
+                    session.add(
+                        NewsHeadline(
+                            headline=headline_text,
+                            category=cat,
+                            game_date=game_date,
+                            fighter_id=winner.id,
+                            event_id=event.id,
+                        )
+                    )
 
                 # Cornerstone win bonuses
                 if winner.is_cornerstone:
                     winner.hype = min(100.0, winner.hype + 5.0)
                     player_org.prestige = min(100.0, player_org.prestige + 2.0)
 
-                fight_results.append({
-                    "fight_id": fight.id,
-                    "fighter_a": fa.name,
-                    "fighter_a_id": fa.id,
-                    "fighter_b": fb.name,
-                    "fighter_b_id": fb.id,
-                    "winner": winner.name,
-                    "winner_id": winner.id,
-                    "loser": loser.name,
-                    "method": result.method,
-                    "round": result.round_ended,
-                    "time": result.time_ended,
-                    "narrative": result.narrative,
-                    "is_title_fight": fight.is_title_fight,
-                    "weight_class": fa.weight_class.value if hasattr(fa.weight_class, "value") else fa.weight_class,
-                    "cut_severity_a": sev_a,
-                    "cut_severity_b": sev_b,
-                    "missed_weight": missed_weight_info if missed_weight_info else None,
-                    "judge_breakdown": result.judge_breakdown,
-                })
+                fight_results.append(
+                    {
+                        "fight_id": fight.id,
+                        "fighter_a": fa.name,
+                        "fighter_a_id": fa.id,
+                        "fighter_b": fb.name,
+                        "fighter_b_id": fb.id,
+                        "winner": winner.name,
+                        "winner_id": winner.id,
+                        "loser": loser.name,
+                        "method": result.method,
+                        "round": result.round_ended,
+                        "time": result.time_ended,
+                        "narrative": result.narrative,
+                        "is_title_fight": fight.is_title_fight,
+                        "weight_class": fa.weight_class.value
+                        if hasattr(fa.weight_class, "value")
+                        else fa.weight_class,
+                        "cut_severity_a": sev_a,
+                        "cut_severity_b": sev_b,
+                        "missed_weight": missed_weight_info
+                        if missed_weight_info
+                        else None,
+                        "judge_breakdown": result.judge_breakdown,
+                    }
+                )
 
             # Calculate revenue
             card_fighters = []
@@ -1516,15 +1795,25 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                 if fb:
                     card_fighters.append(fb)
 
-            venue_info = next((v for v in VENUES if v["name"] == event.venue), VENUES[0])
+            venue_info = next(
+                (v for v in VENUES if v["name"] == event.venue), VENUES[0]
+            )
             card_size = len(event.fights)
             capacity = venue_info["capacity"]
             ticket_price = venue_info["ticket_price"]
             rental_cost = venue_info["rental_cost"]
 
             # Demand-based ticketing
-            avg_pop = sum(f.popularity for f in card_fighters) / len(card_fighters) if card_fighters else 0
-            avg_hype = sum(f.hype for f in card_fighters) / len(card_fighters) if card_fighters else 0
+            avg_pop = (
+                sum(f.popularity for f in card_fighters) / len(card_fighters)
+                if card_fighters
+                else 0
+            )
+            avg_hype = (
+                sum(f.hype for f in card_fighters) / len(card_fighters)
+                if card_fighters
+                else 0
+            )
             card_size_factor = min(1.5, 0.5 + card_size * 0.125)
             demand = capacity * (avg_pop * 0.6 + avg_hype * 0.4) / 80 * card_size_factor
             if event.has_press_conference:
@@ -1535,7 +1824,9 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
             # PPV from top 2 hype fighters
             sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
             top_hype = sorted_by_hype[:2]
-            avg_top_hype = sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
+            avg_top_hype = (
+                sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
+            )
             ppv_buys = int(avg_top_hype * 800)
 
             # Broadcast revenue
@@ -1548,7 +1839,9 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
             ).scalar_one_or_none()
             if active_deal:
                 ppv_base = ppv_buys * 45.0
-                broadcast_revenue = active_deal.fee_per_event + ppv_base * (active_deal.ppv_multiplier - 1.0)
+                broadcast_revenue = active_deal.fee_per_event + ppv_base * (
+                    active_deal.ppv_multiplier - 1.0
+                )
                 active_deal.events_delivered += 1
 
             event.gate_revenue = gate_revenue
@@ -1577,24 +1870,27 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
 
             session.commit()
 
-            _task_done(task_id, {
-                "event_id": event.id,
-                "event_name": event.name,
-                "fights_simulated": len(fight_results),
-                "fights": fight_results,
-                "gate_revenue": round(gate_revenue, 2),
-                "ppv_buys": ppv_buys,
-                "ppv_revenue": round(ppv_buys * 45.0, 2),
-                "broadcast_revenue": round(broadcast_revenue, 2),
-                "venue_rental_cost": round(rental_cost, 2),
-                "tickets_sold": tickets_sold,
-                "venue_capacity": capacity,
-                "is_sellout": is_sellout,
-                "fill_pct": round(fill_pct * 100, 1),
-                "total_revenue": round(total_revenue, 2),
-                "total_costs": round(total_costs, 2),
-                "profit": round(total_revenue - total_costs, 2),
-            })
+            _task_done(
+                task_id,
+                {
+                    "event_id": event.id,
+                    "event_name": event.name,
+                    "fights_simulated": len(fight_results),
+                    "fights": fight_results,
+                    "gate_revenue": round(gate_revenue, 2),
+                    "ppv_buys": ppv_buys,
+                    "ppv_revenue": round(ppv_buys * 45.0, 2),
+                    "broadcast_revenue": round(broadcast_revenue, 2),
+                    "venue_rental_cost": round(rental_cost, 2),
+                    "tickets_sold": tickets_sold,
+                    "venue_capacity": capacity,
+                    "is_sellout": is_sellout,
+                    "fill_pct": round(fill_pct * 100, 1),
+                    "total_revenue": round(total_revenue, 2),
+                    "total_costs": round(total_costs, 2),
+                    "profit": round(total_revenue - total_costs, 2),
+                },
+            )
     except Exception as e:
         _task_error(task_id, str(e))
 
@@ -1607,12 +1903,18 @@ def get_scheduled_events() -> list[dict]:
         if not player_org:
             return []
 
-        events = session.execute(
-            select(Event).where(
-                Event.organization_id == player_org.id,
-                Event.status == EventStatus.SCHEDULED,
-            ).order_by(Event.event_date.asc())
-        ).scalars().all()
+        events = (
+            session.execute(
+                select(Event)
+                .where(
+                    Event.organization_id == player_org.id,
+                    Event.status == EventStatus.SCHEDULED,
+                )
+                .order_by(Event.event_date.asc())
+            )
+            .scalars()
+            .all()
+        )
 
         return [_event_dict(e, session) for e in events]
 
@@ -1625,29 +1927,45 @@ def get_event_history(limit: int = 20) -> list[dict]:
         if not player_org:
             return []
 
-        events = session.execute(
-            select(Event).where(
-                Event.organization_id == player_org.id,
-                Event.status == EventStatus.COMPLETED,
-            ).order_by(Event.event_date.desc()).limit(limit)
-        ).scalars().all()
+        events = (
+            session.execute(
+                select(Event)
+                .where(
+                    Event.organization_id == player_org.id,
+                    Event.status == EventStatus.COMPLETED,
+                )
+                .order_by(Event.event_date.desc())
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
 
         return [_event_dict(e, session, include_fights=False) for e in events]
 
 
-def get_all_event_history(organization_id: int = None, limit: int = 50) -> list[dict]:
+def get_all_event_history(
+    organization_id: int = None, limit: int = 50, offset: int = 0
+) -> list[dict]:
     """Get event history across all organizations, optionally filtered.
 
     Unlike get_event_history() which is player-org-only, this returns
     events from any org -- enabling browsing of pre-game historical events.
+    Player-org events are excluded (they already show in Completed).
     """
     with _SessionFactory() as session:
         query = select(Event).where(
             Event.status == EventStatus.COMPLETED,
         )
+        # Exclude player org events -- they belong in Completed section
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if player_org:
+            query = query.where(Event.organization_id != player_org.id)
         if organization_id:
             query = query.where(Event.organization_id == organization_id)
-        query = query.order_by(Event.event_date.desc()).limit(limit)
+        query = query.order_by(Event.event_date.desc()).offset(offset).limit(limit)
 
         events = session.execute(query).scalars().all()
         return [_event_dict(e, session, include_fights=True) for e in events]
@@ -1697,8 +2015,16 @@ def calculate_event_projection(event_id: int) -> dict:
         rental_cost = venue_info["rental_cost"]
 
         # Demand-based gate projection
-        avg_pop = sum(f.popularity for f in card_fighters) / len(card_fighters) if card_fighters else 0
-        avg_hype_all = sum(f.hype for f in card_fighters) / len(card_fighters) if card_fighters else 0
+        avg_pop = (
+            sum(f.popularity for f in card_fighters) / len(card_fighters)
+            if card_fighters
+            else 0
+        )
+        avg_hype_all = (
+            sum(f.hype for f in card_fighters) / len(card_fighters)
+            if card_fighters
+            else 0
+        )
         card_size_factor = min(1.5, 0.5 + card_size * 0.125)
         demand = capacity * (avg_pop * 0.6 + avg_hype_all * 0.4) / 80 * card_size_factor
         if event.has_press_conference:
@@ -1732,7 +2058,9 @@ def calculate_event_projection(event_id: int) -> dict:
             ).scalar_one_or_none()
             if active_deal:
                 ppv_base = ppv_projection
-                broadcast_projection = active_deal.fee_per_event + ppv_base * (active_deal.ppv_multiplier - 1.0)
+                broadcast_projection = active_deal.fee_per_event + ppv_base * (
+                    active_deal.ppv_multiplier - 1.0
+                )
 
         total_revenue = gate_projection + ppv_projection + broadcast_projection
         total_costs = total_salaries + rental_cost
@@ -1783,11 +2111,13 @@ def get_venues() -> list[dict]:
             elif v["requires_tv_deal"] and not has_tv_deal:
                 locked = True
                 locked_reason = "Requires an active TV deal"
-            results.append({
-                **v,
-                "locked": locked,
-                "locked_reason": locked_reason,
-            })
+            results.append(
+                {
+                    **v,
+                    "locked": locked,
+                    "locked_reason": locked_reason,
+                }
+            )
         return results
 
 
@@ -1804,7 +2134,9 @@ def hold_press_conference(event_id: int) -> dict:
             return {"error": "Press conference already held for this event."}
 
         # Get main event (title fight first, then highest card_position)
-        main_event = max(event.fights, key=lambda f: (f.is_title_fight, f.card_position))
+        main_event = max(
+            event.fights, key=lambda f: (f.is_title_fight, f.card_position)
+        )
         fa = session.get(Fighter, main_event.fighter_a_id)
         fb = session.get(Fighter, main_event.fighter_b_id)
         if not fa or not fb:
@@ -1814,7 +2146,9 @@ def hold_press_conference(event_id: int) -> dict:
         is_cs_a = fa.is_cornerstone
         is_cs_b = fb.is_cornerstone
 
-        pc_data = generate_press_conference(fa, fb, is_cornerstone_a=is_cs_a, is_cornerstone_b=is_cs_b)
+        pc_data = generate_press_conference(
+            fa, fb, is_cornerstone_a=is_cs_a, is_cornerstone_b=is_cs_b
+        )
 
         # Store on main event fight
         main_event.press_conference = json.dumps(pc_data)
@@ -1837,6 +2171,7 @@ def hold_press_conference(event_id: int) -> dict:
 # ---------------------------------------------------------------------------
 # Cornerstone Fighters
 # ---------------------------------------------------------------------------
+
 
 def designate_cornerstone(fighter_id: int) -> dict:
     with _SessionFactory() as session:
@@ -1862,13 +2197,19 @@ def designate_cornerstone(fighter_id: int) -> dict:
             return {"error": "Fighter is already a cornerstone."}
 
         # Check max 3 cornerstones
-        cs_count = session.execute(
-            select(Fighter).join(Contract).where(
-                Contract.organization_id == player_org.id,
-                Contract.status == ContractStatus.ACTIVE,
-                Fighter.is_cornerstone == True,
+        cs_count = (
+            session.execute(
+                select(Fighter)
+                .join(Contract)
+                .where(
+                    Contract.organization_id == player_org.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                    Fighter.is_cornerstone == True,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if len(cs_count) >= 3:
             return {"error": "Maximum 3 cornerstones allowed. Remove one first."}
 
@@ -1894,19 +2235,26 @@ def get_cornerstones() -> list[dict]:
         ).scalar_one_or_none()
         if not player_org:
             return []
-        fighters = session.execute(
-            select(Fighter).join(Contract).where(
-                Contract.organization_id == player_org.id,
-                Contract.status == ContractStatus.ACTIVE,
-                Fighter.is_cornerstone == True,
+        fighters = (
+            session.execute(
+                select(Fighter)
+                .join(Contract)
+                .where(
+                    Contract.organization_id == player_org.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                    Fighter.is_cornerstone == True,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return [_fighter_dict(f) for f in fighters]
 
 
 # ---------------------------------------------------------------------------
 # Broadcast Deals
 # ---------------------------------------------------------------------------
+
 
 def get_available_deals() -> dict:
     with _SessionFactory() as session:
@@ -1929,14 +2277,19 @@ def get_available_deals() -> dict:
         # Count completed events in the last 12 months
         game_date = _get_game_date(session)
         from datetime import timedelta
+
         year_ago = game_date - timedelta(days=365)
-        completed_events = session.execute(
-            select(Event).where(
-                Event.organization_id == player_org.id,
-                Event.status == EventStatus.COMPLETED,
-                Event.event_date >= year_ago,
+        completed_events = (
+            session.execute(
+                select(Event).where(
+                    Event.organization_id == player_org.id,
+                    Event.status == EventStatus.COMPLETED,
+                    Event.event_date >= year_ago,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         events_last_year = len(completed_events)
 
         # Average card quality
@@ -1963,22 +2316,24 @@ def get_available_deals() -> dict:
             quality_met = avg_quality >= tier_data["min_avg_card_quality"]
             eligible = prestige_met and events_met and quality_met and not active_deal
 
-            tiers.append({
-                "tier": tier_name,
-                "fee_per_event": tier_data["fee_per_event"],
-                "ppv_multiplier": tier_data["ppv_multiplier"],
-                "duration_months": tier_data["duration_months"],
-                "min_prestige": tier_data["min_prestige"],
-                "min_events_per_year": tier_data["min_events_per_year"],
-                "min_avg_card_quality": tier_data["min_avg_card_quality"],
-                "prestige_per_month": tier_data["prestige_per_month"],
-                "networks": tier_data["networks"],
-                "prestige_met": prestige_met,
-                "events_met": events_met,
-                "quality_met": quality_met,
-                "already_has_deal": active_deal is not None,
-                "eligible": eligible,
-            })
+            tiers.append(
+                {
+                    "tier": tier_name,
+                    "fee_per_event": tier_data["fee_per_event"],
+                    "ppv_multiplier": tier_data["ppv_multiplier"],
+                    "duration_months": tier_data["duration_months"],
+                    "min_prestige": tier_data["min_prestige"],
+                    "min_events_per_year": tier_data["min_events_per_year"],
+                    "min_avg_card_quality": tier_data["min_avg_card_quality"],
+                    "prestige_per_month": tier_data["prestige_per_month"],
+                    "networks": tier_data["networks"],
+                    "prestige_met": prestige_met,
+                    "events_met": events_met,
+                    "quality_met": quality_met,
+                    "already_has_deal": active_deal is not None,
+                    "eligible": eligible,
+                }
+            )
 
         return {
             "tiers": tiers,
@@ -2010,7 +2365,9 @@ def get_active_deal() -> dict:
         months_elapsed = deal.duration_months - months_remaining
 
         # Event pace check
-        expected_events = deal.min_events_per_year * months_elapsed / 12 if months_elapsed > 0 else 0
+        expected_events = (
+            deal.min_events_per_year * months_elapsed / 12 if months_elapsed > 0 else 0
+        )
         on_pace = deal.events_delivered >= expected_events
 
         return {
@@ -2054,22 +2411,32 @@ def negotiate_deal(tier: str) -> dict:
             )
         ).scalar_one_or_none()
         if existing:
-            return {"success": False, "message": "You already have an active broadcast deal."}
+            return {
+                "success": False,
+                "message": "You already have an active broadcast deal.",
+            }
 
         tier_data = BROADCAST_TIERS[tier]
         prestige = player_org.prestige
 
         if prestige < tier_data["min_prestige"]:
-            return {"success": False, "message": f"Insufficient prestige ({prestige:.1f} < {tier_data['min_prestige']})."}
+            return {
+                "success": False,
+                "message": f"Insufficient prestige ({prestige:.1f} < {tier_data['min_prestige']}).",
+            }
 
         # Acceptance probability
         prestige_surplus = prestige - tier_data["min_prestige"]
         acceptance_prob = min(0.90, 0.50 + prestige_surplus / 30 * 0.40)
 
         if random.random() >= acceptance_prob:
-            return {"success": False, "message": f"The network wasn't impressed enough to sign a deal. Try improving your prestige."}
+            return {
+                "success": False,
+                "message": "The network wasn't impressed enough to sign a deal. Try improving your prestige.",
+            }
 
         from datetime import timedelta
+
         game_date = _get_game_date(session)
         network_name = random.choice(tier_data["networks"])
         duration = tier_data["duration_months"]
@@ -2093,11 +2460,13 @@ def negotiate_deal(tier: str) -> dict:
         )
         session.add(deal)
 
-        session.add(Notification(
-            message=f"Broadcast deal signed with {network_name} ({tier})! ${tier_data['fee_per_event']:,.0f}/event for {duration} months.",
-            type="broadcast_deal",
-            created_date=game_date,
-        ))
+        session.add(
+            Notification(
+                message=f"Broadcast deal signed with {network_name} ({tier})! ${tier_data['fee_per_event']:,.0f}/event for {duration} months.",
+                type="broadcast_deal",
+                created_date=game_date,
+            )
+        )
 
         session.commit()
         return {
@@ -2117,6 +2486,7 @@ def negotiate_deal(tier: str) -> dict:
 # Rival Info
 # ---------------------------------------------------------------------------
 
+
 def get_rival_info() -> dict:
     """Return rival org info, prestige comparison, and league standings."""
     with _SessionFactory() as session:
@@ -2126,43 +2496,62 @@ def get_rival_info() -> dict:
         if not player_org:
             return {"error": "No player organization found"}
 
-        ai_orgs = session.execute(
-            select(Organization).where(Organization.is_player == False)
-        ).scalars().all()
+        ai_orgs = (
+            session.execute(select(Organization).where(Organization.is_player == False))
+            .scalars()
+            .all()
+        )
 
         if not ai_orgs:
-            return {"rival": None, "player_prestige": round(player_org.prestige, 1), "prestige_gap": 0, "standings": []}
+            return {
+                "rival": None,
+                "player_prestige": round(player_org.prestige, 1),
+                "prestige_gap": 0,
+                "standings": [],
+            }
 
         # Rival = AI org with minimum abs(prestige - player_prestige)
         rival_org = min(ai_orgs, key=lambda o: abs(o.prestige - player_org.prestige))
 
         # Get roster counts and top fighters for rival
         def _org_roster_count(org_id):
-            return len(session.execute(
-                select(Contract.fighter_id).where(
-                    Contract.organization_id == org_id,
-                    Contract.status == ContractStatus.ACTIVE,
+            return len(
+                session.execute(
+                    select(Contract.fighter_id).where(
+                        Contract.organization_id == org_id,
+                        Contract.status == ContractStatus.ACTIVE,
+                    )
                 )
-            ).scalars().all())
+                .scalars()
+                .all()
+            )
 
         def _org_top_fighters(org_id, limit=3):
-            fighter_ids = session.execute(
-                select(Contract.fighter_id).where(
-                    Contract.organization_id == org_id,
-                    Contract.status == ContractStatus.ACTIVE,
+            fighter_ids = (
+                session.execute(
+                    select(Contract.fighter_id).where(
+                        Contract.organization_id == org_id,
+                        Contract.status == ContractStatus.ACTIVE,
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             if not fighter_ids:
                 return []
-            fighters = session.execute(
-                select(Fighter).where(Fighter.id.in_(fighter_ids))
-            ).scalars().all()
+            fighters = (
+                session.execute(select(Fighter).where(Fighter.id.in_(fighter_ids)))
+                .scalars()
+                .all()
+            )
             fighters.sort(key=lambda f: f.overall, reverse=True)
             return [
                 {
                     "name": f.name,
                     "overall": f.overall,
-                    "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else str(f.weight_class),
+                    "weight_class": f.weight_class.value
+                    if hasattr(f.weight_class, "value")
+                    else str(f.weight_class),
                     "record": f.record,
                 }
                 for f in fighters[:limit]
@@ -2196,13 +2585,15 @@ def get_rival_info() -> dict:
         all_orgs.sort(key=lambda o: o.prestige, reverse=True)
         standings = []
         for org in all_orgs:
-            standings.append({
-                "name": org.name,
-                "prestige": round(org.prestige, 1),
-                "roster_count": _org_roster_count(org.id),
-                "is_rival": org.id == rival_org.id,
-                "is_player": org.is_player,
-            })
+            standings.append(
+                {
+                    "name": org.name,
+                    "prestige": round(org.prestige, 1),
+                    "roster_count": _org_roster_count(org.id),
+                    "is_rival": org.id == rival_org.id,
+                    "is_player": org.is_player,
+                }
+            )
 
         return {
             "rival": {
@@ -2223,11 +2614,46 @@ def get_rival_info() -> dict:
 # ---------------------------------------------------------------------------
 
 _FOCUS_MULTIPLIERS = {
-    "Striking":  {"striking": 2.0, "speed": 1.2, "grappling": 0.5, "wrestling": 0.5, "cardio": 0.8, "chin": 1.0},
-    "Grappling": {"grappling": 2.0, "wrestling": 1.3, "striking": 0.5, "speed": 0.7, "cardio": 0.8, "chin": 1.0},
-    "Wrestling": {"wrestling": 2.0, "cardio": 1.3, "striking": 0.6, "grappling": 1.2, "speed": 0.8, "chin": 1.0},
-    "Cardio":    {"cardio": 2.5, "wrestling": 1.0, "striking": 0.7, "grappling": 0.7, "speed": 1.2, "chin": 1.0},
-    "Balanced":  {"striking": 1.0, "grappling": 1.0, "wrestling": 1.0, "cardio": 1.0, "speed": 1.0, "chin": 1.0},
+    "Striking": {
+        "striking": 2.0,
+        "speed": 1.2,
+        "grappling": 0.5,
+        "wrestling": 0.5,
+        "cardio": 0.8,
+        "chin": 1.0,
+    },
+    "Grappling": {
+        "grappling": 2.0,
+        "wrestling": 1.3,
+        "striking": 0.5,
+        "speed": 0.7,
+        "cardio": 0.8,
+        "chin": 1.0,
+    },
+    "Wrestling": {
+        "wrestling": 2.0,
+        "cardio": 1.3,
+        "striking": 0.6,
+        "grappling": 1.2,
+        "speed": 0.8,
+        "chin": 1.0,
+    },
+    "Cardio": {
+        "cardio": 2.5,
+        "wrestling": 1.0,
+        "striking": 0.7,
+        "grappling": 0.7,
+        "speed": 1.2,
+        "chin": 1.0,
+    },
+    "Balanced": {
+        "striking": 1.0,
+        "grappling": 1.0,
+        "wrestling": 1.0,
+        "cardio": 1.0,
+        "speed": 1.0,
+        "chin": 1.0,
+    },
 }
 
 _BASE_GAIN = {1: 0.3, 2: 0.6, 3: 1.0}
@@ -2243,29 +2669,39 @@ def get_training_camps(org_prestige: Optional[float] = None) -> list[dict]:
             ).scalar_one_or_none()
             org_prestige = player_org.prestige if player_org else 0.0
 
-        camps = session.execute(
-            select(TrainingCamp).order_by(TrainingCamp.tier, TrainingCamp.name)
-        ).scalars().all()
+        camps = (
+            session.execute(
+                select(TrainingCamp).order_by(TrainingCamp.tier, TrainingCamp.name)
+            )
+            .scalars()
+            .all()
+        )
 
         results = []
         for camp in camps:
-            enrolled = session.execute(
-                select(FighterDevelopment).where(
-                    FighterDevelopment.camp_id == camp.id
+            enrolled = (
+                session.execute(
+                    select(FighterDevelopment).where(
+                        FighterDevelopment.camp_id == camp.id
+                    )
                 )
-            ).scalars().all()
-            results.append({
-                "id": camp.id,
-                "name": camp.name,
-                "specialty": camp.specialty,
-                "tier": camp.tier,
-                "cost_per_month": camp.cost_per_month,
-                "prestige_required": camp.prestige_required,
-                "slots": camp.slots,
-                "enrolled": len(enrolled),
-                "available": camp.slots - len(enrolled),
-                "locked": camp.prestige_required > org_prestige,
-            })
+                .scalars()
+                .all()
+            )
+            results.append(
+                {
+                    "id": camp.id,
+                    "name": camp.name,
+                    "specialty": camp.specialty,
+                    "tier": camp.tier,
+                    "cost_per_month": camp.cost_per_month,
+                    "prestige_required": camp.prestige_required,
+                    "slots": camp.slots,
+                    "enrolled": len(enrolled),
+                    "available": camp.slots - len(enrolled),
+                    "locked": camp.prestige_required > org_prestige,
+                }
+            )
         return results
 
 
@@ -2294,14 +2730,18 @@ def assign_fighter_to_camp(fighter_id: int, camp_id: int, focus: str) -> dict:
 
         # Validate prestige
         if camp.prestige_required > player_org.prestige:
-            return {"error": f"Your organization needs {camp.prestige_required} prestige to access this camp."}
+            return {
+                "error": f"Your organization needs {camp.prestige_required} prestige to access this camp."
+            }
 
         # Validate slots
-        enrolled = session.execute(
-            select(FighterDevelopment).where(
-                FighterDevelopment.camp_id == camp_id
+        enrolled = (
+            session.execute(
+                select(FighterDevelopment).where(FighterDevelopment.camp_id == camp_id)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         # Exclude this fighter if already at this camp
         enrolled_ids = [d.fighter_id for d in enrolled]
         if fighter_id not in enrolled_ids and len(enrolled) >= camp.slots:
@@ -2309,7 +2749,9 @@ def assign_fighter_to_camp(fighter_id: int, camp_id: int, focus: str) -> dict:
 
         # Validate focus
         if focus not in _FOCUS_MULTIPLIERS:
-            return {"error": f"Invalid focus. Choose from: {', '.join(_FOCUS_MULTIPLIERS.keys())}"}
+            return {
+                "error": f"Invalid focus. Choose from: {', '.join(_FOCUS_MULTIPLIERS.keys())}"
+            }
 
         # Validate affordability
         if player_org.bank_balance < camp.cost_per_month:
@@ -2432,8 +2874,13 @@ def _development_dict(dev: FighterDevelopment, session) -> dict:
     }
 
 
-def _calc_projected_gain(fighter: Fighter, camp: TrainingCamp, focus: str,
-                         months: int, dev_months_at_camp: int = 0) -> dict:
+def _calc_projected_gain(
+    fighter: Fighter,
+    camp: TrainingCamp,
+    focus: str,
+    months: int,
+    dev_months_at_camp: int = 0,
+) -> dict:
     """Calculate projected attribute gains over N months."""
     rng = random.Random(fighter.id)  # deterministic for projection
     projected = {attr: getattr(fighter, attr) for attr in _ATTR_FIELDS}
@@ -2441,7 +2888,9 @@ def _calc_projected_gain(fighter: Fighter, camp: TrainingCamp, focus: str,
 
     focus_mults = _FOCUS_MULTIPLIERS.get(focus, _FOCUS_MULTIPLIERS["Balanced"])
     base_gain = _BASE_GAIN.get(camp.tier, 0.3)
-    specialty_bonus = 1.3 if camp.specialty == focus or camp.specialty == "Well-Rounded" else 1.0
+    specialty_bonus = (
+        1.3 if camp.specialty == focus or camp.specialty == "Well-Rounded" else 1.0
+    )
 
     if fighter.age < 24:
         age_modifier = 1.4
@@ -2454,7 +2903,9 @@ def _calc_projected_gain(fighter: Fighter, camp: TrainingCamp, focus: str,
     else:
         age_modifier = 0.4
 
-    prime_modifier = 1.1 if fighter.prime_start <= fighter.age <= fighter.prime_end else 0.9
+    prime_modifier = (
+        1.1 if fighter.prime_start <= fighter.age <= fighter.prime_end else 0.9
+    )
 
     for m in range(1, months + 1):
         camp_months = dev_months_at_camp + m
@@ -2462,7 +2913,14 @@ def _calc_projected_gain(fighter: Fighter, camp: TrainingCamp, focus: str,
 
         for attr in _ATTR_FIELDS:
             multiplier = focus_mults[attr]
-            gain = base_gain * multiplier * specialty_bonus * age_modifier * prime_modifier * consistency_bonus
+            gain = (
+                base_gain
+                * multiplier
+                * specialty_bonus
+                * age_modifier
+                * prime_modifier
+                * consistency_bonus
+            )
             # Use average randomness for projections (1.0 instead of random)
             current = projected[attr]
             if current >= 85:
@@ -2472,17 +2930,24 @@ def _calc_projected_gain(fighter: Fighter, camp: TrainingCamp, focus: str,
             projected[attr] = min(99, current + gain)
 
         if m in (3, 6, 12):
-            monthly_snapshots[m] = {attr: round(projected[attr]) for attr in _ATTR_FIELDS}
+            monthly_snapshots[m] = {
+                attr: round(projected[attr]) for attr in _ATTR_FIELDS
+            }
             monthly_snapshots[m]["overall"] = round(
-                projected["striking"] * 0.2 + projected["grappling"] * 0.2
-                + projected["wrestling"] * 0.15 + projected["cardio"] * 0.15
-                + projected["chin"] * 0.15 + projected["speed"] * 0.15
+                projected["striking"] * 0.2
+                + projected["grappling"] * 0.2
+                + projected["wrestling"] * 0.15
+                + projected["cardio"] * 0.15
+                + projected["chin"] * 0.15
+                + projected["speed"] * 0.15
             )
 
     return monthly_snapshots
 
 
-def get_development_projections(fighter_id: int, camp_id: int, focus: str, months: int = 12) -> dict:
+def get_development_projections(
+    fighter_id: int, camp_id: int, focus: str, months: int = 12
+) -> dict:
     with _SessionFactory() as session:
         fighter = session.get(Fighter, fighter_id)
         if not fighter:
@@ -2550,7 +3015,11 @@ def process_fighter_development(session, org_id: int, sim_date) -> list[dict]:
             focus = dev.focus if dev.focus in _FOCUS_MULTIPLIERS else "Balanced"
             focus_mults = _FOCUS_MULTIPLIERS[focus]
             base_gain = _BASE_GAIN.get(camp.tier, 0.3)
-            specialty_bonus = 1.3 if camp.specialty == focus or camp.specialty == "Well-Rounded" else 1.0
+            specialty_bonus = (
+                1.3
+                if camp.specialty == focus or camp.specialty == "Well-Rounded"
+                else 1.0
+            )
 
             if fighter.age < 24:
                 age_modifier = 1.4
@@ -2563,7 +3032,9 @@ def process_fighter_development(session, org_id: int, sim_date) -> list[dict]:
             else:
                 age_modifier = 0.4
 
-            prime_modifier = 1.1 if fighter.prime_start <= fighter.age <= fighter.prime_end else 0.9
+            prime_modifier = (
+                1.1 if fighter.prime_start <= fighter.age <= fighter.prime_end else 0.9
+            )
             consistency_bonus = min(1.2, 1.0 + dev.months_at_camp * 0.02)
 
             # Check for legend coach at this camp
@@ -2577,7 +3048,14 @@ def process_fighter_development(session, org_id: int, sim_date) -> list[dict]:
 
             for attr in _ATTR_FIELDS:
                 multiplier = focus_mults[attr]
-                gain = base_gain * multiplier * specialty_bonus * age_modifier * prime_modifier * consistency_bonus
+                gain = (
+                    base_gain
+                    * multiplier
+                    * specialty_bonus
+                    * age_modifier
+                    * prime_modifier
+                    * consistency_bonus
+                )
                 gain *= rng.uniform(0.7, 1.3)
                 gain *= legend_mult
 
@@ -2627,7 +3105,9 @@ def process_fighter_development(session, org_id: int, sim_date) -> list[dict]:
             if old_overall < threshold <= new_overall:
                 notifications.append(f"{fighter.name} reached Overall {threshold}")
             if old_overall >= threshold > new_overall:
-                notifications.append(f"{fighter.name} is declining — consider adjusting training")
+                notifications.append(
+                    f"{fighter.name} is declining — consider adjusting training"
+                )
 
     return notifications
 
@@ -2695,26 +3175,32 @@ def get_fighter_sponsorships(fighter_id: int) -> dict:
         game_date = _get_game_date(session)
 
         # Get active sponsorships
-        active_sponsorships = session.execute(
-            select(Sponsorship).where(
-                Sponsorship.fighter_id == fighter_id,
-                Sponsorship.status == SponsorshipStatus.ACTIVE,
+        active_sponsorships = (
+            session.execute(
+                select(Sponsorship).where(
+                    Sponsorship.fighter_id == fighter_id,
+                    Sponsorship.status == SponsorshipStatus.ACTIVE,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         active_tiers = {sp.tier for sp in active_sponsorships}
         active_list = []
         total_monthly = 0.0
         for sp in active_sponsorships:
             months_remaining = max(0, (sp.expiry_date - game_date).days // 30)
-            active_list.append({
-                "id": sp.id,
-                "tier": sp.tier,
-                "brand_name": sp.brand_name,
-                "monthly_stipend": sp.monthly_stipend,
-                "months_remaining": months_remaining,
-                "total_paid": sp.total_paid,
-            })
+            active_list.append(
+                {
+                    "id": sp.id,
+                    "tier": sp.tier,
+                    "brand_name": sp.brand_name,
+                    "monthly_stipend": sp.monthly_stipend,
+                    "months_remaining": months_remaining,
+                    "total_paid": sp.total_paid,
+                }
+            )
             total_monthly += sp.monthly_stipend
 
         # Build available tiers
@@ -2724,17 +3210,19 @@ def get_fighter_sponsorships(fighter_id: int) -> dict:
             pop_met = fighter.popularity >= tier_data["min_popularity"]
             already_has = tier_name in active_tiers
             eligible = hype_met and pop_met and not already_has
-            available_tiers.append({
-                "tier": tier_name,
-                "monthly_stipend": tier_data["monthly_stipend"],
-                "min_hype": tier_data["min_hype"],
-                "min_popularity": tier_data["min_popularity"],
-                "duration_months": tier_data["duration_months"],
-                "hype_met": hype_met,
-                "popularity_met": pop_met,
-                "already_has": already_has,
-                "eligible": eligible,
-            })
+            available_tiers.append(
+                {
+                    "tier": tier_name,
+                    "monthly_stipend": tier_data["monthly_stipend"],
+                    "min_hype": tier_data["min_hype"],
+                    "min_popularity": tier_data["min_popularity"],
+                    "duration_months": tier_data["duration_months"],
+                    "hype_met": hype_met,
+                    "popularity_met": pop_met,
+                    "already_has": already_has,
+                    "eligible": eligible,
+                }
+            )
 
         return {
             "fighter_id": fighter.id,
@@ -2779,9 +3267,15 @@ def seek_sponsorship(fighter_id: int, tier: str) -> dict:
 
         # Check minimum requirements
         if fighter.hype < tier_data["min_hype"]:
-            return {"success": False, "message": f"Fighter's hype ({fighter.hype:.1f}) is below the minimum ({tier_data['min_hype']})."}
+            return {
+                "success": False,
+                "message": f"Fighter's hype ({fighter.hype:.1f}) is below the minimum ({tier_data['min_hype']}).",
+            }
         if fighter.popularity < tier_data["min_popularity"]:
-            return {"success": False, "message": f"Fighter's popularity ({fighter.popularity:.1f}) is below the minimum ({tier_data['min_popularity']})."}
+            return {
+                "success": False,
+                "message": f"Fighter's popularity ({fighter.popularity:.1f}) is below the minimum ({tier_data['min_popularity']}).",
+            }
 
         # Check no duplicate tier
         existing = session.execute(
@@ -2792,19 +3286,32 @@ def seek_sponsorship(fighter_id: int, tier: str) -> dict:
             )
         ).scalar_one_or_none()
         if existing:
-            return {"success": False, "message": f"Fighter already has an active {tier} sponsorship."}
+            return {
+                "success": False,
+                "message": f"Fighter already has an active {tier} sponsorship.",
+            }
 
         # Acceptance probability
         hype_surplus = fighter.hype - tier_data["min_hype"]
         pop_surplus = fighter.popularity - tier_data["min_popularity"]
         cornerstone_bonus = 0.10 if fighter.is_cornerstone else 0.0
-        acceptance_prob = min(0.90, 0.50 + hype_surplus / 15 * 0.20 + pop_surplus / 15 * 0.15 + cornerstone_bonus)
+        acceptance_prob = min(
+            0.90,
+            0.50
+            + hype_surplus / 15 * 0.20
+            + pop_surplus / 15 * 0.15
+            + cornerstone_bonus,
+        )
 
         if random.random() >= acceptance_prob:
-            return {"success": False, "message": f"The brand wasn't interested right now. Try again after boosting hype or popularity."}
+            return {
+                "success": False,
+                "message": "The brand wasn't interested right now. Try again after boosting hype or popularity.",
+            }
 
         # Success — create sponsorship
         from datetime import timedelta
+
         game_date = _get_game_date(session)
         brand_name = random.choice(tier_data["brands"])
         duration = tier_data["duration_months"]
@@ -2830,11 +3337,13 @@ def seek_sponsorship(fighter_id: int, tier: str) -> dict:
         )
         session.add(sponsorship)
 
-        session.add(Notification(
-            message=f"{brand_name} signed {fighter.name}! {tier} — ${stipend:,.0f}/month for {duration} months.",
-            type="sponsorship",
-            created_date=game_date,
-        ))
+        session.add(
+            Notification(
+                message=f"{brand_name} signed {fighter.name}! {tier} — ${stipend:,.0f}/month for {duration} months.",
+                type="sponsorship",
+                created_date=game_date,
+            )
+        )
 
         session.commit()
         return {
@@ -2852,32 +3361,42 @@ def get_sponsorship_summary() -> dict:
         if not player_org:
             return {"total_monthly": 0, "active_count": 0, "top_earners": []}
 
-        sponsorships = session.execute(
-            select(Sponsorship).where(
-                Sponsorship.organization_id == player_org.id,
-                Sponsorship.status == SponsorshipStatus.ACTIVE,
+        sponsorships = (
+            session.execute(
+                select(Sponsorship).where(
+                    Sponsorship.organization_id == player_org.id,
+                    Sponsorship.status == SponsorshipStatus.ACTIVE,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         # Group by fighter
         fighter_income: dict[int, float] = {}
         for sp in sponsorships:
-            fighter_income[sp.fighter_id] = fighter_income.get(sp.fighter_id, 0) + sp.monthly_stipend
+            fighter_income[sp.fighter_id] = (
+                fighter_income.get(sp.fighter_id, 0) + sp.monthly_stipend
+            )
 
         total_monthly = sum(fighter_income.values())
         active_count = len(sponsorships)
 
         # Top earners
         top_earners = []
-        sorted_fighters = sorted(fighter_income.items(), key=lambda x: x[1], reverse=True)[:3]
+        sorted_fighters = sorted(
+            fighter_income.items(), key=lambda x: x[1], reverse=True
+        )[:3]
         for fid, income in sorted_fighters:
             fighter = session.get(Fighter, fid)
             if fighter:
-                top_earners.append({
-                    "fighter_id": fid,
-                    "name": fighter.name,
-                    "monthly": income,
-                })
+                top_earners.append(
+                    {
+                        "fighter_id": fid,
+                        "name": fighter.name,
+                        "monthly": income,
+                    }
+                )
 
         return {
             "total_monthly": total_monthly,
@@ -3039,13 +3558,17 @@ def _contestant_dict(sc: ShowContestant, session) -> dict:
     return d
 
 
-def _show_dict(show: RealityShow, session, include_episodes=False, include_contestants=True) -> dict:
+def _show_dict(
+    show: RealityShow, session, include_episodes=False, include_contestants=True
+) -> dict:
     total_episodes = 4 if show.format_size == 8 else 5
     d = {
         "id": show.id,
         "name": show.name,
         "organization_id": show.organization_id,
-        "weight_class": show.weight_class.value if hasattr(show.weight_class, "value") else show.weight_class,
+        "weight_class": show.weight_class.value
+        if hasattr(show.weight_class, "value")
+        else show.weight_class,
         "status": show.status.value if hasattr(show.status, "value") else show.status,
         "format_size": show.format_size,
         "start_date": show.start_date.isoformat() if show.start_date else None,
@@ -3065,17 +3588,21 @@ def _show_dict(show: RealityShow, session, include_episodes=False, include_conte
     if include_episodes:
         d["episodes"] = []
         for ep in show.episodes:
-            d["episodes"].append({
-                "id": ep.id,
-                "episode_number": ep.episode_number,
-                "episode_type": ep.episode_type,
-                "air_date": ep.air_date.isoformat() if ep.air_date else None,
-                "fight_results": json.loads(ep.fight_results) if ep.fight_results else [],
-                "shenanigans": json.loads(ep.shenanigans) if ep.shenanigans else [],
-                "episode_narrative": ep.episode_narrative,
-                "episode_rating": round(ep.episode_rating, 1),
-                "hype_generated": round(ep.hype_generated, 1),
-            })
+            d["episodes"].append(
+                {
+                    "id": ep.id,
+                    "episode_number": ep.episode_number,
+                    "episode_type": ep.episode_type,
+                    "air_date": ep.air_date.isoformat() if ep.air_date else None,
+                    "fight_results": json.loads(ep.fight_results)
+                    if ep.fight_results
+                    else [],
+                    "shenanigans": json.loads(ep.shenanigans) if ep.shenanigans else [],
+                    "episode_narrative": ep.episode_narrative,
+                    "episode_rating": round(ep.episode_rating, 1),
+                    "hype_generated": round(ep.hype_generated, 1),
+                }
+            )
     return d
 
 
@@ -3085,8 +3612,12 @@ def get_show_eligible_fighters(weight_class: str) -> list[dict]:
         # IDs with active contracts
         active_ids = set(
             session.execute(
-                select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
-            ).scalars().all()
+                select(Contract.fighter_id).where(
+                    Contract.status == ContractStatus.ACTIVE
+                )
+            )
+            .scalars()
+            .all()
         )
         # IDs on active shows
         show_ids = set(
@@ -3097,16 +3628,22 @@ def get_show_eligible_fighters(weight_class: str) -> list[dict]:
                     RealityShow.status == ShowStatus.IN_PROGRESS,
                     ShowContestant.status.in_(["active", "suspended"]),
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         excluded = active_ids | show_ids
 
-        fighters = session.execute(
-            select(Fighter).where(
-                Fighter.weight_class == weight_class,
-                Fighter.injury_months == 0,
+        fighters = (
+            session.execute(
+                select(Fighter).where(
+                    Fighter.weight_class == weight_class,
+                    Fighter.injury_months == 0,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         results = []
         for f in fighters:
@@ -3119,12 +3656,16 @@ def get_show_eligible_fighters(weight_class: str) -> list[dict]:
         return results
 
 
-def create_reality_show(name: str, weight_class: str, format_size: int, fighter_ids: list[int]) -> dict:
+def create_reality_show(
+    name: str, weight_class: str, format_size: int, fighter_ids: list[int]
+) -> dict:
     """Create a new reality show with selected fighters."""
     if format_size not in (8, 16):
         return {"error": "Format size must be 8 or 16."}
     if len(fighter_ids) != format_size:
-        return {"error": f"Need exactly {format_size} fighters, got {len(fighter_ids)}."}
+        return {
+            "error": f"Need exactly {format_size} fighters, got {len(fighter_ids)}."
+        }
 
     with _SessionFactory() as session:
         player_org = session.execute(
@@ -3146,13 +3687,19 @@ def create_reality_show(name: str, weight_class: str, format_size: int, fighter_
         # Check affordability (2 episodes upfront)
         cost = SHOW_PRODUCTION_COST * 2
         if player_org.bank_balance < cost:
-            return {"error": f"Need at least ${cost:,.0f} in the bank (2 episodes upfront)."}
+            return {
+                "error": f"Need at least ${cost:,.0f} in the bank (2 episodes upfront)."
+            }
 
         # Validate fighters are eligible
         active_ids = set(
             session.execute(
-                select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
-            ).scalars().all()
+                select(Contract.fighter_id).where(
+                    Contract.status == ContractStatus.ACTIVE
+                )
+            )
+            .scalars()
+            .all()
         )
         show_ids = set(
             session.execute(
@@ -3162,7 +3709,9 @@ def create_reality_show(name: str, weight_class: str, format_size: int, fighter_
                     RealityShow.status == ShowStatus.IN_PROGRESS,
                     ShowContestant.status.in_(["active", "suspended"]),
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
 
         fighters = []
@@ -3176,7 +3725,11 @@ def create_reality_show(name: str, weight_class: str, format_size: int, fighter_
                 return {"error": f"{f.name} is already on an active show."}
             if f.injury_months > 0:
                 return {"error": f"{f.name} is injured."}
-            wc = f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class
+            wc = (
+                f.weight_class.value
+                if hasattr(f.weight_class, "value")
+                else f.weight_class
+            )
             if wc != weight_class:
                 return {"error": f"{f.name} is not in {weight_class} division."}
             fighters.append(f)
@@ -3209,11 +3762,13 @@ def create_reality_show(name: str, weight_class: str, format_size: int, fighter_
         player_org.bank_balance -= SHOW_PRODUCTION_COST
         show.total_production_spend += SHOW_PRODUCTION_COST
 
-        session.add(Notification(
-            message=f"Reality show '{name}' is now in production! {format_size} fighters competing in {weight_class}.",
-            type="show",
-            created_date=game_date,
-        ))
+        session.add(
+            Notification(
+                message=f"Reality show '{name}' is now in production! {format_size} fighters competing in {weight_class}.",
+                type="show",
+                created_date=game_date,
+            )
+        )
 
         session.commit()
         return _show_dict(show, session, include_episodes=True)
@@ -3266,7 +3821,16 @@ def get_show_bracket(show_id: int) -> dict:
             round_names = ["Quarterfinals", "Semifinals", "Finale"]
         else:
             matchup_seeds = [
-                [(1, 16), (8, 9), (4, 13), (5, 12), (3, 14), (6, 11), (2, 15), (7, 10)],  # R1
+                [
+                    (1, 16),
+                    (8, 9),
+                    (4, 13),
+                    (5, 12),
+                    (3, 14),
+                    (6, 11),
+                    (2, 15),
+                    (7, 10),
+                ],  # R1
             ]
             round_names = ["First Round", "Quarterfinals", "Semifinals", "Finale"]
 
@@ -3281,15 +3845,24 @@ def get_show_bracket(show_id: int) -> dict:
             # Find the episode with these fights
             fight_ep = None
             for ep in episodes:
-                if ep.episode_type == rnd_name.lower().replace(" ", "_") or \
-                   (rnd_name == "Quarterfinals" and ep.episode_type == "quarterfinal") or \
-                   (rnd_name == "Semifinals" and ep.episode_type == "semifinal") or \
-                   (rnd_name == "Finale" and ep.episode_type == "finale") or \
-                   (rnd_name == "First Round" and ep.episode_type == "first_round"):
+                if (
+                    ep.episode_type == rnd_name.lower().replace(" ", "_")
+                    or (
+                        rnd_name == "Quarterfinals"
+                        and ep.episode_type == "quarterfinal"
+                    )
+                    or (rnd_name == "Semifinals" and ep.episode_type == "semifinal")
+                    or (rnd_name == "Finale" and ep.episode_type == "finale")
+                    or (rnd_name == "First Round" and ep.episode_type == "first_round")
+                ):
                     fight_ep = ep
                     break
 
-            fight_data = json.loads(fight_ep.fight_results) if fight_ep and fight_ep.fight_results else []
+            fight_data = (
+                json.loads(fight_ep.fight_results)
+                if fight_ep and fight_ep.fight_results
+                else []
+            )
 
             next_round_seeds = []
             for i, (seed_a, seed_b) in enumerate(current_matchup_seeds):
@@ -3299,8 +3872,16 @@ def get_show_bracket(show_id: int) -> dict:
                 fb = session.get(Fighter, sc_b.fighter_id) if sc_b else None
 
                 matchup = {
-                    "fighter_a": {"seed": seed_a, "name": fa.name if fa else "TBD", "id": fa.id if fa else None},
-                    "fighter_b": {"seed": seed_b, "name": fb.name if fb else "TBD", "id": fb.id if fb else None},
+                    "fighter_a": {
+                        "seed": seed_a,
+                        "name": fa.name if fa else "TBD",
+                        "id": fa.id if fa else None,
+                    },
+                    "fighter_b": {
+                        "seed": seed_b,
+                        "name": fb.name if fb else "TBD",
+                        "id": fb.id if fb else None,
+                    },
                     "winner": None,
                     "is_walkover": False,
                 }
@@ -3336,17 +3917,21 @@ def get_show_bracket(show_id: int) -> dict:
 
                 matchups.append(matchup)
 
-            rounds.append({
-                "round_name": rnd_name,
-                "matchups": matchups,
-            })
+            rounds.append(
+                {
+                    "round_name": rnd_name,
+                    "matchups": matchups,
+                }
+            )
 
             # Set up next round matchups from winners
             if next_round_seeds and rnd_idx < len(round_names) - 1:
                 current_matchup_seeds = []
                 for j in range(0, len(next_round_seeds), 2):
                     if j + 1 < len(next_round_seeds):
-                        current_matchup_seeds.append((next_round_seeds[j], next_round_seeds[j + 1]))
+                        current_matchup_seeds.append(
+                            (next_round_seeds[j], next_round_seeds[j + 1])
+                        )
             elif rnd_idx < len(round_names) - 1:
                 # No results yet, create placeholder pairings
                 current_matchup_seeds = [(0, 0)] * (len(current_matchup_seeds) // 2)
@@ -3375,12 +3960,20 @@ def get_show_history() -> list[dict]:
         if not player_org:
             return []
 
-        shows = session.execute(
-            select(RealityShow).where(
-                RealityShow.organization_id == player_org.id,
-                RealityShow.status.in_([ShowStatus.COMPLETED, ShowStatus.CANCELLED]),
-            ).order_by(RealityShow.end_date.desc())
-        ).scalars().all()
+        shows = (
+            session.execute(
+                select(RealityShow)
+                .where(
+                    RealityShow.organization_id == player_org.id,
+                    RealityShow.status.in_(
+                        [ShowStatus.COMPLETED, ShowStatus.CANCELLED]
+                    ),
+                )
+                .order_by(RealityShow.end_date.desc())
+            )
+            .scalars()
+            .all()
+        )
 
         results = []
         for show in shows:
@@ -3388,20 +3981,28 @@ def get_show_history() -> list[dict]:
             if show.winner_id:
                 winner = session.get(Fighter, show.winner_id)
                 winner_name = winner.name if winner else None
-            results.append({
-                "id": show.id,
-                "name": show.name,
-                "weight_class": show.weight_class.value if hasattr(show.weight_class, "value") else show.weight_class,
-                "status": show.status.value if hasattr(show.status, "value") else show.status,
-                "format_size": show.format_size,
-                "start_date": show.start_date.isoformat() if show.start_date else None,
-                "end_date": show.end_date.isoformat() if show.end_date else None,
-                "episodes_aired": show.episodes_aired,
-                "winner_name": winner_name,
-                "show_hype": round(show.show_hype, 1),
-                "total_production_spend": round(show.total_production_spend, 2),
-                "total_revenue": round(show.total_revenue, 2),
-            })
+            results.append(
+                {
+                    "id": show.id,
+                    "name": show.name,
+                    "weight_class": show.weight_class.value
+                    if hasattr(show.weight_class, "value")
+                    else show.weight_class,
+                    "status": show.status.value
+                    if hasattr(show.status, "value")
+                    else show.status,
+                    "format_size": show.format_size,
+                    "start_date": show.start_date.isoformat()
+                    if show.start_date
+                    else None,
+                    "end_date": show.end_date.isoformat() if show.end_date else None,
+                    "episodes_aired": show.episodes_aired,
+                    "winner_name": winner_name,
+                    "show_hype": round(show.show_hype, 1),
+                    "total_production_spend": round(show.total_production_spend, 2),
+                    "total_revenue": round(show.total_revenue, 2),
+                }
+            )
         return results
 
 
@@ -3425,14 +4026,19 @@ def cancel_show(show_id: int) -> dict:
         if player_org:
             player_org.prestige = max(0.0, player_org.prestige - 3.0)
 
-        session.add(Notification(
-            message=f"Reality show '{show.name}' has been cancelled. -3 prestige.",
-            type="show",
-            created_date=game_date,
-        ))
+        session.add(
+            Notification(
+                message=f"Reality show '{show.name}' has been cancelled. -3 prestige.",
+                type="show",
+                created_date=game_date,
+            )
+        )
 
         session.commit()
-        return {"success": True, "message": f"Show '{show.name}' cancelled. -3 prestige penalty."}
+        return {
+            "success": True,
+            "message": f"Show '{show.name}' cancelled. -3 prestige penalty.",
+        }
 
 
 def sign_show_winner(show_id: int) -> dict:
@@ -3473,6 +4079,7 @@ def sign_show_winner(show_id: int) -> dict:
         # 95% acceptance
         if random.random() < 0.95:
             from datetime import timedelta
+
             contract = Contract(
                 fighter_id=fighter.id,
                 organization_id=player_org.id,
@@ -3507,8 +4114,12 @@ def get_show_contestants_for_signing(show_id: int) -> list[dict]:
         # Check who already has a contract
         active_ids = set(
             session.execute(
-                select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
-            ).scalars().all()
+                select(Contract.fighter_id).where(
+                    Contract.status == ContractStatus.ACTIVE
+                )
+            )
+            .scalars()
+            .all()
         )
 
         results = []
@@ -3526,7 +4137,9 @@ def get_show_contestants_for_signing(show_id: int) -> list[dict]:
             elif fighter.id == show.runner_up_id:
                 discount = 0.15
                 placement = "Runner-up"
-            elif sc.eliminated_round and sc.eliminated_round >= (3 if show.format_size == 16 else 2):
+            elif sc.eliminated_round and sc.eliminated_round >= (
+                3 if show.format_size == 16 else 2
+            ):
                 discount = 0.05
                 placement = "Semifinalist"
             else:
@@ -3555,30 +4168,41 @@ def get_show_contestants_for_signing(show_id: int) -> list[dict]:
 # Retired Legends
 # ---------------------------------------------------------------------------
 
+
 def get_retired_legends(top_n: int = 20) -> list[dict]:
     """Return top retired fighters sorted by legacy score."""
     with _SessionFactory() as session:
-        fighters = session.execute(
-            select(Fighter)
-            .where(Fighter.is_retired == True)
-            .order_by(Fighter.legacy_score.desc())
-            .limit(top_n)
-        ).scalars().all()
+        fighters = (
+            session.execute(
+                select(Fighter)
+                .where(Fighter.is_retired == True)
+                .order_by(Fighter.legacy_score.desc())
+                .limit(top_n)
+            )
+            .scalars()
+            .all()
+        )
         results = []
         for f in fighters:
-            results.append({
-                "id": f.id,
-                "name": f.name,
-                "nickname": f.nickname,
-                "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
-                "record": f.record,
-                "peak_overall": f.peak_overall or f.overall,
-                "legacy_score": round(f.legacy_score, 1),
-                "retired_date": f.retired_date.isoformat() if f.retired_date else None,
-                "age": f.age,
-                "ko_wins": f.ko_wins,
-                "sub_wins": f.sub_wins,
-            })
+            results.append(
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "nickname": f.nickname,
+                    "weight_class": f.weight_class.value
+                    if hasattr(f.weight_class, "value")
+                    else f.weight_class,
+                    "record": f.record,
+                    "peak_overall": f.peak_overall or f.overall,
+                    "legacy_score": round(f.legacy_score, 1),
+                    "retired_date": f.retired_date.isoformat()
+                    if f.retired_date
+                    else None,
+                    "age": f.age,
+                    "ko_wins": f.ko_wins,
+                    "sub_wins": f.sub_wins,
+                }
+            )
         return results
 
 
@@ -3615,37 +4239,45 @@ def get_available_legends() -> list[dict]:
             return []
 
         # Get already-hired fighter IDs
-        hired_ids = set(
-            session.execute(
-                select(LegendCoach.fighter_id)
-            ).scalars().all()
-        )
+        hired_ids = set(session.execute(select(LegendCoach.fighter_id)).scalars().all())
 
-        fighters = session.execute(
-            select(Fighter)
-            .where(
-                Fighter.is_retired == True,
-                Fighter.legacy_score >= MIN_LEGACY_TO_HIRE,
+        fighters = (
+            session.execute(
+                select(Fighter)
+                .where(
+                    Fighter.is_retired == True,
+                    Fighter.legacy_score >= MIN_LEGACY_TO_HIRE,
+                )
+                .order_by(Fighter.legacy_score.desc())
             )
-            .order_by(Fighter.legacy_score.desc())
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         results = []
         for f in fighters:
             if f.id in hired_ids:
                 continue
-            monthly_salary = round(f.legacy_score * LEGEND_COACH_SALARY_MULTIPLIER / 12, 2)
-            results.append({
-                "id": f.id,
-                "name": f.name,
-                "nickname": f.nickname,
-                "weight_class": f.weight_class.value if hasattr(f.weight_class, "value") else f.weight_class,
-                "record": f.record,
-                "legacy_score": round(f.legacy_score, 1),
-                "monthly_salary": monthly_salary,
-                "specialty_bonus": _legend_specialty_bonus(f.legacy_score),
-                "retired_date": f.retired_date.isoformat() if f.retired_date else None,
-            })
+            monthly_salary = round(
+                f.legacy_score * LEGEND_COACH_SALARY_MULTIPLIER / 12, 2
+            )
+            results.append(
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "nickname": f.nickname,
+                    "weight_class": f.weight_class.value
+                    if hasattr(f.weight_class, "value")
+                    else f.weight_class,
+                    "record": f.record,
+                    "legacy_score": round(f.legacy_score, 1),
+                    "monthly_salary": monthly_salary,
+                    "specialty_bonus": _legend_specialty_bonus(f.legacy_score),
+                    "retired_date": f.retired_date.isoformat()
+                    if f.retired_date
+                    else None,
+                }
+            )
         return results
 
 
@@ -3664,26 +4296,44 @@ def hire_legend_coach(fighter_id: int, camp_id: int = None) -> dict:
         if not fighter.is_retired:
             return {"success": False, "error": "Fighter is not retired"}
         if fighter.legacy_score < MIN_LEGACY_TO_HIRE:
-            return {"success": False, "error": f"Legacy score must be at least {MIN_LEGACY_TO_HIRE}"}
+            return {
+                "success": False,
+                "error": f"Legacy score must be at least {MIN_LEGACY_TO_HIRE}",
+            }
 
         # Check not already hired
         existing = session.execute(
             select(LegendCoach).where(LegendCoach.fighter_id == fighter_id)
         ).scalar_one_or_none()
         if existing:
-            return {"success": False, "error": f"{fighter.name} is already hired as a coach"}
+            return {
+                "success": False,
+                "error": f"{fighter.name} is already hired as a coach",
+            }
 
         # Check org limit
-        current_count = session.execute(
-            select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
-        ).scalars().all()
+        current_count = (
+            session.execute(
+                select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
+            )
+            .scalars()
+            .all()
+        )
         if len(current_count) >= MAX_LEGEND_COACHES_PER_ORG:
-            return {"success": False, "error": f"Maximum {MAX_LEGEND_COACHES_PER_ORG} legend coaches allowed"}
+            return {
+                "success": False,
+                "error": f"Maximum {MAX_LEGEND_COACHES_PER_ORG} legend coaches allowed",
+            }
 
         # Affordability check (3x monthly salary)
-        monthly_salary = round(fighter.legacy_score * LEGEND_COACH_SALARY_MULTIPLIER / 12, 2)
+        monthly_salary = round(
+            fighter.legacy_score * LEGEND_COACH_SALARY_MULTIPLIER / 12, 2
+        )
         if player_org.bank_balance < monthly_salary * 3:
-            return {"success": False, "error": "Insufficient funds (need 3x monthly salary in bank)"}
+            return {
+                "success": False,
+                "error": "Insufficient funds (need 3x monthly salary in bank)",
+            }
 
         # Validate camp if provided
         if camp_id:
@@ -3698,7 +4348,10 @@ def hire_legend_coach(fighter_id: int, camp_id: int = None) -> dict:
                 )
             ).scalar_one_or_none()
             if existing_at_camp:
-                return {"success": False, "error": "A legend coach is already assigned to this camp"}
+                return {
+                    "success": False,
+                    "error": "A legend coach is already assigned to this camp",
+                }
 
         game_date = _get_game_date(session)
         coach = LegendCoach(
@@ -3714,7 +4367,7 @@ def hire_legend_coach(fighter_id: int, camp_id: int = None) -> dict:
 
         return {
             "success": True,
-            "message": f"Hired {fighter.name} as legend coach (${monthly_salary:,.0f}/mo, +{coach.specialty_bonus*100:.0f}% training bonus)",
+            "message": f"Hired {fighter.name} as legend coach (${monthly_salary:,.0f}/mo, +{coach.specialty_bonus * 100:.0f}% training bonus)",
             "coach_id": coach.id,
         }
 
@@ -3753,7 +4406,10 @@ def assign_legend_to_camp(coach_id: int, camp_id: int) -> dict:
                 )
             ).scalar_one_or_none()
             if existing:
-                return {"success": False, "error": "A legend coach is already assigned to this camp"}
+                return {
+                    "success": False,
+                    "error": "A legend coach is already assigned to this camp",
+                }
 
         coach.camp_id = camp_id if camp_id else None
         session.commit()
@@ -3773,26 +4429,38 @@ def get_legend_coaches() -> list[dict]:
         if not player_org:
             return []
 
-        coaches = session.execute(
-            select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
-        ).scalars().all()
+        coaches = (
+            session.execute(
+                select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
+            )
+            .scalars()
+            .all()
+        )
 
         results = []
         for c in coaches:
             fighter = session.get(Fighter, c.fighter_id)
             camp = session.get(TrainingCamp, c.camp_id) if c.camp_id else None
-            results.append({
-                "id": c.id,
-                "fighter_id": c.fighter_id,
-                "fighter_name": fighter.name if fighter else "Unknown",
-                "fighter_nickname": fighter.nickname if fighter else None,
-                "legacy_score": round(fighter.legacy_score, 1) if fighter else 0,
-                "weight_class": (fighter.weight_class.value if hasattr(fighter.weight_class, "value") else fighter.weight_class) if fighter else None,
-                "camp_id": c.camp_id,
-                "camp_name": camp.name if camp else None,
-                "camp_tier": camp.tier if camp else None,
-                "salary": round(c.salary, 2),
-                "specialty_bonus": c.specialty_bonus,
-                "hired_date": c.hired_date.isoformat() if c.hired_date else None,
-            })
+            results.append(
+                {
+                    "id": c.id,
+                    "fighter_id": c.fighter_id,
+                    "fighter_name": fighter.name if fighter else "Unknown",
+                    "fighter_nickname": fighter.nickname if fighter else None,
+                    "legacy_score": round(fighter.legacy_score, 1) if fighter else 0,
+                    "weight_class": (
+                        fighter.weight_class.value
+                        if hasattr(fighter.weight_class, "value")
+                        else fighter.weight_class
+                    )
+                    if fighter
+                    else None,
+                    "camp_id": c.camp_id,
+                    "camp_name": camp.name if camp else None,
+                    "camp_tier": camp.tier if camp else None,
+                    "salary": round(c.salary, 2),
+                    "specialty_bonus": c.specialty_bonus,
+                    "hired_date": c.hired_date.isoformat() if c.hired_date else None,
+                }
+            )
         return results

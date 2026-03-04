@@ -1,0 +1,5 @@
+[lint]
+# E712: SQLAlchemy requires `column == True` for boolean filter expressions.
+# Using bare `column` would evaluate the Python Column object, not build SQL.
+# F841: Pre-existing unused variable in projection code (harmless, kept for future use).
+ignore = ["E712", "F841"]

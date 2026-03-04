@@ -47,14 +47,16 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         """Return available origin configs for the selection screen."""
         origins = []
         for key, cfg in ORIGIN_CONFIGS.items():
-            origins.append({
-                "key": key,
-                "label": cfg["label"],
-                "tagline": cfg["tagline"],
-                "budget": cfg["budget"],
-                "prestige": cfg["prestige"],
-                "roster_target": cfg["roster_target"],
-            })
+            origins.append(
+                {
+                    "key": key,
+                    "label": cfg["label"],
+                    "tagline": cfg["tagline"],
+                    "budget": cfg["budget"],
+                    "prestige": cfg["prestige"],
+                    "roster_target": cfg["roster_target"],
+                }
+            )
         return jsonify(origins)
 
     @app.route("/api/origin", methods=["POST"])
@@ -72,9 +74,13 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
 
         # Validate name
         if not promotion_name or len(promotion_name) < 2:
-            return jsonify({"error": "Promotion name must be at least 2 characters"}), 400
+            return jsonify(
+                {"error": "Promotion name must be at least 2 characters"}
+            ), 400
         if len(promotion_name) > 50:
-            return jsonify({"error": "Promotion name must be 50 characters or less"}), 400
+            return jsonify(
+                {"error": "Promotion name must be 50 characters or less"}
+            ), 400
 
         # Check not already seeded
         if services.has_game_state():
@@ -157,7 +163,12 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         """Browse event history across all organizations."""
         org_id = request.args.get("organization_id", type=int)
         limit = request.args.get("limit", 50, type=int)
-        return jsonify(services.get_all_event_history(organization_id=org_id, limit=limit))
+        offset = request.args.get("offset", 0, type=int)
+        return jsonify(
+            services.get_all_event_history(
+                organization_id=org_id, limit=limit, offset=offset
+            )
+        )
 
     @app.route("/api/events/<int:event_id>")
     def get_event(event_id: int):
@@ -494,7 +505,9 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         style = request.args.get("style")
         min_overall = request.args.get("min_overall", type=int)
         sort_by = request.args.get("sort_by")
-        return jsonify(services.get_free_agents(weight_class, style, min_overall, sort_by))
+        return jsonify(
+            services.get_free_agents(weight_class, style, min_overall, sort_by)
+        )
 
     @app.route("/api/roster")
     def list_roster():
@@ -584,7 +597,9 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         months = request.args.get("months", 12, type=int)
         if not fighter_id or not camp_id:
             return jsonify({"error": "fighter_id and camp_id are required."}), 400
-        result = services.get_development_projections(fighter_id, camp_id, focus, months)
+        result = services.get_development_projections(
+            fighter_id, camp_id, focus, months
+        )
         if "error" in result:
             return jsonify(result), 400
         return jsonify(result)
