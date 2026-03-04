@@ -23,6 +23,10 @@ const state = {
   showSelectedFighters: [],
 };
 
+// League History pagination
+let historyOffset = 0;
+const HISTORY_BATCH = 25;
+
 // ---------------------------------------------------------------------------
 // API helper
 // ---------------------------------------------------------------------------
@@ -1110,7 +1114,7 @@ async function loadGameDate() {
 async function loadEventsView() {
   state.selectedFighterA = null;
   state.selectedFighterB = null;
-  await Promise.all([loadScheduledEvents(), loadCompletedEvents(), loadBookableFighters()]);
+  await Promise.all([loadScheduledEvents(), loadCompletedEvents(), loadLeagueHistory(), loadBookableFighters()]);
   if (state.selectedEventId) loadEventCard(state.selectedEventId);
 }
 
@@ -1158,6 +1162,63 @@ async function loadCompletedEvents() {
         loadEventCard(state.selectedEventId);
         loadCompletedEvents();
         loadScheduledEvents();
+      });
+    });
+  } catch (err) { /* silent */ }
+}
+
+async function loadLeagueHistory(append) {
+  try {
+    const orgFilter = document.getElementById('history-org-filter').value;
+    let url = `/api/events/all-history?limit=${HISTORY_BATCH}&offset=${historyOffset}`;
+    if (orgFilter) url += `&organization_id=${orgFilter}`;
+    const events = await api(url);
+    const el = document.getElementById('events-history-list');
+    const loadMoreBtn = document.getElementById('btn-load-more-history');
+
+    if (events.length === 0 && !append) {
+      el.innerHTML = '<p class="muted">No historical events found.</p>';
+      loadMoreBtn.classList.add('hidden');
+      return;
+    }
+
+    const html = events.map(ev => `
+      <div class="event-list-item completed ${state.selectedEventId === ev.id ? 'selected' : ''}" data-event-id="${ev.id}">
+        <div class="event-list-name">${esc(ev.name)}</div>
+        <div class="event-list-meta">${ev.event_date} &middot; ${ev.organization_name || ''}</div>
+      </div>
+    `).join('');
+
+    if (append) {
+      el.insertAdjacentHTML('beforeend', html);
+    } else {
+      el.innerHTML = html;
+    }
+
+    // Show/hide Load More based on whether we got a full batch
+    loadMoreBtn.classList.toggle('hidden', events.length < HISTORY_BATCH);
+
+    // Populate org filter dropdown on first load (not append, not filtered)
+    if (!append && !orgFilter) {
+      const orgs = new Map();
+      events.forEach(ev => {
+        if (ev.organization_id && ev.organization_name) {
+          orgs.set(ev.organization_id, ev.organization_name);
+        }
+      });
+      const sel = document.getElementById('history-org-filter');
+      sel.innerHTML = '<option value="">All Orgs</option>';
+      for (const [id, name] of orgs) {
+        sel.innerHTML += `<option value="${id}">${esc(name)}</option>`;
+      }
+    }
+
+    // Attach click handlers
+    el.querySelectorAll('.event-list-item').forEach(item => {
+      item.addEventListener('click', () => {
+        state.selectedEventId = Number(item.dataset.eventId);
+        loadEventCard(state.selectedEventId);
+        loadLeagueHistory();
       });
     });
   } catch (err) { /* silent */ }
@@ -1284,25 +1345,26 @@ function renderCompletedEvent(event, container) {
   }
   html += '</div>';
 
-  // Sellout banner
-  if (event.tickets_sold > 0 && event.tickets_sold >= event.venue_capacity) {
-    html += '<div class="sellout-banner">SELLOUT!</div>';
-  }
-  // Attendance
-  if (event.tickets_sold > 0) {
+  // Only show attendance/revenue for player-org events (historical events have zero data)
+  if (event.tickets_sold > 0 || event.gate_revenue > 0) {
+    // Sellout banner
+    if (event.tickets_sold >= event.venue_capacity) {
+      html += '<div class="sellout-banner">SELLOUT!</div>';
+    }
+    // Attendance
     const fillPct = event.venue_capacity > 0 ? (event.tickets_sold / event.venue_capacity * 100).toFixed(0) : 0;
     html += `<div class="event-attendance">Attendance: ${event.tickets_sold.toLocaleString()} / ${event.venue_capacity.toLocaleString()} (${fillPct}%)</div>`;
+    // Revenue summary
+    html += `
+      <div class="event-revenue-summary">
+        <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(event.gate_revenue)}</span></div>
+        <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(event.ppv_buys * 45)}</span></div>
+        ${event.broadcast_revenue > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(event.broadcast_revenue)}</span></div>` : ''}
+        ${event.venue_rental_cost > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(event.venue_rental_cost)}</span></div>` : ''}
+        <div class="rev-item"><span class="rev-label">Total</span><span class="rev-value">${formatCurrency(event.total_revenue)}</span></div>
+      </div>
+    `;
   }
-  // Revenue summary
-  html += `
-    <div class="event-revenue-summary">
-      <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(event.gate_revenue)}</span></div>
-      <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(event.ppv_buys * 45)}</span></div>
-      ${event.broadcast_revenue > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(event.broadcast_revenue)}</span></div>` : ''}
-      ${event.venue_rental_cost > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(event.venue_rental_cost)}</span></div>` : ''}
-      <div class="rev-item"><span class="rev-label">Total</span><span class="rev-value">${formatCurrency(event.total_revenue)}</span></div>
-    </div>
-  `;
   container.innerHTML = html;
 }
 
@@ -3003,6 +3065,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-confirm-sim').addEventListener('click', simulateCard);
   document.getElementById('btn-cancel-sim').addEventListener('click', cancelSimulate);
   document.getElementById('btn-add-matchup').addEventListener('click', addMatchup);
+
+  // League History filter and pagination
+  document.getElementById('history-org-filter').addEventListener('change', () => {
+    historyOffset = 0;
+    loadLeagueHistory();
+  });
+  document.getElementById('btn-load-more-history').addEventListener('click', () => {
+    historyOffset += HISTORY_BATCH;
+    loadLeagueHistory(true);
+  });
 
   // Pool search and filter
   document.getElementById('pool-search').addEventListener('input', e => {

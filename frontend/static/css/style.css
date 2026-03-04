@@ -3294,3 +3294,26 @@ tbody td { padding: 9px 10px; }
   background: rgba(255,255,255,0.06);
   border-color: rgba(251,191,36,0.2);
 }
+
+/* ─── League History ─── */
+.history-org-filter {
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+  background: var(--color-surface, #1a1a2e);
+  color: var(--color-text, #e0e0e0);
+  border: 1px solid var(--color-border, #333);
+  border-radius: 4px;
+  font-family: var(--font-body, 'Inter', sans-serif);
+  font-size: 0.85rem;
+}
+.history-list {
+  max-height: 250px;
+}
+.load-more-btn {
+  font-size: 0.85rem;
+  padding: 6px 12px;
+}
+.league-history-section h3 {
+  color: var(--color-accent-secondary, #f4a261);
+}
