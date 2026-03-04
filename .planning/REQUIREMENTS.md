@@ -112,7 +112,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HIST-02 | Phase 2: Fight History | Complete |
 | HIST-03 | Phase 2: Fight History | Complete |
 | HIST-04 | Phase 2: Fight History | Complete |
-| HIST-05 | Phase 2: Fight History + Phase 5: Historical Events UI | Complete (API); Pending (UI) |
+| HIST-05 | Phase 2: Fight History + Phase 5: Historical Events UI | Complete |
 | HIST-06 | Phase 2: Fight History | Complete |
 | IDEN-01 | Phase 3: Fighter Identity | Complete |
 | IDEN-02 | Phase 3: Fighter Identity | Complete |

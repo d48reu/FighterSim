@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-03T01:57:57.681Z"
+status: in-progress
+last_updated: "2026-03-03T20:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
+  completed_phases: 5
+  total_plans: 10
+  completed_plans: 10
 ---
 
 # Project State
@@ -18,23 +18,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** The world feels alive and inhabited -- fighters are people with backstories, personalities, and reputations, not procedurally generated stat blocks.
-**Current focus:** Phase 4: Player Origins -- COMPLETE
+**Current focus:** Phase 5: Historical Events UI -- COMPLETE
 
 ## Current Position
 
-Phase: 4 of 4 (Player Origins) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase 4 complete (all origin plans delivered)
-Last activity: 2026-03-03 -- Plan 04-02 completed (origin selection frontend with cinematic text crawl)
+Phase: 5 of 6 (Historical Events UI) -- COMPLETE
+Plan: 1 of 1 in current phase -- COMPLETE
+Status: Phase 5 complete (League History UI delivered)
+Last activity: 2026-03-03 -- Plan 05-01 completed (League History with org filter, pagination, revenue hiding)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 4.4 min
-- Total execution time: 40 min
+- Total plans completed: 10
+- Average duration: 5 min
+- Total execution time: 50 min
 
 **By Phase:**
 
@@ -44,10 +44,11 @@ Progress: [██████████] 100%
 | 02-fight-history | 3/3 | 13 min | 4.3 min |
 | 03-fighter-identity | 2/2 | 9 min | 4.5 min |
 | 04-player-origins | 2/2 | 8 min | 4 min |
+| 05-historical-events-ui | 1/1 | 10 min | 10 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (4 min), 03-01 (7 min), 03-02 (2 min), 04-01 (3 min), 04-02 (5 min)
-- Trend: Stable
+- Last 5 plans: 03-01 (7 min), 03-02 (2 min), 04-01 (3 min), 04-02 (5 min), 05-01 (10 min)
+- Trend: Stable (05-01 higher due to checkpoint verification)
 
 *Updated after each plan completion*
 
@@ -90,6 +91,10 @@ Recent decisions affecting current work:
 - [04-02]: Origin configs served via GET /api/origins so frontend never hardcodes origin data
 - [04-02]: Text crawl narratives stored client-side in origin.js (no server round-trip for static prose)
 - [04-02]: Dual-gate Begin button: both seed task completion AND animation timer must fire before enabling
+- [05-01]: Offset pagination (limit+offset) over cursor pagination for static historical data browsing
+- [05-01]: Player-org exclusion via is_player flag query keeps League History focused on AI org events
+- [05-01]: Org filter populated from first API batch response -- avoids separate /api/organizations endpoint
+- [05-01]: Revenue/attendance hidden when tickets_sold and gate_revenue are both zero
 
 ### Pending Todos
 
@@ -104,5 +109,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-03
-Stopped at: Completed 04-02-PLAN.md (Phase 4 complete)
-Resume file: .planning/phases/04-player-origins/04-02-SUMMARY.md
+Stopped at: Completed 05-01-PLAN.md (Phase 5 complete)
+Resume file: .planning/phases/05-historical-events-ui/05-01-SUMMARY.md

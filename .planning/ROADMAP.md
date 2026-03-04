@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Fight History** - Fabricate 2-3 years of pre-game fight history with real database records, champions, and emergent rivalries
 - [x] **Phase 3: Fighter Identity** - Generate composable backstories and career highlights from actual fight history data
 - [x] **Phase 4: Player Origins** - Selectable starting scenarios with narrative intros and mechanical consequences
-- [ ] **Phase 5: Historical Events UI** - Frontend consumer for historical event browsing API (gap closure)
+- [x] **Phase 5: Historical Events UI** - Frontend consumer for historical event browsing API (gap closure)
 - [ ] **Phase 6: Tech Debt Cleanup** - Address low-severity tech debt from milestone audit (gap closure)
 - [ ] **Phase 7: Origin Roster Rebalance** - Adjust origin starting roster sizes (Comeback 20-40, Matchmaker 60-80, Heir 100-120)
 - [ ] **Phase 8: UI Polish** - Column sorting, trait/archetype tooltips, fighter portraits
@@ -99,7 +99,7 @@ Plans:
 **Plans**: 1 plan in 1 wave
 
 Plans:
-- [ ] 05-01-PLAN.md -- Full-stack League History: backend offset/org-exclusion, frontend section with org filter + pagination + revenue hiding, human verification
+- [x] 05-01-PLAN.md -- Full-stack League History: backend offset/org-exclusion, frontend section with org filter + pagination + revenue hiding, human verification
 
 ### Phase 6: Tech Debt Cleanup
 **Goal**: Address low-severity tech debt items identified during milestone audit
@@ -194,7 +194,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 2. Fight History | 3/3 | Complete | 2026-03-02 |
 | 3. Fighter Identity | 2/2 | Complete | 2026-03-02 |
 | 4. Player Origins | 2/2 | Complete | 2026-03-03 |
-| 5. Historical Events UI | 0/0 | Not started | - |
+| 5. Historical Events UI | 1/1 | Complete | 2026-03-03 |
 | 6. Tech Debt Cleanup | 0/0 | Not started | - |
 | 7. Origin Roster Rebalance | 0/0 | Not started | - |
 | 8. UI Polish | 0/0 | Not started | - |
