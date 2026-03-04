@@ -15,16 +15,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models.models import (
-    Fighter, Organization, Contract, GameState, TrainingCamp,
-    WeightClass, FighterStyle, ContractStatus, Archetype,
+    Fighter,
+    Organization,
+    Contract,
+    GameState,
+    TrainingCamp,
+    WeightClass,
+    FighterStyle,
+    ContractStatus,
+    Archetype,
 )
-from simulation.traits import TRAITS, contradicts
+from simulation.traits import contradicts
 from simulation.name_gen import (
-    generate_name, create_faker_instances, pick_nationality,
+    generate_name,
+    create_faker_instances,
+    pick_nationality,
 )
-from simulation.stat_gen import generate_stats, compute_overall
+from simulation.stat_gen import generate_stats
 from simulation.narrative import suggest_nicknames
-from simulation.history import fabricate_history
 
 
 # ---------------------------------------------------------------------------
@@ -53,11 +61,11 @@ NATURAL_WEIGHT_RANGES: dict[str, tuple[int, int]] = {
 # ---------------------------------------------------------------------------
 
 ARCHETYPE_QUOTAS: dict[str, float] = {
-    "Journeyman":     0.24,
-    "Gatekeeper":     0.23,
-    "Phenom":         0.22,
-    "Late Bloomer":   0.14,
-    "Shooting Star":  0.10,
+    "Journeyman": 0.24,
+    "Gatekeeper": 0.23,
+    "Phenom": 0.22,
+    "Late Bloomer": 0.14,
+    "Shooting Star": 0.10,
     "GOAT Candidate": 0.07,
 }
 
@@ -117,36 +125,48 @@ def allocate_archetypes(count_per_class: int, np_rng: np.random.Generator) -> li
 # Validity matrix: which career stages are valid for each archetype
 _ARCHETYPE_VALID_STAGES: dict[str, list[str]] = {
     "GOAT Candidate": ["prime", "veteran"],
-    "Late Bloomer":   ["prime", "veteran"],        # bloomed late, now may be aging
-    "Shooting Star":  ["prime", "transitional"],   # peak then decline
-    "Phenom":         ["prospect", "prime"],
-    "Gatekeeper":     ["prospect", "prime", "veteran", "transitional"],
-    "Journeyman":     ["prospect", "prime", "veteran", "transitional"],
+    "Late Bloomer": ["prime", "veteran"],  # bloomed late, now may be aging
+    "Shooting Star": ["prime", "transitional"],  # peak then decline
+    "Phenom": ["prospect", "prime"],
+    "Gatekeeper": ["prospect", "prime", "veteran", "transitional"],
+    "Journeyman": ["prospect", "prime", "veteran", "transitional"],
 }
 
 # Career stage weights per archetype -- tuned so the overall distribution
 # across all archetypes approximates 20% prospect / 35% prime / 25% veteran / 20% transitional
 _CAREER_STAGE_WEIGHTS: dict[str, dict[str, float]] = {
     "GOAT Candidate": {"prime": 0.55, "veteran": 0.45},
-    "Late Bloomer":   {"prime": 0.65, "veteran": 0.35},
-    "Shooting Star":  {"prime": 0.60, "transitional": 0.40},
-    "Phenom":         {"prospect": 0.60, "prime": 0.40},
-    "Gatekeeper":     {"prospect": 0.25, "prime": 0.20, "veteran": 0.30, "transitional": 0.25},
-    "Journeyman":     {"prospect": 0.25, "prime": 0.15, "veteran": 0.30, "transitional": 0.30},
+    "Late Bloomer": {"prime": 0.65, "veteran": 0.35},
+    "Shooting Star": {"prime": 0.60, "transitional": 0.40},
+    "Phenom": {"prospect": 0.60, "prime": 0.40},
+    "Gatekeeper": {
+        "prospect": 0.25,
+        "prime": 0.20,
+        "veteran": 0.30,
+        "transitional": 0.25,
+    },
+    "Journeyman": {
+        "prospect": 0.25,
+        "prime": 0.15,
+        "veteran": 0.30,
+        "transitional": 0.30,
+    },
 }
 
 # Age ranges per career stage
 _CAREER_STAGE_AGE_RANGES: dict[str, tuple[int, int]] = {
-    "prospect":      (20, 24),
-    "prime":         (25, 31),
-    "veteran":       (32, 37),
-    "transitional":  (27, 33),
+    "prospect": (20, 24),
+    "prime": (25, 31),
+    "veteran": (32, 37),
+    "transitional": (27, 33),
 }
 
 
 def assign_career_stage(archetype: str, py_rng: random.Random) -> str:
     """Return a career stage constrained by archetype validity matrix."""
-    weights_map = _CAREER_STAGE_WEIGHTS.get(archetype, _CAREER_STAGE_WEIGHTS["Journeyman"])
+    weights_map = _CAREER_STAGE_WEIGHTS.get(
+        archetype, _CAREER_STAGE_WEIGHTS["Journeyman"]
+    )
     stages = list(weights_map.keys())
     weights = list(weights_map.values())
     return py_rng.choices(stages, weights=weights, k=1)[0]
@@ -161,6 +181,7 @@ def _age_from_career_stage(career_stage: str, py_rng: random.Random) -> int:
 # ---------------------------------------------------------------------------
 # Fight record generation (enhanced for career stage)
 # ---------------------------------------------------------------------------
+
 
 def _gen_record(age: int, career_stage: str, py_rng: random.Random) -> dict:
     """Generate career-stage-appropriate fight record.
@@ -190,8 +211,11 @@ def _gen_record(age: int, career_stage: str, py_rng: random.Random) -> dict:
     sub_wins = min(sub_wins, wins - ko_wins)
 
     return {
-        "wins": wins, "losses": losses, "draws": draws,
-        "ko_wins": ko_wins, "sub_wins": sub_wins,
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "ko_wins": ko_wins,
+        "sub_wins": sub_wins,
     }
 
 
@@ -199,7 +223,10 @@ def _gen_record(age: int, career_stage: str, py_rng: random.Random) -> dict:
 # Prime window derivation
 # ---------------------------------------------------------------------------
 
-def _prime_window(career_stage: str, age: int, py_rng: random.Random) -> tuple[int, int]:
+
+def _prime_window(
+    career_stage: str, age: int, py_rng: random.Random
+) -> tuple[int, int]:
     """Derive prime_start/prime_end based on career stage and age."""
     if career_stage == "prospect":
         prime_start = py_rng.randint(25, 27)
@@ -226,11 +253,11 @@ def _prime_window(career_stage: str, age: int, py_rng: random.Random) -> tuple[i
 # Salary ranges per archetype (annual)
 _ARCHETYPE_SALARY: dict[str, tuple[int, int]] = {
     "GOAT Candidate": (80_000, 200_000),
-    "Shooting Star":  (50_000, 120_000),
-    "Phenom":         (30_000, 80_000),
-    "Late Bloomer":   (15_000, 50_000),
-    "Gatekeeper":     (12_000, 40_000),
-    "Journeyman":     (8_000, 25_000),
+    "Shooting Star": (50_000, 120_000),
+    "Phenom": (30_000, 80_000),
+    "Late Bloomer": (15_000, 50_000),
+    "Gatekeeper": (12_000, 40_000),
+    "Journeyman": (8_000, 25_000),
 }
 
 
@@ -316,6 +343,7 @@ def _assign_organization(
 # Preserved helper functions
 # ---------------------------------------------------------------------------
 
+
 def seed_organizations(
     session: Session,
     player_org_name: str = "Player Promotion",
@@ -324,14 +352,30 @@ def seed_organizations(
     origin_type: str | None = None,
 ) -> list[Organization]:
     orgs = [
-        Organization(name="Ultimate Combat Championship", prestige=90.0,
-                     bank_balance=50_000_000.0, is_player=False),
-        Organization(name="Bellator MMA", prestige=70.0,
-                     bank_balance=20_000_000.0, is_player=False),
-        Organization(name="One Championship", prestige=75.0,
-                     bank_balance=25_000_000.0, is_player=False),
-        Organization(name=player_org_name, prestige=player_org_prestige,
-                     bank_balance=player_org_balance, is_player=True),
+        Organization(
+            name="Ultimate Combat Championship",
+            prestige=90.0,
+            bank_balance=50_000_000.0,
+            is_player=False,
+        ),
+        Organization(
+            name="Bellator MMA",
+            prestige=70.0,
+            bank_balance=20_000_000.0,
+            is_player=False,
+        ),
+        Organization(
+            name="One Championship",
+            prestige=75.0,
+            bank_balance=25_000_000.0,
+            is_player=False,
+        ),
+        Organization(
+            name=player_org_name,
+            prestige=player_org_prestige,
+            bank_balance=player_org_balance,
+            is_player=True,
+        ),
     ]
     for org in orgs:
         session.add(org)
@@ -370,12 +414,14 @@ def enforce_roster_target(session: Session, player_org_id: int, target: int) -> 
     if len(active_contracts) <= target:
         return 0
 
-    # Batch load fighter overalls to avoid N+1 queries
+    # Batch load fighters to compute overall (it's a @property, not a column)
     fighter_ids = [c.fighter_id for c in active_contracts]
-    rows = session.execute(
-        select(Fighter.id, Fighter.overall).where(Fighter.id.in_(fighter_ids))
-    ).all()
-    overall_map = {row.id: row.overall for row in rows}
+    fighters = (
+        session.execute(select(Fighter).where(Fighter.id.in_(fighter_ids)))
+        .scalars()
+        .all()
+    )
+    overall_map = {f.id: f.overall for f in fighters}
 
     active_contracts.sort(key=lambda c: overall_map.get(c.fighter_id, 0))
 
@@ -390,7 +436,9 @@ def enforce_roster_target(session: Session, player_org_id: int, target: int) -> 
     return released
 
 
-def enforce_roster_quality(session: Session, player_org_id: int, quality_type: str) -> int:
+def enforce_roster_quality(
+    session: Session, player_org_id: int, quality_type: str
+) -> int:
     """Adjust roster composition to match origin theme. Returns number of releases."""
     if quality_type == "inherited":
         # Natural distribution is fine for The Heir
@@ -398,8 +446,7 @@ def enforce_roster_quality(session: Session, player_org_id: int, quality_type: s
 
     active_contracts = (
         session.execute(
-            select(Contract)
-            .where(
+            select(Contract).where(
                 Contract.organization_id == player_org_id,
                 Contract.status == ContractStatus.ACTIVE,
             )
@@ -410,9 +457,11 @@ def enforce_roster_quality(session: Session, player_org_id: int, quality_type: s
 
     # Batch load fighters to avoid N+1 queries
     fighter_ids = [c.fighter_id for c in active_contracts]
-    fighters = session.execute(
-        select(Fighter).where(Fighter.id.in_(fighter_ids))
-    ).scalars().all()
+    fighters = (
+        session.execute(select(Fighter).where(Fighter.id.in_(fighter_ids)))
+        .scalars()
+        .all()
+    )
     fighter_map = {f.id: f for f in fighters}
 
     released = 0
@@ -441,20 +490,24 @@ def enforce_roster_quality(session: Session, player_org_id: int, quality_type: s
     return released
 
 
-def _starting_popularity_hype(archetype: Archetype, rng: random.Random) -> tuple[float, float]:
+def _starting_popularity_hype(
+    archetype: Archetype, rng: random.Random
+) -> tuple[float, float]:
     ranges = {
         Archetype.GOAT_CANDIDATE: ((40, 60), (60, 80)),
-        Archetype.PHENOM:         ((20, 40), (50, 70)),
-        Archetype.GATEKEEPER:     ((30, 50), (10, 20)),
-        Archetype.JOURNEYMAN:     ((5,  20), (5,  15)),
-        Archetype.LATE_BLOOMER:   ((10, 30), (20, 40)),
-        Archetype.SHOOTING_STAR:  ((10, 30), (20, 40)),
+        Archetype.PHENOM: ((20, 40), (50, 70)),
+        Archetype.GATEKEEPER: ((30, 50), (10, 20)),
+        Archetype.JOURNEYMAN: ((5, 20), (5, 15)),
+        Archetype.LATE_BLOOMER: ((10, 30), (20, 40)),
+        Archetype.SHOOTING_STAR: ((10, 30), (20, 40)),
     }
     (plo, phi), (hlo, hhi) = ranges[archetype]
     return round(rng.uniform(plo, phi), 1), round(rng.uniform(hlo, hhi), 1)
 
 
-def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -> list[str]:
+def _assign_traits(
+    archetype: Archetype, fighter: Fighter, rng: random.Random
+) -> list[str]:
     """Return 1-3 trait names for a fighter based on archetype + stats."""
     traits: list[str] = []
 
@@ -476,28 +529,52 @@ def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -
     # Archetype-based weighted pool
     _pools: dict[Archetype, list[tuple[str, int]]] = {
         Archetype.GOAT_CANDIDATE: [
-            ("knockout_artist", 3), ("fast_hands", 3), ("pressure_fighter", 2),
-            ("ground_and_pound_specialist", 2), ("veteran_iq", 1), ("media_darling", 1),
+            ("knockout_artist", 3),
+            ("fast_hands", 3),
+            ("pressure_fighter", 2),
+            ("ground_and_pound_specialist", 2),
+            ("veteran_iq", 1),
+            ("media_darling", 1),
         ],
         Archetype.PHENOM: [
-            ("fast_hands", 4), ("pressure_fighter", 3), ("knockout_artist", 3),
-            ("gas_tank", 2), ("comeback_king", 2), ("slow_starter", 1),
+            ("fast_hands", 4),
+            ("pressure_fighter", 3),
+            ("knockout_artist", 3),
+            ("gas_tank", 2),
+            ("comeback_king", 2),
+            ("slow_starter", 1),
         ],
         Archetype.GATEKEEPER: [
-            ("iron_chin", 3), ("comeback_king", 3), ("slow_starter", 2),
-            ("gas_tank", 2), ("ground_and_pound_specialist", 2), ("journeyman_heart", 1),
+            ("iron_chin", 3),
+            ("comeback_king", 3),
+            ("slow_starter", 2),
+            ("gas_tank", 2),
+            ("ground_and_pound_specialist", 2),
+            ("journeyman_heart", 1),
         ],
         Archetype.JOURNEYMAN: [
-            ("iron_chin", 3), ("veteran_iq", 3), ("slow_starter", 2),
-            ("comeback_king", 2), ("submission_magnet", 2), ("media_darling", 1),
+            ("iron_chin", 3),
+            ("veteran_iq", 3),
+            ("slow_starter", 2),
+            ("comeback_king", 2),
+            ("submission_magnet", 2),
+            ("media_darling", 1),
         ],
         Archetype.LATE_BLOOMER: [
-            ("veteran_iq", 4), ("slow_starter", 3), ("iron_chin", 2),
-            ("comeback_king", 2), ("gas_tank", 2), ("ground_and_pound_specialist", 1),
+            ("veteran_iq", 4),
+            ("slow_starter", 3),
+            ("iron_chin", 2),
+            ("comeback_king", 2),
+            ("gas_tank", 2),
+            ("ground_and_pound_specialist", 1),
         ],
         Archetype.SHOOTING_STAR: [
-            ("knockout_artist", 4), ("fast_hands", 3), ("submission_magnet", 3),
-            ("pressure_fighter", 2), ("media_darling", 2), ("gas_tank", 1),
+            ("knockout_artist", 4),
+            ("fast_hands", 3),
+            ("submission_magnet", 3),
+            ("pressure_fighter", 2),
+            ("media_darling", 2),
+            ("gas_tank", 1),
         ],
     }
 
@@ -509,19 +586,36 @@ def _assign_traits(archetype: Archetype, fighter: Fighter, rng: random.Random) -
 
     # Stat-based bonus weights
     if fighter.striking >= 80:
-        pool = [(t, w + (2 if t in ("fast_hands", "knockout_artist", "pressure_fighter") else 0)) for t, w in pool]
+        pool = [
+            (
+                t,
+                w
+                + (
+                    2
+                    if t in ("fast_hands", "knockout_artist", "pressure_fighter")
+                    else 0
+                ),
+            )
+            for t, w in pool
+        ]
     if fighter.cardio >= 80:
         pool = [(t, w + (2 if t == "gas_tank" else 0)) for t, w in pool]
     if fighter.chin >= 80:
-        pool = [(t, w + (2 if t in ("iron_chin", "comeback_king") else 0)) for t, w in pool]
+        pool = [
+            (t, w + (2 if t in ("iron_chin", "comeback_king") else 0)) for t, w in pool
+        ]
     if fighter.grappling >= 80:
-        pool = [(t, w + (2 if t == "ground_and_pound_specialist" else 0)) for t, w in pool]
+        pool = [
+            (t, w + (2 if t == "ground_and_pound_specialist" else 0)) for t, w in pool
+        ]
 
     target = rng.randint(1, 3)
     attempts = 0
     while len(traits) < target and pool and attempts < 20:
         attempts += 1
-        candidates = [(t, w) for t, w in pool if t not in traits and not contradicts(t, traits)]
+        candidates = [
+            (t, w) for t, w in pool if t not in traits and not contradicts(t, traits)
+        ]
         if not candidates:
             break
         names, weights = zip(*candidates)
@@ -577,11 +671,11 @@ def _adjust_record_for_archetype(
 # ---------------------------------------------------------------------------
 
 _ARCHETYPE_ENUM_MAP: dict[str, Archetype] = {
-    "Journeyman":     Archetype.JOURNEYMAN,
-    "Gatekeeper":     Archetype.GATEKEEPER,
-    "Phenom":         Archetype.PHENOM,
-    "Late Bloomer":   Archetype.LATE_BLOOMER,
-    "Shooting Star":  Archetype.SHOOTING_STAR,
+    "Journeyman": Archetype.JOURNEYMAN,
+    "Gatekeeper": Archetype.GATEKEEPER,
+    "Phenom": Archetype.PHENOM,
+    "Late Bloomer": Archetype.LATE_BLOOMER,
+    "Shooting Star": Archetype.SHOOTING_STAR,
     "GOAT Candidate": Archetype.GOAT_CANDIDATE,
 }
 
@@ -589,6 +683,7 @@ _ARCHETYPE_ENUM_MAP: dict[str, Archetype] = {
 # ---------------------------------------------------------------------------
 # Main seed pipeline
 # ---------------------------------------------------------------------------
+
 
 def seed_fighters(
     session: Session,
@@ -718,8 +813,13 @@ def seed_fighters(
 
             # 5. Org distribution
             org = _assign_organization(
-                career_stage, archetype_str, orgs, py_rng,
-                free_agent_count, len(fighters), max_free_agents,
+                career_stage,
+                archetype_str,
+                orgs,
+                py_rng,
+                free_agent_count,
+                len(fighters),
+                max_free_agents,
             )
 
             if org is not None:
@@ -749,24 +849,30 @@ def seed_fighters(
         # Find signed fighters that can be converted to free agents
         # Prefer prospects and veterans for realism
         signed_fighters = [
-            f for f in fighters
+            f
+            for f in fighters
             if f.id not in {fa.id for fa in fighters[:free_agent_count]}
         ]
         # Get fighters with contracts, sort by suitability for free agency
-        from sqlalchemy import and_
         for f in fighters:
             if free_agent_count >= min_free_agents:
                 break
-            arch_val = f.archetype.value if hasattr(f.archetype, 'value') else f.archetype
+            arch_val = (
+                f.archetype.value if hasattr(f.archetype, "value") else f.archetype
+            )
             if arch_val == "GOAT Candidate":
                 continue
             # Check if fighter has an active contract
-            existing_contract = session.execute(
-                select(Contract).where(
-                    Contract.fighter_id == f.id,
-                    Contract.status == ContractStatus.ACTIVE,
+            existing_contract = (
+                session.execute(
+                    select(Contract).where(
+                        Contract.fighter_id == f.id,
+                        Contract.status == ContractStatus.ACTIVE,
+                    )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
             if existing_contract and (f.age <= 24 or f.age >= 32):
                 session.delete(existing_contract)
                 free_agent_count += 1
@@ -784,23 +890,128 @@ def seed_fighters(
 
 TRAINING_CAMPS = [
     # Tier 1
-    {"name": "Local Gym", "specialty": "Well-Rounded", "tier": 1, "cost": 2000, "prestige_required": 0, "slots": 10},
-    {"name": "City Boxing Club", "specialty": "Striking", "tier": 1, "cost": 2500, "prestige_required": 0, "slots": 8},
-    {"name": "Community Wrestling Center", "specialty": "Wrestling", "tier": 1, "cost": 2000, "prestige_required": 0, "slots": 8},
-    {"name": "BJJ Academy", "specialty": "Grappling", "tier": 1, "cost": 2500, "prestige_required": 0, "slots": 8},
-    {"name": "Conditioning Lab", "specialty": "Conditioning", "tier": 1, "cost": 3000, "prestige_required": 0, "slots": 6},
+    {
+        "name": "Local Gym",
+        "specialty": "Well-Rounded",
+        "tier": 1,
+        "cost": 2000,
+        "prestige_required": 0,
+        "slots": 10,
+    },
+    {
+        "name": "City Boxing Club",
+        "specialty": "Striking",
+        "tier": 1,
+        "cost": 2500,
+        "prestige_required": 0,
+        "slots": 8,
+    },
+    {
+        "name": "Community Wrestling Center",
+        "specialty": "Wrestling",
+        "tier": 1,
+        "cost": 2000,
+        "prestige_required": 0,
+        "slots": 8,
+    },
+    {
+        "name": "BJJ Academy",
+        "specialty": "Grappling",
+        "tier": 1,
+        "cost": 2500,
+        "prestige_required": 0,
+        "slots": 8,
+    },
+    {
+        "name": "Conditioning Lab",
+        "specialty": "Conditioning",
+        "tier": 1,
+        "cost": 3000,
+        "prestige_required": 0,
+        "slots": 6,
+    },
     # Tier 2
-    {"name": "Elite Striking Academy", "specialty": "Striking", "tier": 2, "cost": 6000, "prestige_required": 40, "slots": 6},
-    {"name": "Championship Wrestling Room", "specialty": "Wrestling", "tier": 2, "cost": 6000, "prestige_required": 40, "slots": 6},
-    {"name": "World-Class BJJ", "specialty": "Grappling", "tier": 2, "cost": 7000, "prestige_required": 40, "slots": 5},
-    {"name": "Performance Institute", "specialty": "Conditioning", "tier": 2, "cost": 8000, "prestige_required": 40, "slots": 5},
-    {"name": "MMA Combine", "specialty": "Well-Rounded", "tier": 2, "cost": 7000, "prestige_required": 40, "slots": 6},
+    {
+        "name": "Elite Striking Academy",
+        "specialty": "Striking",
+        "tier": 2,
+        "cost": 6000,
+        "prestige_required": 40,
+        "slots": 6,
+    },
+    {
+        "name": "Championship Wrestling Room",
+        "specialty": "Wrestling",
+        "tier": 2,
+        "cost": 6000,
+        "prestige_required": 40,
+        "slots": 6,
+    },
+    {
+        "name": "World-Class BJJ",
+        "specialty": "Grappling",
+        "tier": 2,
+        "cost": 7000,
+        "prestige_required": 40,
+        "slots": 5,
+    },
+    {
+        "name": "Performance Institute",
+        "specialty": "Conditioning",
+        "tier": 2,
+        "cost": 8000,
+        "prestige_required": 40,
+        "slots": 5,
+    },
+    {
+        "name": "MMA Combine",
+        "specialty": "Well-Rounded",
+        "tier": 2,
+        "cost": 7000,
+        "prestige_required": 40,
+        "slots": 6,
+    },
     # Tier 3
-    {"name": "The Factory", "specialty": "Well-Rounded", "tier": 3, "cost": 15000, "prestige_required": 70, "slots": 4},
-    {"name": "Apex Striking", "specialty": "Striking", "tier": 3, "cost": 14000, "prestige_required": 70, "slots": 4},
-    {"name": "Elite Wrestling Institute", "specialty": "Wrestling", "tier": 3, "cost": 14000, "prestige_required": 70, "slots": 4},
-    {"name": "Submission Lab", "specialty": "Grappling", "tier": 3, "cost": 16000, "prestige_required": 70, "slots": 3},
-    {"name": "Human Performance Center", "specialty": "Conditioning", "tier": 3, "cost": 18000, "prestige_required": 70, "slots": 3},
+    {
+        "name": "The Factory",
+        "specialty": "Well-Rounded",
+        "tier": 3,
+        "cost": 15000,
+        "prestige_required": 70,
+        "slots": 4,
+    },
+    {
+        "name": "Apex Striking",
+        "specialty": "Striking",
+        "tier": 3,
+        "cost": 14000,
+        "prestige_required": 70,
+        "slots": 4,
+    },
+    {
+        "name": "Elite Wrestling Institute",
+        "specialty": "Wrestling",
+        "tier": 3,
+        "cost": 14000,
+        "prestige_required": 70,
+        "slots": 4,
+    },
+    {
+        "name": "Submission Lab",
+        "specialty": "Grappling",
+        "tier": 3,
+        "cost": 16000,
+        "prestige_required": 70,
+        "slots": 3,
+    },
+    {
+        "name": "Human Performance Center",
+        "specialty": "Conditioning",
+        "tier": 3,
+        "cost": 18000,
+        "prestige_required": 70,
+        "slots": 3,
+    },
 ]
 
 
@@ -810,11 +1021,13 @@ def _seed_training_camps(session: Session) -> None:
     if existing:
         return
     for camp_data in TRAINING_CAMPS:
-        session.add(TrainingCamp(
-            name=camp_data["name"],
-            specialty=camp_data["specialty"],
-            tier=camp_data["tier"],
-            cost_per_month=camp_data["cost"],
-            prestige_required=camp_data["prestige_required"],
-            slots=camp_data["slots"],
-        ))
+        session.add(
+            TrainingCamp(
+                name=camp_data["name"],
+                specialty=camp_data["specialty"],
+                tier=camp_data["tier"],
+                cost_per_month=camp_data["cost"],
+                prestige_required=camp_data["prestige_required"],
+                slots=camp_data["slots"],
+            )
+        )
