@@ -18,14 +18,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from models.models import (
-    Fighter, Organization, Contract, Event, Fight,
-    WeightClass, FightMethod, FighterStyle, EventStatus, ContractStatus,
+    Fighter,
+    Organization,
+    Contract,
+    Event,
+    Fight,
+    WeightClass,
+    FightMethod,
+    EventStatus,
+    ContractStatus,
 )
 
 
 # ---------------------------------------------------------------------------
 # Round word and ordinal helpers
 # ---------------------------------------------------------------------------
+
 
 def _round_word(n: int) -> str:
     """Convert round number to word: 1 -> 'first', 2 -> 'second', 3 -> 'third'."""
@@ -36,8 +44,16 @@ def _round_word(n: int) -> str:
 def _ordinal(n: int) -> str:
     """Convert integer to ordinal word: 1 -> 'first', 2 -> 'second', etc."""
     words = {
-        1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
-        6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth",
+        1: "first",
+        2: "second",
+        3: "third",
+        4: "fourth",
+        5: "fifth",
+        6: "sixth",
+        7: "seventh",
+        8: "eighth",
+        9: "ninth",
+        10: "tenth",
     }
     if n in words:
         return words[n]
@@ -87,7 +103,6 @@ HISTORY_NARRATIVE_TEMPLATES: dict[tuple[str, str], list[str]] = {
         "{winner} finished {loser} with strikes in round {round}.",
         "{winner} dropped {loser} and earned the stoppage in the {round_word} round.",
     ],
-
     # ----- Submission -----
     ("Submission", "title"): [
         "{winner} captured the {division} crown with a submission of {loser} in the {round_word} round.",
@@ -114,7 +129,6 @@ HISTORY_NARRATIVE_TEMPLATES: dict[tuple[str, str], list[str]] = {
         "{winner} forced {loser} to tap in round {round}.",
         "{winner} locked in the submission on {loser} in the {round_word} round.",
     ],
-
     # ----- Unanimous Decision -----
     ("Unanimous Decision", "title"): [
         "{winner} claimed the {division} title by unanimous decision over {loser} after three dominant rounds.",
@@ -141,7 +155,6 @@ HISTORY_NARRATIVE_TEMPLATES: dict[tuple[str, str], list[str]] = {
         "{winner} dominated on the scorecards, earning a unanimous decision over {loser}.",
         "{winner} controlled the action for a clear unanimous decision over {loser}.",
     ],
-
     # ----- Split Decision -----
     ("Split Decision", "title"): [
         "{winner} claimed the {division} title in a razor-close split decision over {loser}.",
@@ -168,7 +181,6 @@ HISTORY_NARRATIVE_TEMPLATES: dict[tuple[str, str], list[str]] = {
         "{winner} edged {loser} in a competitive split decision.",
         "{winner} took a hard-fought split decision over {loser} after three rounds.",
     ],
-
     # ----- Majority Decision -----
     ("Majority Decision", "title"): [
         "{winner} claimed the {division} title by majority decision over {loser}.",
@@ -230,6 +242,7 @@ STYLE_NARRATIVE_MODIFIERS: dict[tuple[str, str], list[str]] = {
 # Narrative generator
 # ---------------------------------------------------------------------------
 
+
 def _generate_narrative(
     winner: Fighter,
     loser: Fighter,
@@ -256,14 +269,21 @@ def _generate_narrative(
     method_val = method.value if hasattr(method, "value") else str(method)
     key = (method_val, context)
 
-    templates = HISTORY_NARRATIVE_TEMPLATES.get(key, HISTORY_NARRATIVE_TEMPLATES.get((method_val, "standard"), [
-        "{winner} defeated {loser}."
-    ]))
+    templates = HISTORY_NARRATIVE_TEMPLATES.get(
+        key,
+        HISTORY_NARRATIVE_TEMPLATES.get(
+            (method_val, "standard"), ["{winner} defeated {loser}."]
+        ),
+    )
 
     template = py_rng.choice(templates)
 
     # Get division name from winner's weight class
-    division = winner.weight_class.value if hasattr(winner.weight_class, "value") else str(winner.weight_class)
+    division = (
+        winner.weight_class.value
+        if hasattr(winner.weight_class, "value")
+        else str(winner.weight_class)
+    )
 
     narrative = template.format(
         winner=winner.name,
@@ -275,7 +295,9 @@ def _generate_narrative(
     )
 
     # Apply style modifier if winner won outside their primary style
-    winner_style = winner.style.value if hasattr(winner.style, "value") else str(winner.style)
+    winner_style = (
+        winner.style.value if hasattr(winner.style, "value") else str(winner.style)
+    )
     modifier_key = (winner_style, method_val)
     if modifier_key in STYLE_NARRATIVE_MODIFIERS:
         modifier = py_rng.choice(STYLE_NARRATIVE_MODIFIERS[modifier_key])
@@ -290,10 +312,34 @@ def _generate_narrative(
 
 # Method distribution weights by winner's FighterStyle
 _STYLE_METHOD_WEIGHTS: dict[str, dict[str, int]] = {
-    "Striker":      {"KO/TKO": 45, "Submission": 10, "Unanimous Decision": 25, "Split Decision": 12, "Majority Decision": 8},
-    "Grappler":     {"KO/TKO": 10, "Submission": 45, "Unanimous Decision": 25, "Split Decision": 12, "Majority Decision": 8},
-    "Wrestler":     {"KO/TKO": 15, "Submission": 15, "Unanimous Decision": 40, "Split Decision": 18, "Majority Decision": 12},
-    "Well-Rounded": {"KO/TKO": 25, "Submission": 20, "Unanimous Decision": 30, "Split Decision": 15, "Majority Decision": 10},
+    "Striker": {
+        "KO/TKO": 45,
+        "Submission": 10,
+        "Unanimous Decision": 25,
+        "Split Decision": 12,
+        "Majority Decision": 8,
+    },
+    "Grappler": {
+        "KO/TKO": 10,
+        "Submission": 45,
+        "Unanimous Decision": 25,
+        "Split Decision": 12,
+        "Majority Decision": 8,
+    },
+    "Wrestler": {
+        "KO/TKO": 15,
+        "Submission": 15,
+        "Unanimous Decision": 40,
+        "Split Decision": 18,
+        "Majority Decision": 12,
+    },
+    "Well-Rounded": {
+        "KO/TKO": 25,
+        "Submission": 20,
+        "Unanimous Decision": 30,
+        "Split Decision": 15,
+        "Majority Decision": 10,
+    },
 }
 
 # Round weights for finishes (KO/Submission)
@@ -316,7 +362,9 @@ def _resolve_fight_outcome(
 
     # Get style string
     style = winner.style.value if hasattr(winner.style, "value") else str(winner.style)
-    method_weights = _STYLE_METHOD_WEIGHTS.get(style, _STYLE_METHOD_WEIGHTS["Well-Rounded"])
+    method_weights = _STYLE_METHOD_WEIGHTS.get(
+        style, _STYLE_METHOD_WEIGHTS["Well-Rounded"]
+    )
 
     # Pick method
     methods = list(method_weights.keys())
@@ -345,17 +393,27 @@ def _resolve_draw_outcome(py_rng: random.Random) -> dict:
 # ---------------------------------------------------------------------------
 
 _HISTORY_VENUES = [
-    "Madison Square Garden", "T-Mobile Arena", "Barclays Center",
-    "United Center", "Crypto.com Arena", "Chase Center",
-    "Rogers Centre", "O2 Arena", "Melbourne Arena",
-    "Toyota Center", "Scotiabank Arena", "Saitama Super Arena",
-    "Singapore Indoor Stadium", "Axiata Arena",
+    "Madison Square Garden",
+    "T-Mobile Arena",
+    "Barclays Center",
+    "United Center",
+    "Crypto.com Arena",
+    "Chase Center",
+    "Rogers Centre",
+    "O2 Arena",
+    "Melbourne Arena",
+    "Toyota Center",
+    "Scotiabank Arena",
+    "Saitama Super Arena",
+    "Singapore Indoor Stadium",
+    "Axiata Arena",
 ]
 
 
 # ---------------------------------------------------------------------------
 # Event timeline builder
 # ---------------------------------------------------------------------------
+
 
 def _build_event_timeline(
     orgs: list[Organization],
@@ -387,6 +445,7 @@ def _build_event_timeline(
 # ---------------------------------------------------------------------------
 # Rivalry pair pre-generation
 # ---------------------------------------------------------------------------
+
 
 def _generate_rivalry_pairs(
     fighters_by_org_wc: dict[tuple[int, str], list[Fighter]],
@@ -469,6 +528,7 @@ def _generate_rivalry_pairs(
 # Matchmaker
 # ---------------------------------------------------------------------------
 
+
 def _matchmake_card(
     org: Organization,
     fighters_by_wc: dict[str, list[Fighter]],
@@ -517,8 +577,11 @@ def _matchmake_card(
         wc_candidates = []
         for wc in WeightClass:
             wc_val = wc.value
-            available = [f for f in org_roster_by_wc.get(wc_val, [])
-                         if f.id not in booked_this_event]
+            available = [
+                f
+                for f in org_roster_by_wc.get(wc_val, [])
+                if f.id not in booked_this_event
+            ]
             if len(available) >= 2:
                 wc_candidates.append((wc_val, available))
 
@@ -531,41 +594,68 @@ def _matchmake_card(
                 # Defense: champion vs challenger
                 champ_id = champ_info["champion_id"]
                 champ = fighter_lookup.get(champ_id)
-                if champ and remaining_fights.get(champ_id, 0) > 0 and champ_id not in booked_this_event:
+                if (
+                    champ
+                    and remaining_fights.get(champ_id, 0) > 0
+                    and champ_id not in booked_this_event
+                ):
                     challengers = [f for f in available if f.id != champ_id]
                     if challengers:
                         # Pick top challenger by overall
                         challengers.sort(key=lambda f: f.overall, reverse=True)
                         challenger = challengers[0]
                         winner_id, is_draw = _determine_winner(
-                            champ, challenger, remaining_wins, remaining_losses,
-                            remaining_draws, py_rng
+                            champ,
+                            challenger,
+                            remaining_wins,
+                            remaining_losses,
+                            remaining_draws,
+                            py_rng,
                         )
-                        card.append({
-                            "fighter_a_id": champ.id,
-                            "fighter_b_id": challenger.id,
-                            "weight_class": wc_val,
-                            "is_title_fight": True,
-                            "card_position": target_fights,  # main event
-                            "winner_id": winner_id,
-                            "is_draw": is_draw,
-                            "is_rivalry": False,
-                        })
+                        card.append(
+                            {
+                                "fighter_a_id": champ.id,
+                                "fighter_b_id": challenger.id,
+                                "weight_class": wc_val,
+                                "is_title_fight": True,
+                                "card_position": target_fights,  # main event
+                                "winner_id": winner_id,
+                                "is_draw": is_draw,
+                                "is_rivalry": False,
+                            }
+                        )
                         booked_this_event.add(champ.id)
                         booked_this_event.add(challenger.id)
-                        _decrement_records(champ.id, challenger.id, winner_id, is_draw,
-                                           remaining_fights, remaining_wins, remaining_losses, remaining_draws)
-                        pair_key = (min(champ.id, challenger.id), max(champ.id, challenger.id))
+                        _decrement_records(
+                            champ.id,
+                            challenger.id,
+                            winner_id,
+                            is_draw,
+                            remaining_fights,
+                            remaining_wins,
+                            remaining_losses,
+                            remaining_draws,
+                        )
+                        pair_key = (
+                            min(champ.id, challenger.id),
+                            max(champ.id, challenger.id),
+                        )
                         matchup_history[pair_key] = matchup_history.get(pair_key, 0) + 1
             else:
                 # Inaugural title fight: pick top 2 fighters
-                available_sorted = sorted(available, key=lambda f: f.overall, reverse=True)
+                available_sorted = sorted(
+                    available, key=lambda f: f.overall, reverse=True
+                )
                 if len(available_sorted) >= 2:
                     f_a = available_sorted[0]
                     f_b = available_sorted[1]
                     winner_id, is_draw = _determine_winner(
-                        f_a, f_b, remaining_wins, remaining_losses,
-                        remaining_draws, py_rng
+                        f_a,
+                        f_b,
+                        remaining_wins,
+                        remaining_losses,
+                        remaining_draws,
+                        py_rng,
                     )
                     # Inaugural title fight should not be a draw
                     if is_draw:
@@ -576,20 +666,30 @@ def _matchmake_card(
                         elif remaining_wins.get(f_b.id, 0) > 0:
                             winner_id = f_b.id
                             is_draw = False
-                    card.append({
-                        "fighter_a_id": f_a.id,
-                        "fighter_b_id": f_b.id,
-                        "weight_class": wc_val,
-                        "is_title_fight": True,
-                        "card_position": target_fights,
-                        "winner_id": winner_id,
-                        "is_draw": is_draw,
-                        "is_rivalry": False,
-                    })
+                    card.append(
+                        {
+                            "fighter_a_id": f_a.id,
+                            "fighter_b_id": f_b.id,
+                            "weight_class": wc_val,
+                            "is_title_fight": True,
+                            "card_position": target_fights,
+                            "winner_id": winner_id,
+                            "is_draw": is_draw,
+                            "is_rivalry": False,
+                        }
+                    )
                     booked_this_event.add(f_a.id)
                     booked_this_event.add(f_b.id)
-                    _decrement_records(f_a.id, f_b.id, winner_id, is_draw,
-                                       remaining_fights, remaining_wins, remaining_losses, remaining_draws)
+                    _decrement_records(
+                        f_a.id,
+                        f_b.id,
+                        winner_id,
+                        is_draw,
+                        remaining_fights,
+                        remaining_wins,
+                        remaining_losses,
+                        remaining_draws,
+                    )
                     pair_key = (min(f_a.id, f_b.id), max(f_a.id, f_b.id))
                     matchup_history[pair_key] = matchup_history.get(pair_key, 0) + 1
 
@@ -621,24 +721,38 @@ def _matchmake_card(
                 continue
 
             winner_id, is_draw = _determine_winner(
-                a_fighter, b_fighter, remaining_wins, remaining_losses,
-                remaining_draws, py_rng
+                a_fighter,
+                b_fighter,
+                remaining_wins,
+                remaining_losses,
+                remaining_draws,
+                py_rng,
             )
             is_rivalry = rivalry_booked.get(pair_key, 0) >= 1  # 2nd+ fight is a rematch
-            card.append({
-                "fighter_a_id": a_id,
-                "fighter_b_id": b_id,
-                "weight_class": wc_val,
-                "is_title_fight": False,
-                "card_position": len(card),
-                "winner_id": winner_id,
-                "is_draw": is_draw,
-                "is_rivalry": is_rivalry,
-            })
+            card.append(
+                {
+                    "fighter_a_id": a_id,
+                    "fighter_b_id": b_id,
+                    "weight_class": wc_val,
+                    "is_title_fight": False,
+                    "card_position": len(card),
+                    "winner_id": winner_id,
+                    "is_draw": is_draw,
+                    "is_rivalry": is_rivalry,
+                }
+            )
             booked_this_event.add(a_id)
             booked_this_event.add(b_id)
-            _decrement_records(a_id, b_id, winner_id, is_draw,
-                               remaining_fights, remaining_wins, remaining_losses, remaining_draws)
+            _decrement_records(
+                a_id,
+                b_id,
+                winner_id,
+                is_draw,
+                remaining_fights,
+                remaining_wins,
+                remaining_losses,
+                remaining_draws,
+            )
             rivalry_booked[pair_key] = rivalry_booked.get(pair_key, 0) + 1
             matchup_history[pair_key] = matchup_history.get(pair_key, 0) + 1
 
@@ -650,8 +764,11 @@ def _matchmake_card(
         if len(card) >= target_fights:
             break
         wc_val = wc.value
-        available = [f for f in org_roster_by_wc.get(wc_val, [])
-                     if f.id not in booked_this_event and remaining_fights.get(f.id, 0) > 0]
+        available = [
+            f
+            for f in org_roster_by_wc.get(wc_val, [])
+            if f.id not in booked_this_event and remaining_fights.get(f.id, 0) > 0
+        ]
         # Sort by remaining fight budget (descending), with deterministic
         # tiebreaker by id. This ensures high-budget veterans get booked first.
         available.sort(key=lambda f: (-remaining_fights.get(f.id, 0), f.id))
@@ -672,25 +789,34 @@ def _matchmake_card(
                     continue  # Try next opponent instead of giving up
 
                 winner_id, is_draw = _determine_winner(
-                    f_a, f_b, remaining_wins, remaining_losses,
-                    remaining_draws, py_rng
+                    f_a, f_b, remaining_wins, remaining_losses, remaining_draws, py_rng
                 )
-                card.append({
-                    "fighter_a_id": f_a.id,
-                    "fighter_b_id": f_b.id,
-                    "weight_class": wc_val,
-                    "is_title_fight": False,
-                    "card_position": len(card),
-                    "winner_id": winner_id,
-                    "is_draw": is_draw,
-                    "is_rivalry": False,
-                })
+                card.append(
+                    {
+                        "fighter_a_id": f_a.id,
+                        "fighter_b_id": f_b.id,
+                        "weight_class": wc_val,
+                        "is_title_fight": False,
+                        "card_position": len(card),
+                        "winner_id": winner_id,
+                        "is_draw": is_draw,
+                        "is_rivalry": False,
+                    }
+                )
                 booked_this_event.add(f_a.id)
                 booked_this_event.add(f_b.id)
                 matched.add(f_a.id)
                 matched.add(f_b.id)
-                _decrement_records(f_a.id, f_b.id, winner_id, is_draw,
-                                   remaining_fights, remaining_wins, remaining_losses, remaining_draws)
+                _decrement_records(
+                    f_a.id,
+                    f_b.id,
+                    winner_id,
+                    is_draw,
+                    remaining_fights,
+                    remaining_wins,
+                    remaining_losses,
+                    remaining_draws,
+                )
                 matchup_history[pair_key] = matchup_history.get(pair_key, 0) + 1
                 break  # f_a is matched, move to next fighter
 
@@ -717,8 +843,12 @@ def _determine_winner(
 
     Returns (winner_id, is_draw). If is_draw is True, winner_id is None.
     """
-    a_can_win = remaining_wins.get(f_a.id, 0) > 0 and remaining_losses.get(f_b.id, 0) > 0
-    b_can_win = remaining_wins.get(f_b.id, 0) > 0 and remaining_losses.get(f_a.id, 0) > 0
+    a_can_win = (
+        remaining_wins.get(f_a.id, 0) > 0 and remaining_losses.get(f_b.id, 0) > 0
+    )
+    b_can_win = (
+        remaining_wins.get(f_b.id, 0) > 0 and remaining_losses.get(f_a.id, 0) > 0
+    )
     can_draw = remaining_draws.get(f_a.id, 0) > 0 and remaining_draws.get(f_b.id, 0) > 0
 
     if a_can_win and b_can_win:
@@ -771,6 +901,7 @@ def _decrement_records(
 # Champion tracking
 # ---------------------------------------------------------------------------
 
+
 def _update_champion_state(
     fight_spec: dict,
     org_id: int,
@@ -821,6 +952,7 @@ def _update_champion_state(
 # Narrative context determination
 # ---------------------------------------------------------------------------
 
+
 def _determine_narrative_context(
     fight_spec: dict,
     fighter_lookup: dict[int, Fighter],
@@ -836,9 +968,11 @@ def _determine_narrative_context(
         return "rivalry"
 
     winner_id = fight_spec["winner_id"]
-    loser_id = (fight_spec["fighter_b_id"]
-                if winner_id == fight_spec["fighter_a_id"]
-                else fight_spec["fighter_a_id"])
+    loser_id = (
+        fight_spec["fighter_b_id"]
+        if winner_id == fight_spec["fighter_a_id"]
+        else fight_spec["fighter_a_id"]
+    )
 
     winner = fighter_lookup.get(winner_id)
     loser = fighter_lookup.get(loser_id)
@@ -857,6 +991,7 @@ def _determine_narrative_context(
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
 
 def fabricate_history(
     session: Session,
@@ -889,9 +1024,13 @@ def fabricate_history(
     fighter_lookup: dict[int, Fighter] = {f.id: f for f in fighters}
 
     # Query contracts to map fighters to orgs
-    contracts = session.execute(
-        select(Contract).where(Contract.status == ContractStatus.ACTIVE)
-    ).scalars().all()
+    contracts = (
+        session.execute(
+            select(Contract).where(Contract.status == ContractStatus.ACTIVE)
+        )
+        .scalars()
+        .all()
+    )
 
     fighter_org_map: dict[int, int] = {}  # fighter_id -> org_id
     for c in contracts:
@@ -906,7 +1045,11 @@ def fabricate_history(
         org_id = fighter_org_map.get(f.id)
         if org_id is None or org_id not in ai_org_ids:
             continue  # Free agent or player org, skip
-        wc_val = f.weight_class.value if hasattr(f.weight_class, "value") else str(f.weight_class)
+        wc_val = (
+            f.weight_class.value
+            if hasattr(f.weight_class, "value")
+            else str(f.weight_class)
+        )
         fighters_by_org_wc[(org_id, wc_val)].append(f)
 
     # Sort rosters by id for determinism
@@ -943,7 +1086,9 @@ def fabricate_history(
     champion_state: dict[tuple[int, str], dict] = {}
     matchup_history: dict[tuple[int, int], int] = {}
     event_counters: dict[int, int] = defaultdict(int)  # org_id -> event number
-    fights_completed: dict[int, int] = defaultdict(int)  # fighter_id -> fights done so far
+    fights_completed: dict[int, int] = defaultdict(
+        int
+    )  # fighter_id -> fights done so far
 
     events_created = 0
     fights_created = 0
@@ -1027,13 +1172,19 @@ def fabricate_history(
 
             # Generate narrative
             if fight_spec["is_draw"]:
-                wc_display = f_a.weight_class.value if hasattr(f_a.weight_class, "value") else str(f_a.weight_class)
+                wc_display = (
+                    f_a.weight_class.value
+                    if hasattr(f_a.weight_class, "value")
+                    else str(f_a.weight_class)
+                )
                 narrative = f"{f_a.name} and {f_b.name} fought to a majority draw after three rounds."
             else:
                 winner = fighter_lookup[fight_spec["winner_id"]]
-                loser_id = (fight_spec["fighter_b_id"]
-                            if fight_spec["winner_id"] == fight_spec["fighter_a_id"]
-                            else fight_spec["fighter_a_id"])
+                loser_id = (
+                    fight_spec["fighter_b_id"]
+                    if fight_spec["winner_id"] == fight_spec["fighter_a_id"]
+                    else fight_spec["fighter_a_id"]
+                )
                 loser = fighter_lookup[loser_id]
                 narrative = _generate_narrative(
                     winner=winner,
@@ -1045,7 +1196,11 @@ def fabricate_history(
                     py_rng=py_rng,
                 )
 
-            wc_enum = f_a.weight_class if hasattr(f_a.weight_class, "value") else WeightClass(f_a.weight_class)
+            wc_enum = (
+                f_a.weight_class
+                if hasattr(f_a.weight_class, "value")
+                else WeightClass(f_a.weight_class)
+            )
 
             fight = Fight(
                 event_id=event.id,
@@ -1099,12 +1254,18 @@ def fabricate_history(
             actual_draws_count[fight.fighter_b_id] += 1
         else:
             actual_wins_count[fight.winner_id] += 1
-            loser_id = (fight.fighter_b_id
-                        if fight.winner_id == fight.fighter_a_id
-                        else fight.fighter_a_id)
+            loser_id = (
+                fight.fighter_b_id
+                if fight.winner_id == fight.fighter_a_id
+                else fight.fighter_a_id
+            )
             actual_losses_count[loser_id] += 1
             # Track KO and sub wins
-            method_val = fight.method.value if hasattr(fight.method, "value") else str(fight.method)
+            method_val = (
+                fight.method.value
+                if hasattr(fight.method, "value")
+                else str(fight.method)
+            )
             if method_val == "KO/TKO":
                 actual_ko_wins[fight.winner_id] += 1
             elif method_val == "Submission":
@@ -1117,7 +1278,7 @@ def fabricate_history(
         new_ko = actual_ko_wins.get(f.id, 0)
         new_sub = actual_sub_wins.get(f.id, 0)
 
-        if (f.wins != new_wins or f.losses != new_losses or f.draws != new_draws):
+        if f.wins != new_wins or f.losses != new_losses or f.draws != new_draws:
             mismatches += 1
 
         f.wins = new_wins
@@ -1126,16 +1287,13 @@ def fabricate_history(
         f.ko_wins = new_ko
         f.sub_wins = new_sub
 
-    session.flush()
+    session.commit()
 
     # --- Build summary ---
     summary = {
         "events_created": events_created,
         "fights_created": fights_created,
-        "champions": {
-            f"{k[1]}": v["champion_id"]
-            for k, v in champion_state.items()
-        },
+        "champions": {f"{k[1]}": v["champion_id"] for k, v in champion_state.items()},
         "rivalries": len(rivalries),
         "records_reconciled": mismatches,
     }
