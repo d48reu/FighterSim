@@ -96,10 +96,10 @@ Plans:
   1. A UI view exists that displays historical events with their fight cards and results
   2. The view is reachable from the main navigation or events section
   3. Historical events load from GET /api/events/all-history and render correctly
-**Plans**: TBD
+**Plans**: 1 plan in 1 wave
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md -- Full-stack League History: backend offset/org-exclusion, frontend section with org filter + pagination + revenue hiding, human verification
 
 ### Phase 6: Tech Debt Cleanup
 **Goal**: Address low-severity tech debt items identified during milestone audit
