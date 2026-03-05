@@ -210,10 +210,21 @@
                   <span class="proj-label">Costs</span>
                   <span class="proj-value" id="proj-costs">$0</span>
                 </div>
+                <div class="proj-item">
+                  <span class="proj-label">Fighter Payroll</span>
+                  <span class="proj-value" id="proj-fighter-payroll">$0</span>
+                </div>
+                <div class="proj-item">
+                  <span class="proj-label">Card Quality</span>
+                  <span class="proj-value" id="proj-card-quality">0.0</span>
+                </div>
                 <div class="proj-item proj-profit">
                   <span class="proj-label">Profit</span>
                   <span class="proj-value" id="proj-profit">$0</span>
                 </div>
+                <div id="proj-top-draws" class="event-top-draws hidden"></div>
+                <div id="proj-top-matchups" class="event-top-draws hidden"></div>
+                <div id="proj-drivers" class="event-driver-list hidden"></div>
               </div>
               <div id="pc-container" class="pc-container hidden">
                 <div class="pc-header">
@@ -246,6 +257,7 @@
               <button class="pool-tab" data-wc="Heavyweight">HW</button>
             </div>
             <div id="pool-fighters" class="pool-fighters"></div>
+            <div id="pool-compare" class="pool-compare hidden"></div>
             <div id="pool-matchup-area" class="pool-matchup-area hidden">
               <button id="btn-add-matchup" class="btn btn-primary" style="width:100%">Add Matchup</button>
               <label class="pool-title-label">
@@ -273,19 +285,19 @@
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Age</th>
-                <th>Class</th>
-                <th>Archetype</th>
-                <th>STR</th>
-                <th>GRP</th>
-                <th>WR</th>
-                <th>CRD</th>
-                <th>CHN</th>
-                <th>SPD</th>
-                <th>OVR</th>
-                <th>Record</th>
-                <th>GOAT</th>
+                <th class="sortable-header" data-table="fighters" data-key="name" data-type="text">Name</th>
+                <th class="sortable-header" data-table="fighters" data-key="age" data-type="number">Age</th>
+                <th class="sortable-header" data-table="fighters" data-key="weight_class" data-type="text">Class</th>
+                <th class="sortable-header" data-table="fighters" data-key="archetype" data-type="text">Archetype</th>
+                <th class="sortable-header" data-table="fighters" data-key="striking" data-type="number">STR</th>
+                <th class="sortable-header" data-table="fighters" data-key="grappling" data-type="number">GRP</th>
+                <th class="sortable-header" data-table="fighters" data-key="wrestling" data-type="number">WR</th>
+                <th class="sortable-header" data-table="fighters" data-key="cardio" data-type="number">CRD</th>
+                <th class="sortable-header" data-table="fighters" data-key="chin" data-type="number">CHN</th>
+                <th class="sortable-header" data-table="fighters" data-key="speed" data-type="number">SPD</th>
+                <th class="sortable-header" data-table="fighters" data-key="overall" data-type="number">OVR</th>
+                <th class="sortable-header" data-table="fighters" data-key="record" data-type="record">Record</th>
+                <th class="sortable-header" data-table="fighters" data-key="goat_score" data-type="number">GOAT</th>
               </tr>
             </thead>
             <tbody id="fighters-tbody">
@@ -309,11 +321,11 @@
           <table>
             <thead>
               <tr>
-                <th>Rank</th>
-                <th>Fighter</th>
-                <th>Record</th>
-                <th>Overall</th>
-                <th>Score</th>
+                <th class="sortable-header" data-table="rankings" data-key="rank" data-type="number">Rank</th>
+                <th class="sortable-header" data-table="rankings" data-key="name" data-type="text">Fighter</th>
+                <th class="sortable-header" data-table="rankings" data-key="record" data-type="record">Record</th>
+                <th class="sortable-header" data-table="rankings" data-key="overall" data-type="number">Overall</th>
+                <th class="sortable-header" data-table="rankings" data-key="score" data-type="number">Score</th>
               </tr>
             </thead>
             <tbody id="rankings-tbody">
@@ -353,19 +365,20 @@
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Age</th>
-                <th>Class</th>
-                <th>Style</th>
-                <th>OVR</th>
-                <th>Record</th>
-                <th>Fights Left</th>
-                <th>Salary</th>
-                <th>Expires</th>
+                <th class="sortable-header" data-table="roster" data-key="name" data-type="text">Name</th>
+                <th class="sortable-header" data-table="roster" data-key="age" data-type="number">Age</th>
+                <th class="sortable-header" data-table="roster" data-key="weight_class" data-type="text">Class</th>
+                <th class="sortable-header" data-table="roster" data-key="style" data-type="text">Style</th>
+                <th class="sortable-header" data-table="roster" data-key="overall" data-type="number">OVR</th>
+                <th class="sortable-header" data-table="roster" data-key="record" data-type="record">Record</th>
+                <th class="sortable-header" data-table="roster" data-key="trajectory" data-type="text">Trend</th>
+                <th class="sortable-header" data-table="roster" data-key="fights_remaining" data-type="number">Fights Left</th>
+                <th class="sortable-header" data-table="roster" data-key="salary" data-type="number">Salary</th>
+                <th class="sortable-header" data-table="roster" data-key="expiry_date" data-type="date">Expires</th>
               </tr>
             </thead>
             <tbody id="roster-tbody">
-              <tr><td colspan="9" class="muted">Loading...</td></tr>
+              <tr><td colspan="10" class="muted">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -600,19 +613,20 @@
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Age</th>
-                <th>Class</th>
-                <th>Style</th>
-                <th>OVR</th>
-                <th>Record</th>
-                <th>Hype</th>
-                <th>Asking Salary</th>
-                <th>Asking Fights</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="name" data-type="text">Name</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="age" data-type="number">Age</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="weight_class" data-type="text">Class</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="style" data-type="text">Style</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="overall" data-type="number">OVR</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="record" data-type="record">Record</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="trajectory" data-type="text">Trend</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="hype" data-type="number">Hype</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="asking_salary" data-type="number">Asking Salary</th>
+                <th class="sortable-header" data-table="freeAgents" data-key="asking_fights" data-type="number">Asking Fights</th>
               </tr>
             </thead>
             <tbody id="free-agents-tbody">
-              <tr><td colspan="9" class="muted">Loading...</td></tr>
+              <tr><td colspan="10" class="muted">Loading...</td></tr>
             </tbody>
           </table>
         </div>
@@ -628,13 +642,13 @@
             <table>
               <thead>
                 <tr>
-                  <th>Rank</th>
-                  <th>Fighter</th>
-                  <th>Class</th>
-                  <th>Archetype</th>
-                  <th>Record</th>
-                  <th>Overall</th>
-                  <th>GOAT Score</th>
+                  <th class="sortable-header" data-table="goat" data-key="rank" data-type="number">Rank</th>
+                  <th class="sortable-header" data-table="goat" data-key="name" data-type="text">Fighter</th>
+                  <th class="sortable-header" data-table="goat" data-key="weight_class" data-type="text">Class</th>
+                  <th class="sortable-header" data-table="goat" data-key="archetype" data-type="text">Archetype</th>
+                  <th class="sortable-header" data-table="goat" data-key="record" data-type="record">Record</th>
+                  <th class="sortable-header" data-table="goat" data-key="overall" data-type="number">Overall</th>
+                  <th class="sortable-header" data-table="goat" data-key="goat_score" data-type="number">GOAT Score</th>
                 </tr>
               </thead>
               <tbody id="goat-tbody">
@@ -657,13 +671,13 @@
             <table>
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Fighter</th>
-                  <th>Class</th>
-                  <th>Record</th>
-                  <th>Peak OVR</th>
-                  <th>Legacy Score</th>
-                  <th>Retired</th>
+                  <th class="sortable-header" data-table="retiredLegends" data-key="rank" data-type="number">#</th>
+                  <th class="sortable-header" data-table="retiredLegends" data-key="name" data-type="text">Fighter</th>
+                  <th class="sortable-header" data-table="retiredLegends" data-key="weight_class" data-type="text">Class</th>
+                  <th class="sortable-header" data-table="retiredLegends" data-key="record" data-type="record">Record</th>
+                  <th class="sortable-header" data-table="retiredLegends" data-key="peak_overall" data-type="number">Peak OVR</th>
+                  <th class="sortable-header" data-table="retiredLegends" data-key="legacy_score" data-type="number">Legacy Score</th>
+                  <th class="sortable-header" data-table="retiredLegends" data-key="retired_date" data-type="date">Retired</th>
                 </tr>
               </thead>
               <tbody id="retired-legends-tbody">
@@ -704,6 +718,14 @@
       </div>
       <div class="panel-body">
         <div id="panel-archetype" class="panel-archetype"></div>
+        <div id="panel-trajectory" class="panel-trajectory hidden">
+          <div class="panel-trajectory-top">
+            <span class="panel-trajectory-label">Trajectory</span>
+            <span id="panel-trajectory-badge" class="trajectory-badge">Stalled</span>
+          </div>
+          <div id="panel-trajectory-summary" class="panel-trajectory-summary"></div>
+          <div id="panel-trajectory-reasons" class="panel-trajectory-reasons"></div>
+        </div>
 
         <div class="panel-stats">
           <div class="panel-stat-row">

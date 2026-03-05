@@ -42,8 +42,7 @@ from simulation.seed import (
     ORIGIN_CONFIGS,
     seed_organizations,
     seed_fighters,
-    enforce_roster_target,
-    enforce_roster_quality,
+    _shape_player_roster,
 )
 from simulation.history import fabricate_history
 from simulation.rankings import (
@@ -64,6 +63,8 @@ from simulation.narrative import (
     generate_fight_history_paragraph,
     extract_career_highlights,
 )
+from simulation.trajectory import analyze_fighter_trajectory
+from simulation.matchmaking import assess_matchup
 
 # ---------------------------------------------------------------------------
 # Module-level DB state
@@ -160,16 +161,31 @@ def get_fighters(weight_class: Optional[str] = None, limit: int = 100) -> list[d
         if weight_class:
             q = q.where(Fighter.weight_class == weight_class)
         q = q.order_by(Fighter.name).limit(limit)
-        return [_fighter_dict(f) for f in session.execute(q).scalars().all()]
+        return [_fighter_dict(f, session) for f in session.execute(q).scalars().all()]
 
 
 def get_fighter(fighter_id: int) -> Optional[dict]:
     with _SessionFactory() as session:
         f = session.get(Fighter, fighter_id)
-        return _fighter_dict(f) if f else None
+        return _fighter_dict(f, session) if f else None
 
 
-def _fighter_dict(f: Fighter) -> dict:
+def _fighter_dict(f: Fighter, session=None) -> dict:
+    trajectory = (
+        analyze_fighter_trajectory(f, session)
+        if session is not None
+        else {
+            "label": "Stalled",
+            "score": 0,
+            "reasons": [],
+            "recent_form": "No recent fights",
+            "days_inactive": None,
+            "age_phase": "prime"
+            if f.prime_start <= f.age <= f.prime_end
+            else ("pre-prime" if f.age < f.prime_start else "post-prime"),
+            "market_value_hint": "Current value looks stable.",
+        }
+    )
     return {
         "id": f.id,
         "name": f.name,
@@ -210,6 +226,7 @@ def _fighter_dict(f: Fighter) -> dict:
         else None,
         "legacy_score": round(getattr(f, "legacy_score", 0.0), 1),
         "peak_overall": getattr(f, "peak_overall", 0) or f.overall,
+        "trajectory": trajectory,
     }
 
 
@@ -554,12 +571,13 @@ def _run_new_game(task_id: str, origin_type: str, promotion_name: str) -> None:
 
             # Enforce roster size and quality for player org
             player_org = next(o for o in orgs if o.is_player)
-            released = enforce_roster_target(
-                session, player_org.id, config["roster_target"]
+            released = _shape_player_roster(
+                session,
+                player_org.id,
+                config["roster_target"],
+                config["roster_quality"],
             )
-            quality_adj = enforce_roster_quality(
-                session, player_org.id, config["roster_quality"]
-            )
+            quality_adj = 0
 
             # Fabricate history
             history = fabricate_history(session, fighters, orgs, seed=42)
@@ -672,6 +690,15 @@ def get_fighter_tags(fighter_id: int) -> Optional[list[str]]:
         if not f:
             return None
         return get_tags(f)
+
+
+def get_matchup_analysis(fighter_a_id: int, fighter_b_id: int) -> Optional[dict]:
+    with _SessionFactory() as session:
+        fighter_a = session.get(Fighter, fighter_a_id)
+        fighter_b = session.get(Fighter, fighter_b_id)
+        if not fighter_a or not fighter_b:
+            return None
+        return assess_matchup(fighter_a, fighter_b)
 
 
 def get_news_feed(limit: int = 15) -> list[dict]:
@@ -863,7 +890,7 @@ def get_free_agents(
                 continue
             if min_overall and f.overall < min_overall:
                 continue
-            d = _fighter_dict(f)
+            d = _fighter_dict(f, session)
             d["asking_salary"] = _asking_salary(f)
             d["asking_fights"] = _asking_fights(f)
             d["asking_length_months"] = _asking_length_months(f)
@@ -902,7 +929,7 @@ def get_roster() -> list[dict]:
 
         results = []
         for contract, fighter in rows:
-            d = _fighter_dict(fighter)
+            d = _fighter_dict(fighter, session)
             d["salary"] = contract.salary
             d["fights_remaining"] = contract.fights_remaining
             d["fight_count_total"] = contract.fight_count_total
@@ -1351,6 +1378,288 @@ BROADCAST_TIERS = {
 }
 
 
+def _get_event_venue_info(event: Event) -> dict:
+    return next((v for v in VENUES if v["name"] == event.venue), VENUES[0])
+
+
+def _get_org_broadcast_deal(
+    session, organization_id: int | None
+) -> Optional[BroadcastDeal]:
+    if not organization_id:
+        return None
+    return session.execute(
+        select(BroadcastDeal).where(
+            BroadcastDeal.organization_id == organization_id,
+            BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+        )
+    ).scalar_one_or_none()
+
+
+def _get_event_contract_salary(
+    session, organization_id: int | None, fighter_id: int
+) -> float:
+    if not organization_id:
+        return 0.0
+    contract = session.execute(
+        select(Contract)
+        .where(
+            Contract.organization_id == organization_id,
+            Contract.fighter_id == fighter_id,
+        )
+        .order_by(Contract.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return contract.salary if contract else 0.0
+
+
+def _get_event_card_quality(session, event: Event) -> tuple[float, list[dict]]:
+    if not event.fights:
+        return 0.0, []
+
+    fight_scores = []
+    fight_assessments = []
+    for fight in event.fights:
+        fa = session.get(Fighter, fight.fighter_a_id)
+        fb = session.get(Fighter, fight.fighter_b_id)
+        if not fa or not fb:
+            continue
+
+        analysis = assess_matchup(fa, fb)
+        base_score = (fa.overall + fb.overall) / 2
+        base_score += analysis["combined_draw"] * 0.12
+        if analysis["competitiveness"] == "Toss-Up":
+            base_score += 4
+        elif analysis["competitiveness"] == "Competitive":
+            base_score += 2
+        if analysis["booking_value"] == "Strong Main Event":
+            base_score += 6
+        elif analysis["booking_value"] == "Strong Co-Main":
+            base_score += 3
+        elif analysis["booking_value"] == "Risky Development Fight":
+            base_score += 1
+        if fight.is_title_fight:
+            base_score += 4
+        if fight.card_position == len(event.fights) - 1:
+            base_score += 3
+        elif fight.card_position == len(event.fights) - 2:
+            base_score += 1.5
+        fight_scores.append(base_score)
+        fight_assessments.append(
+            {
+                "fight_id": fight.id,
+                "fighter_a_id": fa.id,
+                "fighter_b_id": fb.id,
+                "matchup": f"{fa.name} vs {fb.name}",
+                "booking_value": analysis["booking_value"],
+                "competitiveness": analysis["competitiveness"],
+                "star_power": analysis["star_power"],
+                "prospect_risk": analysis["prospect_risk"],
+                "score": round(base_score, 1),
+            }
+        )
+
+    if not fight_scores:
+        return 0.0, []
+    fight_assessments.sort(key=lambda f: f["score"], reverse=True)
+    return round(sum(fight_scores) / len(fight_scores), 1), fight_assessments
+
+
+def _get_press_conference_ppv_boost(event: Event) -> int:
+    if not event.has_press_conference:
+        return 0
+    for fight in event.fights:
+        if not fight.press_conference:
+            continue
+        try:
+            pc_data = json.loads(fight.press_conference)
+        except (json.JSONDecodeError, TypeError):
+            return 0
+        return int(pc_data.get("ppv_boost", 0) or 0)
+    return 0
+
+
+def _collect_event_financials(
+    session,
+    event: Event,
+    organization_id: int | None,
+) -> dict:
+    venue_info = _get_event_venue_info(event)
+    capacity = venue_info["capacity"]
+    ticket_price = venue_info["ticket_price"]
+    rental_cost = venue_info["rental_cost"]
+    card_size = len(event.fights)
+
+    card_fighters = []
+    payroll_entries = []
+    seen_fighter_ids: set[int] = set()
+    for fight in event.fights:
+        for fighter_id in (fight.fighter_a_id, fight.fighter_b_id):
+            fighter = session.get(Fighter, fighter_id)
+            if fighter:
+                card_fighters.append(fighter)
+            if fighter_id in seen_fighter_ids:
+                continue
+            seen_fighter_ids.add(fighter_id)
+            salary = _get_event_contract_salary(session, organization_id, fighter_id)
+            if fighter:
+                payroll_entries.append(
+                    {
+                        "fighter_id": fighter.id,
+                        "name": fighter.name,
+                        "salary": round(salary, 2),
+                    }
+                )
+
+    avg_popularity = (
+        sum(f.popularity for f in card_fighters) / len(card_fighters)
+        if card_fighters
+        else 0.0
+    )
+    avg_hype = (
+        sum(f.hype for f in card_fighters) / len(card_fighters)
+        if card_fighters
+        else 0.0
+    )
+    card_quality, fight_assessments = _get_event_card_quality(session, event)
+    marquee_bonus = 0.0
+    if fight_assessments:
+        marquee_bonus = min(0.22, fight_assessments[0]["score"] / 400)
+    card_size_factor = min(1.5, 0.5 + card_size * 0.125 + marquee_bonus)
+    demand_score = (avg_popularity * 0.6 + avg_hype * 0.4) / 80
+    demand = capacity * demand_score * card_size_factor
+    if event.has_press_conference:
+        demand *= 1.15
+    est_tickets_sold = min(int(demand), capacity)
+    gate_projection = est_tickets_sold * ticket_price
+
+    sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
+    top_draws = sorted_by_hype[:3]
+    top_hype = top_draws[:2]
+    avg_top_hype = sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0.0
+    base_ppv_buys = int(avg_top_hype * 800)
+    press_conference_ppv_boost = _get_press_conference_ppv_boost(event)
+    total_ppv_buys = base_ppv_buys + press_conference_ppv_boost
+    ppv_projection = total_ppv_buys * 45.0
+
+    active_deal = _get_org_broadcast_deal(session, organization_id)
+    broadcast_projection = 0.0
+    if active_deal:
+        broadcast_projection = active_deal.fee_per_event + ppv_projection * (
+            active_deal.ppv_multiplier - 1.0
+        )
+
+    fighter_payroll = round(sum(entry["salary"] for entry in payroll_entries), 2)
+    total_revenue = gate_projection + ppv_projection + broadcast_projection
+    total_costs = fighter_payroll + rental_cost
+    fill_pct = est_tickets_sold / capacity * 100 if capacity > 0 else 0.0
+    title_fight_count = sum(1 for fight in event.fights if fight.is_title_fight)
+
+    performance_drivers: list[str] = []
+    if top_hype and avg_top_hype >= 70:
+        names = ", ".join(f.name for f in top_hype)
+        performance_drivers.append(
+            f"Strong headliners ({names}) are carrying PPV demand."
+        )
+    elif top_hype and avg_top_hype < 45:
+        performance_drivers.append(
+            "Headliner hype is limited, so PPV upside is capped."
+        )
+
+    if card_size >= 5:
+        performance_drivers.append("A deeper card is boosting ticket demand.")
+    elif card_size <= 2:
+        performance_drivers.append("A thin card is limiting gate demand.")
+
+    if fight_assessments:
+        top_fight = fight_assessments[0]
+        performance_drivers.append(
+            f"{top_fight['matchup']} grades as {top_fight['booking_value'].lower()}, helping the card carry attention."
+        )
+
+    if fill_pct >= 95:
+        performance_drivers.append("Venue demand is near sellout territory.")
+    elif fill_pct < 55:
+        performance_drivers.append("Current demand looks light for this venue size.")
+
+    if title_fight_count > 0:
+        performance_drivers.append(
+            "Title fight placement is helping overall card appeal."
+        )
+
+    if event.has_press_conference:
+        performance_drivers.append(
+            f"Press conference buzz adds about {press_conference_ppv_boost:,} PPV buys."
+        )
+
+    if active_deal:
+        performance_drivers.append(
+            f"{active_deal.network_name} adds a guaranteed rights fee and PPV uplift."
+        )
+
+    if card_quality >= 72:
+        performance_drivers.append(
+            "Card quality is strong enough to support premium pricing."
+        )
+    elif card_quality and card_quality < 58:
+        performance_drivers.append(
+            "Card quality is modest, which may suppress turnout."
+        )
+
+    return {
+        "card_quality": card_quality,
+        "fight_count": card_size,
+        "title_fight_count": title_fight_count,
+        "avg_popularity": round(avg_popularity, 1),
+        "avg_hype": round(avg_hype, 1),
+        "card_size_factor": round(card_size_factor, 2),
+        "demand_score": round(demand_score, 3),
+        "attendance": {
+            "tickets_sold": est_tickets_sold,
+            "venue_capacity": capacity,
+            "fill_pct": round(fill_pct, 1),
+        },
+        "revenue_breakdown": {
+            "gate": round(gate_projection, 2),
+            "ppv": round(ppv_projection, 2),
+            "broadcast": round(broadcast_projection, 2),
+            "total": round(total_revenue, 2),
+        },
+        "cost_breakdown": {
+            "fighter_payroll": fighter_payroll,
+            "venue_rental": round(rental_cost, 2),
+            "total": round(total_costs, 2),
+        },
+        "ppv_breakdown": {
+            "base_buys": base_ppv_buys,
+            "press_conference_buys": press_conference_ppv_boost,
+            "total_buys": total_ppv_buys,
+        },
+        "broadcast": {
+            "active": active_deal is not None,
+            "tier": active_deal.tier if active_deal else None,
+            "network_name": active_deal.network_name if active_deal else None,
+            "fee_per_event": round(active_deal.fee_per_event, 2)
+            if active_deal
+            else 0.0,
+            "ppv_multiplier": active_deal.ppv_multiplier if active_deal else 1.0,
+        },
+        "top_draws": [
+            {
+                "fighter_id": fighter.id,
+                "name": fighter.name,
+                "hype": round(fighter.hype, 1),
+                "popularity": round(fighter.popularity, 1),
+                "overall": fighter.overall,
+            }
+            for fighter in top_draws
+        ],
+        "top_matchups": fight_assessments[:3],
+        "payroll_entries": payroll_entries,
+        "performance_drivers": performance_drivers[:5],
+        "projected_profit": round(total_revenue - total_costs, 2),
+    }
+
+
 def _fight_dict(fight: Fight, session) -> dict:
     fa = session.get(Fighter, fight.fighter_a_id)
     fb = session.get(Fighter, fight.fighter_b_id)
@@ -1405,6 +1714,23 @@ def _event_dict(event: Event, session, include_fights=True) -> dict:
         "organization_id": event.organization_id,
         "organization_name": event.organization.name if event.organization else None,
     }
+    if (
+        event.organization
+        and event.organization.is_player
+        and (
+            event.status == EventStatus.SCHEDULED
+            or (
+                event.status == EventStatus.COMPLETED
+                and (event.tickets_sold > 0 or event.gate_revenue > 0)
+            )
+        )
+    ):
+        try:
+            d["financials"] = _collect_event_financials(
+                session, event, event.organization_id
+            )
+        except Exception:
+            d["financials"] = None
     if include_fights:
         d["fights"] = [_fight_dict(f, session) for f in event.fights]
     if event.fights:
@@ -1495,7 +1821,7 @@ def get_bookable_fighters() -> list[dict]:
             else:
                 days_since = 999
 
-            d = _fighter_dict(fighter)
+            d = _fighter_dict(fighter, session)
             d["days_since_last_fight"] = days_since
             d["salary"] = contract.salary
             d["fights_remaining"] = contract.fights_remaining
@@ -1515,13 +1841,24 @@ def create_event(name: str, venue: str, event_date_str: str) -> dict:
         if not player_org:
             return {"error": "No player organization found."}
 
+        if not name or not name.strip():
+            return {"error": "Event name is required."}
+        if not event_date_str:
+            return {"error": "Event date is required."}
+
         game_date = _get_game_date(session)
-        event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+        try:
+            event_date = datetime.strptime(event_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return {"error": "Invalid event date."}
         if event_date <= game_date:
             return {"error": "Event date must be after the current game date."}
 
+        if venue not in {v["name"] for v in VENUES}:
+            return {"error": "Invalid venue selected."}
+
         event = Event(
-            name=name,
+            name=name.strip(),
             event_date=event_date,
             venue=venue,
             organization_id=player_org.id,
@@ -1658,7 +1995,6 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
 
             rng = random.Random(seed)
             fight_results = []
-            total_fighter_salaries = 0.0
 
             for fight in sorted(event.fights, key=lambda f: f.card_position):
                 fa = session.get(Fighter, fight.fighter_a_id)
@@ -1708,23 +2044,21 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                         contract.fights_remaining = max(
                             0, contract.fights_remaining - 1
                         )
-                        total_fighter_salaries += contract.salary
-
                 # Missed weight fine: 20% of purse to opponent
                 missed_weight_info = []
                 if missed_a:
                     fine = (
-                        total_fighter_salaries * 0.20
-                        if total_fighter_salaries > 0
-                        else 5000
+                        _get_event_contract_salary(session, player_org.id, fa.id) * 0.20
                     )
+                    if fine <= 0:
+                        fine = 5000
                     missed_weight_info.append({"fighter": fa.name, "fine": fine})
                 if missed_b:
                     fine = (
-                        total_fighter_salaries * 0.20
-                        if total_fighter_salaries > 0
-                        else 5000
+                        _get_event_contract_salary(session, player_org.id, fb.id) * 0.20
                     )
+                    if fine <= 0:
+                        fine = 5000
                     missed_weight_info.append({"fighter": fb.name, "fine": fine})
 
                 mark_rankings_dirty(session, WeightClass(fa.weight_class))
@@ -1785,80 +2119,33 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                     }
                 )
 
-            # Calculate revenue
-            card_fighters = []
-            for fight in event.fights:
-                fa = session.get(Fighter, fight.fighter_a_id)
-                fb = session.get(Fighter, fight.fighter_b_id)
-                if fa:
-                    card_fighters.append(fa)
-                if fb:
-                    card_fighters.append(fb)
+            financials = _collect_event_financials(session, event, player_org.id)
+            attendance = financials["attendance"]
+            revenue = financials["revenue_breakdown"]
+            costs = financials["cost_breakdown"]
+            ppv = financials["ppv_breakdown"]
 
-            venue_info = next(
-                (v for v in VENUES if v["name"] == event.venue), VENUES[0]
-            )
-            card_size = len(event.fights)
-            capacity = venue_info["capacity"]
-            ticket_price = venue_info["ticket_price"]
-            rental_cost = venue_info["rental_cost"]
-
-            # Demand-based ticketing
-            avg_pop = (
-                sum(f.popularity for f in card_fighters) / len(card_fighters)
-                if card_fighters
-                else 0
-            )
-            avg_hype = (
-                sum(f.hype for f in card_fighters) / len(card_fighters)
-                if card_fighters
-                else 0
-            )
-            card_size_factor = min(1.5, 0.5 + card_size * 0.125)
-            demand = capacity * (avg_pop * 0.6 + avg_hype * 0.4) / 80 * card_size_factor
-            if event.has_press_conference:
-                demand *= 1.15
-            tickets_sold = min(int(demand), capacity)
-            gate_revenue = tickets_sold * ticket_price
-
-            # PPV from top 2 hype fighters
-            sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
-            top_hype = sorted_by_hype[:2]
-            avg_top_hype = (
-                sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
-            )
-            ppv_buys = int(avg_top_hype * 800)
-
-            # Broadcast revenue
-            broadcast_revenue = 0.0
-            active_deal = session.execute(
-                select(BroadcastDeal).where(
-                    BroadcastDeal.organization_id == player_org.id,
-                    BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
-                )
-            ).scalar_one_or_none()
+            active_deal = _get_org_broadcast_deal(session, player_org.id)
             if active_deal:
-                ppv_base = ppv_buys * 45.0
-                broadcast_revenue = active_deal.fee_per_event + ppv_base * (
-                    active_deal.ppv_multiplier - 1.0
-                )
                 active_deal.events_delivered += 1
 
-            event.gate_revenue = gate_revenue
-            event.ppv_buys = ppv_buys
-            event.broadcast_revenue = broadcast_revenue
-            event.venue_rental_cost = rental_cost
-            event.tickets_sold = tickets_sold
-            event.venue_capacity = capacity
+            event.gate_revenue = revenue["gate"]
+            event.ppv_buys = ppv["total_buys"]
+            event.broadcast_revenue = revenue["broadcast"]
+            event.venue_rental_cost = costs["venue_rental"]
+            event.tickets_sold = attendance["tickets_sold"]
+            event.venue_capacity = attendance["venue_capacity"]
             event.status = EventStatus.COMPLETED
 
             total_revenue = event.total_revenue
-            total_costs = total_fighter_salaries + rental_cost
+            total_costs = costs["total"]
             player_org.bank_balance += total_revenue - total_costs
 
             # Sellout / underfill prestige effects
-            is_sellout = tickets_sold >= capacity
+            tickets_sold = attendance["tickets_sold"]
+            capacity = attendance["venue_capacity"]
             fill_pct = tickets_sold / capacity if capacity > 0 else 0
+            is_sellout = tickets_sold >= capacity
             if is_sellout:
                 player_org.prestige = min(100.0, player_org.prestige + 1.5)
             elif fill_pct < 0.5:
@@ -1877,11 +2164,11 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                     "event_name": event.name,
                     "fights_simulated": len(fight_results),
                     "fights": fight_results,
-                    "gate_revenue": round(gate_revenue, 2),
-                    "ppv_buys": ppv_buys,
-                    "ppv_revenue": round(ppv_buys * 45.0, 2),
-                    "broadcast_revenue": round(broadcast_revenue, 2),
-                    "venue_rental_cost": round(rental_cost, 2),
+                    "gate_revenue": revenue["gate"],
+                    "ppv_buys": ppv["total_buys"],
+                    "ppv_revenue": revenue["ppv"],
+                    "broadcast_revenue": revenue["broadcast"],
+                    "venue_rental_cost": costs["venue_rental"],
                     "tickets_sold": tickets_sold,
                     "venue_capacity": capacity,
                     "is_sellout": is_sellout,
@@ -1889,6 +2176,7 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                     "total_revenue": round(total_revenue, 2),
                     "total_costs": round(total_costs, 2),
                     "profit": round(total_revenue - total_costs, 2),
+                    "financials": financials,
                 },
             )
     except Exception as e:
@@ -1989,98 +2277,28 @@ def calculate_event_projection(event_id: int) -> dict:
             select(Organization).where(Organization.is_player == True)
         ).scalar_one_or_none()
 
-        card_fighters = []
-        total_salaries = 0.0
-        for fight in event.fights:
-            fa = session.get(Fighter, fight.fighter_a_id)
-            fb = session.get(Fighter, fight.fighter_b_id)
-            if fa:
-                card_fighters.append(fa)
-            if fb:
-                card_fighters.append(fb)
-            for fid in (fight.fighter_a_id, fight.fighter_b_id):
-                contract = session.execute(
-                    select(Contract).where(
-                        Contract.fighter_id == fid,
-                        Contract.status == ContractStatus.ACTIVE,
-                    )
-                ).scalar_one_or_none()
-                if contract:
-                    total_salaries += contract.salary
-
-        venue_info = next((v for v in VENUES if v["name"] == event.venue), VENUES[0])
-        card_size = len(event.fights)
-        capacity = venue_info["capacity"]
-        ticket_price = venue_info["ticket_price"]
-        rental_cost = venue_info["rental_cost"]
-
-        # Demand-based gate projection
-        avg_pop = (
-            sum(f.popularity for f in card_fighters) / len(card_fighters)
-            if card_fighters
-            else 0
+        financials = _collect_event_financials(
+            session, event, player_org.id if player_org else None
         )
-        avg_hype_all = (
-            sum(f.hype for f in card_fighters) / len(card_fighters)
-            if card_fighters
-            else 0
-        )
-        card_size_factor = min(1.5, 0.5 + card_size * 0.125)
-        demand = capacity * (avg_pop * 0.6 + avg_hype_all * 0.4) / 80 * card_size_factor
-        if event.has_press_conference:
-            demand *= 1.15
-        est_tickets_sold = min(int(demand), capacity)
-        gate_projection = est_tickets_sold * ticket_price
-
-        sorted_by_hype = sorted(card_fighters, key=lambda f: f.hype, reverse=True)
-        top_hype = sorted_by_hype[:2]
-        avg_hype = sum(f.hype for f in top_hype) / len(top_hype) if top_hype else 0
-        ppv_buys = int(avg_hype * 800)
-
-        # Press conference PPV boost
-        pc_ppv_boost = 0
-        if event.has_press_conference:
-            for fight in event.fights:
-                if fight.press_conference:
-                    pc_data = json.loads(fight.press_conference)
-                    pc_ppv_boost = pc_data.get("ppv_boost", 0)
-                    break
-        ppv_projection = (ppv_buys + pc_ppv_boost) * 45.0
-
-        # Broadcast projection
-        broadcast_projection = 0.0
-        if player_org:
-            active_deal = session.execute(
-                select(BroadcastDeal).where(
-                    BroadcastDeal.organization_id == player_org.id,
-                    BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
-                )
-            ).scalar_one_or_none()
-            if active_deal:
-                ppv_base = ppv_projection
-                broadcast_projection = active_deal.fee_per_event + ppv_base * (
-                    active_deal.ppv_multiplier - 1.0
-                )
-
-        total_revenue = gate_projection + ppv_projection + broadcast_projection
-        total_costs = total_salaries + rental_cost
-        profit = total_revenue - total_costs
-        fill_pct = est_tickets_sold / capacity * 100 if capacity > 0 else 0
+        attendance = financials["attendance"]
+        revenue = financials["revenue_breakdown"]
+        costs = financials["cost_breakdown"]
 
         return {
-            "gate_projection": round(gate_projection, 2),
-            "ppv_projection": round(ppv_projection, 2),
-            "broadcast_projection": round(broadcast_projection, 2),
-            "venue_rental_cost": round(rental_cost, 2),
-            "total_revenue": round(total_revenue, 2),
-            "total_costs": round(total_costs, 2),
-            "projected_profit": round(profit, 2),
-            "fight_count": card_size,
+            "gate_projection": revenue["gate"],
+            "ppv_projection": revenue["ppv"],
+            "broadcast_projection": revenue["broadcast"],
+            "venue_rental_cost": costs["venue_rental"],
+            "total_revenue": revenue["total"],
+            "total_costs": costs["total"],
+            "projected_profit": financials["projected_profit"],
+            "fight_count": financials["fight_count"],
             "venue": event.venue,
-            "venue_capacity": capacity,
-            "est_tickets_sold": est_tickets_sold,
-            "fill_pct": round(fill_pct, 1),
+            "venue_capacity": attendance["venue_capacity"],
+            "est_tickets_sold": attendance["tickets_sold"],
+            "fill_pct": attendance["fill_pct"],
             "has_press_conference": event.has_press_conference,
+            "financials": financials,
         }
 
 

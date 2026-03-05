@@ -421,16 +421,14 @@ def _build_event_timeline(
     end_date: date,
     py_rng: random.Random,
 ) -> list[tuple[date, Organization]]:
-    """Generate chronological event schedule for all AI orgs.
+    """Generate chronological event schedule for all orgs.
 
-    Each AI org gets an event every ~2 weeks (10-18 day gaps).
-    Player org is excluded.
+    Each org gets an event every ~2 weeks (10-18 day gaps).
     Returns list of (event_date, org) tuples sorted by date.
     """
-    ai_orgs = [o for o in orgs if not o.is_player]
     timeline: list[tuple[date, Organization]] = []
 
-    for org in ai_orgs:
+    for org in orgs:
         # Stagger start dates: random 0-14 day offset per org
         current = start_date + timedelta(days=py_rng.randint(0, 14))
         while current < end_date:
@@ -1036,15 +1034,25 @@ def fabricate_history(
     for c in contracts:
         fighter_org_map[c.fighter_id] = c.organization_id
 
-    # Identify AI orgs (player org fighters don't participate in history)
-    ai_org_ids = {o.id for o in orgs if not o.is_player}
+    # Build a deterministic historical org map for all fighters. Free agents
+    # still need prior bouts, so they get a plausible historical home.
+    historical_org_map: dict[int, int] = {}
+    weighted_orgs = list(orgs)
+    org_weights = [max(1.0, float(o.prestige)) for o in weighted_orgs]
+    for f in fighters:
+        current_org_id = fighter_org_map.get(f.id)
+        if current_org_id is not None:
+            historical_org_map[f.id] = current_org_id
+        else:
+            assigned_org = py_rng.choices(weighted_orgs, weights=org_weights, k=1)[0]
+            historical_org_map[f.id] = assigned_org.id
 
-    # Build fighters by org+weight_class (only AI-org contracted fighters)
+    # Build fighters by org+weight_class using current or historical orgs.
     fighters_by_org_wc: dict[tuple[int, str], list[Fighter]] = defaultdict(list)
     for f in fighters:
-        org_id = fighter_org_map.get(f.id)
-        if org_id is None or org_id not in ai_org_ids:
-            continue  # Free agent or player org, skip
+        org_id = historical_org_map.get(f.id)
+        if org_id is None:
+            continue
         wc_val = (
             f.weight_class.value
             if hasattr(f.weight_class, "value")
@@ -1063,9 +1071,9 @@ def fabricate_history(
     remaining_draws: dict[int, int] = {}
 
     for f in fighters:
-        org_id = fighter_org_map.get(f.id)
-        if org_id is None or org_id not in ai_org_ids:
-            continue  # Free agents and player org fighters have no history fights
+        org_id = historical_org_map.get(f.id)
+        if org_id is None:
+            continue
         total = f.wins + f.losses + f.draws
         remaining_fights[f.id] = total
         remaining_wins[f.id] = f.wins

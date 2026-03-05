@@ -395,55 +395,50 @@ def seed_organizations(
     return orgs
 
 
-def enforce_roster_target(session: Session, player_org_id: int, target: int) -> int:
-    """Release excess fighters from player org to hit roster target. Returns released count."""
-    # Get all active contracts for the player org, joined with Fighter
-    active_contracts = (
-        session.execute(
-            select(Contract)
-            .join(Fighter, Contract.fighter_id == Fighter.id)
-            .where(
-                Contract.organization_id == player_org_id,
-                Contract.status == ContractStatus.ACTIVE,
-            )
+def _record_total(fighter: Fighter) -> int:
+    return fighter.wins + fighter.losses + fighter.draws
+
+
+def _roster_fit_score(fighter: Fighter, quality_type: str) -> tuple[float, ...]:
+    """Return a sort key for keeping fighters on the player's starting roster."""
+    record_total = _record_total(fighter)
+    is_prospect = fighter.age < fighter.prime_start
+    is_prime_or_veteran = fighter.age >= fighter.prime_start
+    is_goat = fighter.archetype == Archetype.GOAT_CANDIDATE
+
+    if quality_type == "hand_picked":
+        return (
+            1.0 if is_prime_or_veteran else 0.0,
+            1.0 if record_total >= 8 else 0.0,
+            float(fighter.overall),
+            float(record_total),
+            float(fighter.hype),
         )
-        .scalars()
-        .all()
+
+    if quality_type == "scrappy":
+        affordable = 1.0 if fighter.overall <= 75 and not is_goat else 0.0
+        battle_tested = min(record_total, 18)
+        age_fit = 1.0 if fighter.age >= 24 else 0.0
+        return (
+            affordable,
+            float(battle_tested),
+            age_fit,
+            float(fighter.overall),
+            float(fighter.hype),
+        )
+
+    # inherited
+    return (
+        float(fighter.overall),
+        float(record_total),
+        float(fighter.hype),
     )
 
-    if len(active_contracts) <= target:
-        return 0
 
-    # Batch load fighters to compute overall (it's a @property, not a column)
-    fighter_ids = [c.fighter_id for c in active_contracts]
-    fighters = (
-        session.execute(select(Fighter).where(Fighter.id.in_(fighter_ids)))
-        .scalars()
-        .all()
-    )
-    overall_map = {f.id: f.overall for f in fighters}
-
-    active_contracts.sort(key=lambda c: overall_map.get(c.fighter_id, 0))
-
-    # Release the weakest fighters beyond the target
-    excess = len(active_contracts) - target
-    released = 0
-    for contract in active_contracts[:excess]:
-        session.delete(contract)
-        released += 1
-
-    session.flush()
-    return released
-
-
-def enforce_roster_quality(
-    session: Session, player_org_id: int, quality_type: str
+def _shape_player_roster(
+    session: Session, player_org_id: int, target: int, quality_type: str
 ) -> int:
-    """Adjust roster composition to match origin theme. Returns number of releases."""
-    if quality_type == "inherited":
-        # Natural distribution is fine for The Heir
-        return 0
-
+    """Keep the best-fit fighters for the chosen origin theme and release the rest."""
     active_contracts = (
         session.execute(
             select(Contract).where(
@@ -455,7 +450,9 @@ def enforce_roster_quality(
         .all()
     )
 
-    # Batch load fighters to avoid N+1 queries
+    if len(active_contracts) <= target:
+        return 0
+
     fighter_ids = [c.fighter_id for c in active_contracts]
     fighters = (
         session.execute(select(Fighter).where(Fighter.id.in_(fighter_ids)))
@@ -464,30 +461,36 @@ def enforce_roster_quality(
     )
     fighter_map = {f.id: f for f in fighters}
 
+    ranked_contracts = sorted(
+        active_contracts,
+        key=lambda c: _roster_fit_score(fighter_map[c.fighter_id], quality_type),
+        reverse=True,
+    )
+
+    keep_ids = {c.id for c in ranked_contracts[:target]}
     released = 0
-
-    if quality_type == "hand_picked":
-        # Release any prospect-stage fighters (keep prime + veteran only)
-        for contract in active_contracts:
-            fighter = fighter_map.get(contract.fighter_id)
-            if not fighter:
-                continue
-            if fighter.age < fighter.prime_start:
-                session.delete(contract)
-                released += 1
-
-    elif quality_type == "scrappy":
-        # Release any fighter with overall > 75 or archetype == GOAT_CANDIDATE
-        for contract in active_contracts:
-            fighter = fighter_map.get(contract.fighter_id)
-            if not fighter:
-                continue
-            if fighter.overall > 75 or fighter.archetype == Archetype.GOAT_CANDIDATE:
-                session.delete(contract)
-                released += 1
+    for contract in active_contracts:
+        if contract.id in keep_ids:
+            continue
+        session.delete(contract)
+        released += 1
 
     session.flush()
     return released
+
+
+def enforce_roster_target(session: Session, player_org_id: int, target: int) -> int:
+    """Legacy helper: keep the top `target` fighters by inherited roster rules."""
+    return _shape_player_roster(session, player_org_id, target, "inherited")
+
+
+def enforce_roster_quality(
+    session: Session, player_org_id: int, quality_type: str
+) -> int:
+    """Legacy compatibility helper retained for older callers."""
+    if quality_type == "inherited":
+        return 0
+    return 0
 
 
 def _starting_popularity_hype(

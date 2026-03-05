@@ -315,6 +315,20 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
             return jsonify({"error": "Fighter not found"}), 404
         return jsonify({"tags": tags})
 
+    @app.route("/api/matchups/analysis", methods=["POST"])
+    def matchup_analysis():
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        fighter_a_id = data.get("fighter_a_id")
+        fighter_b_id = data.get("fighter_b_id")
+        if not fighter_a_id or not fighter_b_id:
+            return jsonify({"error": "Both fighter ids are required"}), 400
+        result = services.get_matchup_analysis(fighter_a_id, fighter_b_id)
+        if result is None:
+            return jsonify({"error": "One or both fighters not found"}), 404
+        return jsonify(result)
+
     @app.route("/api/goat")
     def goat_scores():
         top_n = int(request.args.get("top", 10))

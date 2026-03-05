@@ -21,6 +21,15 @@ const state = {
   activeShowId: null,
   showFormatSize: 8,
   showSelectedFighters: [],
+  matchupCompareExpanded: false,
+  tableSorts: {
+    fighters: { key: 'name', direction: 'asc' },
+    roster: { key: 'overall', direction: 'desc' },
+    freeAgents: { key: 'overall', direction: 'desc' },
+    rankings: { key: 'rank', direction: 'asc' },
+    goat: { key: 'goat_score', direction: 'desc' },
+    retiredLegends: { key: 'legacy_score', direction: 'desc' },
+  },
 };
 
 // League History pagination
@@ -38,6 +47,78 @@ async function api(path, options = {}) {
     throw new Error(text || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+function parseRecordValue(record) {
+  if (!record) return 0;
+  const [wins = 0, losses = 0, draws = 0] = String(record).split('-').map(v => Number(v) || 0);
+  return wins * 10000 - losses * 100 + draws;
+}
+
+function getSortValue(item, key) {
+  if (key === 'trajectory') return item.trajectory?.label || '';
+  if (key === 'record') return parseRecordValue(item.record);
+  if (key === 'rank' && item.rank == null) return 0;
+  if (item[key] == null) return '';
+  return item[key];
+}
+
+function sortCollection(items, tableName) {
+  const sort = state.tableSorts[tableName];
+  if (!sort) return items;
+
+  const direction = sort.direction === 'asc' ? 1 : -1;
+  return [...items].sort((a, b) => {
+    const aVal = getSortValue(a, sort.key);
+    const bVal = getSortValue(b, sort.key);
+
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      return (aVal - bVal) * direction;
+    }
+
+    const aStr = String(aVal).toLowerCase();
+    const bStr = String(bVal).toLowerCase();
+    if (aStr < bStr) return -1 * direction;
+    if (aStr > bStr) return 1 * direction;
+    return 0;
+  });
+}
+
+function updateSortableHeaders() {
+  document.querySelectorAll('.sortable-header').forEach(header => {
+    const tableName = header.dataset.table;
+    const key = header.dataset.key;
+    const sort = state.tableSorts[tableName];
+    header.classList.remove('sorted-asc', 'sorted-desc');
+    if (sort && sort.key === key) {
+      header.classList.add(sort.direction === 'asc' ? 'sorted-asc' : 'sorted-desc');
+    }
+  });
+}
+
+function setTableSort(tableName, key) {
+  const current = state.tableSorts[tableName];
+  if (current?.key === key) {
+    current.direction = current.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.tableSorts[tableName] = {
+      key,
+      direction: (key === 'name' || key === 'weight_class' || key === 'style' || key === 'archetype' || key === 'trajectory' || key === 'retired_date') ? 'asc' : 'desc',
+    };
+  }
+  updateSortableHeaders();
+  if (tableName === 'fighters') loadFighters(document.getElementById('fighters-wc-filter').value || null);
+  if (tableName === 'roster') loadRoster();
+  if (tableName === 'freeAgents') loadFreeAgents();
+  if (tableName === 'rankings') loadRankings(state.currentWeightClass);
+  if (tableName === 'goat' || tableName === 'retiredLegends') loadHallOfFame();
+}
+
+function initSortableTables() {
+  document.querySelectorAll('.sortable-header').forEach(header => {
+    header.addEventListener('click', () => setTableSort(header.dataset.table, header.dataset.key));
+  });
+  updateSortableHeaders();
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +278,7 @@ async function loadFighters(weightClass = null) {
   try {
     const params = new URLSearchParams();
     if (weightClass) params.set('weight_class', weightClass);
-    const fighters = await api(`/api/fighters?${params}`);
+    const fighters = sortCollection(await api(`/api/fighters?${params}`), 'fighters');
     if (fighters.length === 0) {
       tbody.innerHTML = '<tr><td colspan="13" class="muted">No fighters found.</td></tr>';
       return;
@@ -238,6 +319,136 @@ async function loadFighters(weightClass = null) {
 // Fighter side panel
 // ---------------------------------------------------------------------------
 
+function trajectoryBadgeHtml(trajectory) {
+  if (!trajectory || !trajectory.label) return '<span class="trajectory-badge stalled">Stalled</span>';
+  const cls = trajectory.label.toLowerCase();
+  return `<span class="trajectory-badge ${esc(cls)}">${esc(trajectory.label)}</span>`;
+}
+
+function summarizeBio(text, limit = 220) {
+  if (!text) return 'No scouting bio available yet.';
+  if (text.length <= limit) return text;
+  return text.slice(0, limit).trimEnd() + '…';
+}
+
+function matchupBadge(label, type) {
+  return `<span class="matchup-badge ${esc(type)}">${esc(label)}</span>`;
+}
+
+function renderMatchupCompareCard(a, b, analysis) {
+  const compare = document.getElementById('pool-compare');
+  if (!a || !b) {
+    compare.classList.add('hidden');
+    compare.innerHTML = '';
+    return;
+  }
+
+  const expanded = state.matchupCompareExpanded;
+  const card = fighter => {
+    const bio = expanded ? (fighter.bio || 'No scouting bio available yet.') : summarizeBio(fighter.bio);
+    const tags = fighter.tags || [];
+    const traits = fighter.traits || [];
+    const chips = [...traits.slice(0, 2), ...tags.slice(0, 2)].slice(0, 3);
+    return `
+      <div class="compare-fighter-card" data-wc="${esc(fighter.weight_class)}">
+        <div class="compare-fighter-top">
+          <div>
+            <div class="compare-fighter-name">${esc(fighter.name)}</div>
+            <div class="compare-fighter-meta">
+              ${fighter.nickname ? `"${esc(fighter.nickname)}" · ` : ''}${esc(fighter.record)} · OVR ${fighter.overall}
+            </div>
+          </div>
+          ${trajectoryBadgeHtml(fighter.trajectory)}
+        </div>
+        <div class="compare-fighter-submeta">${esc(fighter.weight_class)} · ${esc(fighter.style)} · Age ${fighter.age}</div>
+        <div class="compare-stat-grid">
+          <div class="compare-stat-chip"><span>STR</span><strong>${fighter.striking}</strong></div>
+          <div class="compare-stat-chip"><span>GRP</span><strong>${fighter.grappling}</strong></div>
+          <div class="compare-stat-chip"><span>WR</span><strong>${fighter.wrestling}</strong></div>
+          <div class="compare-stat-chip"><span>CRD</span><strong>${fighter.cardio}</strong></div>
+        </div>
+        ${chips.length ? `<div class="compare-chip-row">${chips.map(c => `<span class="compare-chip">${esc(String(c).replace(/_/g, ' '))}</span>`).join('')}</div>` : ''}
+        <div class="compare-bio">${esc(bio)}</div>
+      </div>
+    `;
+  };
+
+  compare.innerHTML = `
+    <div class="pool-compare-header">
+      <span class="pool-compare-title">Matchup Compare</span>
+      <button id="btn-toggle-compare-bio" class="btn btn-secondary compare-toggle-btn">${expanded ? 'Compact View' : 'Full Bios'}</button>
+    </div>
+    ${analysis ? `
+      <div class="matchup-analysis-box">
+        <div class="matchup-analysis-top">
+          <span class="matchup-analysis-title">${esc(analysis.booking_value)}</span>
+          <span class="matchup-analysis-meta">OVR gap ${analysis.overall_gap} · Draw ${Number(analysis.combined_draw).toFixed(1)}</span>
+        </div>
+        <div class="matchup-analysis-badges">
+          ${matchupBadge(analysis.competitiveness, 'competitive')}
+          ${matchupBadge(`${analysis.star_power} Star Power`, 'star')}
+          ${matchupBadge(`${analysis.prospect_risk} Prospect Risk`, 'risk')}
+        </div>
+        <div class="matchup-analysis-reasons">
+          ${(analysis.reasons || []).map(r => `<div class="matchup-analysis-reason">${esc(r)}</div>`).join('')}
+        </div>
+      </div>
+    ` : ''}
+    <div class="pool-compare-grid">
+      ${card(a)}
+      <div class="pool-compare-vs">vs</div>
+      ${card(b)}
+    </div>
+  `;
+  compare.classList.toggle('expanded-bios', expanded);
+  compare.classList.remove('hidden');
+  document.getElementById('btn-toggle-compare-bio').addEventListener('click', () => {
+    state.matchupCompareExpanded = !state.matchupCompareExpanded;
+    renderMatchupCompareCard(a, b);
+  });
+}
+
+async function loadMatchupCompare() {
+  const compare = document.getElementById('pool-compare');
+  if (!state.selectedFighterA || !state.selectedFighterB) {
+    compare.classList.add('hidden');
+    compare.innerHTML = '';
+    state.matchupCompareExpanded = false;
+    return;
+  }
+
+  const fighterIds = [state.selectedFighterA, state.selectedFighterB];
+  compare.classList.remove('hidden');
+  compare.innerHTML = '<div class="muted" style="padding:12px">Loading matchup breakdown...</div>';
+
+  try {
+    const [a, aBio, aTags, b, bBio, bTags, analysis] = await Promise.all([
+      api(`/api/fighters/${fighterIds[0]}`),
+      api(`/api/fighters/${fighterIds[0]}/bio`),
+      api(`/api/fighters/${fighterIds[0]}/tags`),
+      api(`/api/fighters/${fighterIds[1]}`),
+      api(`/api/fighters/${fighterIds[1]}/bio`),
+      api(`/api/fighters/${fighterIds[1]}/tags`),
+      api('/api/matchups/analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fighter_a_id: fighterIds[0], fighter_b_id: fighterIds[1] }),
+      }),
+    ]);
+    a.bio = aBio.bio || '';
+    a.tags = aTags.tags || [];
+    b.bio = bBio.bio || '';
+    b.tags = bTags.tags || [];
+
+    if (state.selectedFighterA !== fighterIds[0] || state.selectedFighterB !== fighterIds[1]) {
+      return;
+    }
+    renderMatchupCompareCard(a, b, analysis);
+  } catch (err) {
+    compare.innerHTML = `<div class="muted" style="padding:12px">Could not load matchup compare: ${esc(err.message)}</div>`;
+  }
+}
+
 async function showFighterPanel(fighterId, extraData) {
   const panel = document.getElementById('fighter-panel');
   panel.classList.remove('hidden');
@@ -249,6 +460,10 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('panel-nickname').innerHTML   = '';
   document.getElementById('panel-subtitle').textContent = '';
   document.getElementById('panel-archetype').textContent = '';
+  document.getElementById('panel-trajectory').classList.add('hidden');
+  document.getElementById('panel-trajectory-badge').textContent = '—';
+  document.getElementById('panel-trajectory-summary').textContent = '';
+  document.getElementById('panel-trajectory-reasons').innerHTML = '';
   document.getElementById('panel-record').textContent  = '\u2014';
   document.getElementById('panel-overall').textContent = '\u2014';
   document.getElementById('panel-goat').textContent    = '\u2014';
@@ -295,6 +510,16 @@ async function showFighterPanel(fighterId, extraData) {
     document.getElementById('panel-subtitle').textContent = `${fighter.weight_class} \xB7 ${fighter.style} \xB7 Age ${fighter.age}`;
     panel.setAttribute('data-wc', fighter.weight_class);
     document.getElementById('panel-archetype').textContent = fighter.archetype || '';
+    const trajectory = fighter.trajectory || {};
+    const trajectoryWrap = document.getElementById('panel-trajectory');
+    const trajectoryBadge = document.getElementById('panel-trajectory-badge');
+    trajectoryWrap.classList.remove('hidden');
+    trajectoryBadge.textContent = trajectory.label || 'Stalled';
+    trajectoryBadge.className = `trajectory-badge ${(trajectory.label || 'stalled').toLowerCase()}`;
+    document.getElementById('panel-trajectory-summary').textContent =
+      `${trajectory.recent_form || 'No recent fights'} \u00b7 ${trajectory.market_value_hint || 'Current value looks stable.'}`;
+    document.getElementById('panel-trajectory-reasons').innerHTML =
+      (trajectory.reasons || []).map(r => `<div class="panel-trajectory-reason">${esc(r)}</div>`).join('');
     document.getElementById('panel-record').textContent   = fighter.record;
     document.getElementById('panel-overall').textContent  = fighter.overall;
     document.getElementById('panel-goat').textContent     = fighter.goat_score > 0 ? fighter.goat_score.toFixed(1) : '\u2014';
@@ -549,7 +774,7 @@ function closeFighterPanel() {
 async function loadFreeAgents() {
   state.panelContext = 'free-agents';
   const tbody = document.getElementById('free-agents-tbody');
-  tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" class="muted">Loading...</td></tr>';
 
   const params = new URLSearchParams();
   const wc = document.getElementById('fa-wc-filter').value;
@@ -563,9 +788,9 @@ async function loadFreeAgents() {
   if (sortBy) params.set('sort_by', sortBy);
 
   try {
-    const agents = await api(`/api/free-agents?${params}`);
+    const agents = sortCollection(await api(`/api/free-agents?${params}`), 'freeAgents');
     if (agents.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">No free agents found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="muted">No free agents found.</td></tr>';
       return;
     }
     tbody.innerHTML = agents.map(f => `
@@ -579,6 +804,7 @@ async function loadFreeAgents() {
         <td>${esc(f.style)}</td>
         <td><strong>${f.overall}</strong></td>
         <td>${esc(f.record)}</td>
+        <td>${trajectoryBadgeHtml(f.trajectory)}</td>
         <td>${f.hype.toFixed(1)}</td>
         <td>${formatCurrency(f.asking_salary)}</td>
         <td>${f.asking_fights}</td>
@@ -596,7 +822,7 @@ async function loadFreeAgents() {
       });
     });
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="9" class="muted">Error: ${esc(err.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="muted">Error: ${esc(err.message)}</td></tr>`;
   }
 }
 
@@ -631,13 +857,14 @@ async function makeOffer(fighterId) {
 async function loadRoster() {
   state.panelContext = 'roster';
   const tbody = document.getElementById('roster-tbody');
-  tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" class="muted">Loading...</td></tr>';
 
   try {
-    const [roster, fin] = await Promise.all([
+    const [rosterData, fin] = await Promise.all([
       api('/api/roster'),
       api('/api/finances'),
     ]);
+    const roster = sortCollection(rosterData, 'roster');
 
     // Payroll bar
     document.getElementById('roster-count').textContent   = fin.roster_size;
@@ -652,7 +879,7 @@ async function loadRoster() {
     fill.className = 'payroll-progress-fill' + (pctUsed > 80 ? ' danger' : pctUsed > 50 ? ' warning' : '');
 
     if (roster.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="muted">No fighters on roster. Sign some free agents!</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="muted">No fighters on roster. Sign some free agents!</td></tr>';
       return;
     }
 
@@ -668,6 +895,7 @@ async function loadRoster() {
         <td>${esc(f.style)}</td>
         <td><strong>${f.overall}</strong></td>
         <td>${esc(f.record)}</td>
+        <td>${trajectoryBadgeHtml(f.trajectory)}</td>
         <td>${f.fights_remaining} / ${f.fight_count_total}</td>
         <td>${formatCurrency(f.salary)}</td>
         <td>${f.expiry_date || '\u2014'}</td>
@@ -687,7 +915,7 @@ async function loadRoster() {
     });
     loadCornerstones();
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="9" class="muted">Error: ${esc(err.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="muted">Error: ${esc(err.message)}</td></tr>`;
   }
 }
 
@@ -883,7 +1111,7 @@ async function loadRankings(weightClass) {
   const tbody = document.getElementById('rankings-tbody');
   tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading...</td></tr>';
   try {
-    const rankings = await api(`/api/rankings/${encodeURIComponent(weightClass)}`);
+    const rankings = sortCollection(await api(`/api/rankings/${encodeURIComponent(weightClass)}`), 'rankings');
     if (rankings.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" class="muted">No rankings available.</td></tr>';
       return;
@@ -914,7 +1142,7 @@ async function loadGoat() {
   const tbody = document.getElementById('goat-tbody');
   tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading...</td></tr>';
   try {
-    const goat = await api('/api/goat?top=10');
+    const goat = sortCollection(await api('/api/goat?top=10'), 'goat');
     if (goat.length === 0) {
       tbody.innerHTML = '<tr><td colspan="7" class="muted">No data yet \u2014 simulate some events first.</td></tr>';
       return;
@@ -962,7 +1190,7 @@ async function loadRetiredLegends() {
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading...</td></tr>';
   try {
-    const legends = await api('/api/retired-legends?top=20');
+    const legends = sortCollection(await api('/api/retired-legends?top=20'), 'retiredLegends');
     if (!legends || legends.length === 0) {
       tbody.innerHTML = '<tr><td colspan="7" class="muted">No retired fighters yet \u2014 legends will appear here as careers end.</td></tr>';
       return;
@@ -1320,6 +1548,92 @@ function renderScheduledFights(event) {
   });
 }
 
+function renderTopDraws(financials) {
+  const draws = financials?.top_draws || [];
+  if (!draws.length) return '';
+  return `
+    <div class="event-top-draws-title">Top Draws</div>
+    <div class="event-top-draws-chips">
+      ${draws.map(d => `
+        <span class="event-top-draw-chip">
+          ${esc(d.name)}
+          <span class="event-top-draw-meta">Hype ${Number(d.hype).toFixed(1)}</span>
+        </span>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderTopMatchups(financials) {
+  const matchups = financials?.top_matchups || [];
+  if (!matchups.length) return '';
+  return `
+    <div class="event-top-draws-title">Top Matchups</div>
+    <div class="event-matchup-list">
+      ${matchups.map(m => `
+        <div class="event-matchup-item">
+          <div class="event-matchup-top">
+            <span class="event-matchup-name">${esc(m.matchup)}</span>
+            <span class="event-matchup-score">${Number(m.score).toFixed(1)}</span>
+          </div>
+          <div class="event-matchup-meta">${esc(m.booking_value)} · ${esc(m.competitiveness)} · ${esc(m.star_power)} Star Power</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderDrivers(financials) {
+  const drivers = financials?.performance_drivers || [];
+  if (!drivers.length) return '';
+  return drivers.map(d => `<div class="event-driver-item">${esc(d)}</div>`).join('');
+}
+
+function buildEventEconomicsHtml(financials, fallback = {}) {
+  if (!financials && !fallback.totalRevenue && !fallback.gate) return '';
+
+  const revenue = financials?.revenue_breakdown || {
+    gate: fallback.gate || 0,
+    ppv: fallback.ppv || 0,
+    broadcast: fallback.broadcast || 0,
+    total: fallback.totalRevenue || 0,
+  };
+  const costs = financials?.cost_breakdown || {
+    fighter_payroll: fallback.fighterPayroll || 0,
+    venue_rental: fallback.venueRental || 0,
+    total: fallback.totalCosts || fallback.venueRental || 0,
+  };
+  const profit = fallback.profit ?? financials?.projected_profit ?? (revenue.total - costs.total);
+  const topDrawsHtml = renderTopDraws(financials);
+  const topMatchupsHtml = renderTopMatchups(financials);
+  const driversHtml = renderDrivers(financials);
+  const cardQuality = financials?.card_quality;
+  const avgHype = financials?.avg_hype;
+  const avgPopularity = financials?.avg_popularity;
+
+  return `
+    <div class="event-revenue-summary">
+      <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(revenue.gate)}</span></div>
+      <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(revenue.ppv)}</span></div>
+      ${revenue.broadcast > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(revenue.broadcast)}</span></div>` : ''}
+      <div class="rev-item"><span class="rev-label">Fighter Payroll</span><span class="rev-value negative">-${formatCurrency(costs.fighter_payroll)}</span></div>
+      ${costs.venue_rental > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(costs.venue_rental)}</span></div>` : ''}
+      <div class="rev-item"><span class="rev-label">Total Revenue</span><span class="rev-value">${formatCurrency(revenue.total)}</span></div>
+      <div class="rev-item"><span class="rev-label">Profit</span><span class="rev-value ${profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(profit)}</span></div>
+    </div>
+    ${(cardQuality !== undefined || avgHype !== undefined || avgPopularity !== undefined) ? `
+      <div class="event-econ-meta">
+        ${cardQuality !== undefined ? `<div class="event-econ-meta-item"><span class="event-econ-meta-label">Card Quality</span><span class="event-econ-meta-value">${Number(cardQuality).toFixed(1)}</span></div>` : ''}
+        ${avgHype !== undefined ? `<div class="event-econ-meta-item"><span class="event-econ-meta-label">Avg Hype</span><span class="event-econ-meta-value">${Number(avgHype).toFixed(1)}</span></div>` : ''}
+        ${avgPopularity !== undefined ? `<div class="event-econ-meta-item"><span class="event-econ-meta-label">Avg Popularity</span><span class="event-econ-meta-value">${Number(avgPopularity).toFixed(1)}</span></div>` : ''}
+      </div>
+    ` : ''}
+    ${topDrawsHtml ? `<div class="event-top-draws">${topDrawsHtml}</div>` : ''}
+    ${topMatchupsHtml ? `<div class="event-top-draws">${topMatchupsHtml}</div>` : ''}
+    ${driversHtml ? `<div class="event-driver-list">${driversHtml}</div>` : ''}
+  `;
+}
+
 function renderCompletedEvent(event, container) {
   const fights = event.fights || [];
   let html = '<div class="completed-fights">';
@@ -1354,16 +1668,13 @@ function renderCompletedEvent(event, container) {
     // Attendance
     const fillPct = event.venue_capacity > 0 ? (event.tickets_sold / event.venue_capacity * 100).toFixed(0) : 0;
     html += `<div class="event-attendance">Attendance: ${event.tickets_sold.toLocaleString()} / ${event.venue_capacity.toLocaleString()} (${fillPct}%)</div>`;
-    // Revenue summary
-    html += `
-      <div class="event-revenue-summary">
-        <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(event.gate_revenue)}</span></div>
-        <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(event.ppv_buys * 45)}</span></div>
-        ${event.broadcast_revenue > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(event.broadcast_revenue)}</span></div>` : ''}
-        ${event.venue_rental_cost > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(event.venue_rental_cost)}</span></div>` : ''}
-        <div class="rev-item"><span class="rev-label">Total</span><span class="rev-value">${formatCurrency(event.total_revenue)}</span></div>
-      </div>
-    `;
+    html += buildEventEconomicsHtml(event.financials, {
+      gate: event.gate_revenue,
+      ppv: event.ppv_buys * 45,
+      broadcast: event.broadcast_revenue,
+      venueRental: event.venue_rental_cost,
+      totalRevenue: event.total_revenue,
+    });
   }
   container.innerHTML = html;
 }
@@ -1381,6 +1692,10 @@ async function loadEventProjection(eventId) {
     document.getElementById('proj-ppv').textContent = formatCurrency(proj.ppv_projection);
     document.getElementById('proj-costs').textContent = formatCurrency(proj.total_costs);
     document.getElementById('proj-venue-cost').textContent = formatCurrency(proj.venue_rental_cost);
+    document.getElementById('proj-fighter-payroll').textContent =
+      formatCurrency(proj.financials?.cost_breakdown?.fighter_payroll || 0);
+    document.getElementById('proj-card-quality').textContent =
+      proj.financials ? Number(proj.financials.card_quality || 0).toFixed(1) : '0.0';
 
     // Attendance
     const fillPct = proj.fill_pct || 0;
@@ -1399,6 +1714,21 @@ async function loadEventProjection(eventId) {
     const profitEl = document.getElementById('proj-profit');
     profitEl.textContent = formatCurrency(proj.projected_profit);
     profitEl.className = 'proj-value ' + (proj.projected_profit >= 0 ? 'positive' : 'negative');
+
+    const topDrawsEl = document.getElementById('proj-top-draws');
+    const topDrawsHtml = renderTopDraws(proj.financials);
+    topDrawsEl.innerHTML = topDrawsHtml;
+    topDrawsEl.classList.toggle('hidden', !topDrawsHtml);
+
+    const topMatchupsEl = document.getElementById('proj-top-matchups');
+    const topMatchupsHtml = renderTopMatchups(proj.financials);
+    topMatchupsEl.innerHTML = topMatchupsHtml;
+    topMatchupsEl.classList.toggle('hidden', !topMatchupsHtml);
+
+    const driversEl = document.getElementById('proj-drivers');
+    const driversHtml = renderDrivers(proj.financials);
+    driversEl.innerHTML = driversHtml;
+    driversEl.classList.toggle('hidden', !driversHtml);
   } catch (err) { /* silent */ }
 }
 
@@ -1464,6 +1794,7 @@ function toggleFighterSelection(fighterId) {
   }
   renderFighterPool();
   updateMatchupButton();
+  loadMatchupCompare();
 }
 
 function updateMatchupButton() {
@@ -1498,8 +1829,11 @@ async function addMatchup() {
     }
     state.selectedFighterA = null;
     state.selectedFighterB = null;
+    state.matchupCompareExpanded = false;
     document.getElementById('pool-title-check').checked = false;
     document.getElementById('pool-matchup-area').classList.add('hidden');
+    document.getElementById('pool-compare').classList.add('hidden');
+    document.getElementById('pool-compare').innerHTML = '';
     loadEventCard(state.selectedEventId);
     loadBookableFighters();
     setStatus('Fight added to card.');
@@ -1811,15 +2145,16 @@ async function showAnimatedResults(result) {
     }
     // Add revenue summary
     const summary = document.createElement('div');
-    summary.className = 'event-revenue-summary anim-enter';
-    summary.innerHTML = `
-      <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(result.gate_revenue)}</span></div>
-      <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(result.ppv_revenue)}</span></div>
-      ${result.broadcast_revenue > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(result.broadcast_revenue)}</span></div>` : ''}
-      ${result.venue_rental_cost > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(result.venue_rental_cost)}</span></div>` : ''}
-      <div class="rev-item"><span class="rev-label">Costs</span><span class="rev-value">${formatCurrency(result.total_costs)}</span></div>
-      <div class="rev-item"><span class="rev-label">Profit</span><span class="rev-value ${result.profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(result.profit)}</span></div>
-    `;
+    summary.className = 'anim-enter';
+    summary.innerHTML = buildEventEconomicsHtml(result.financials, {
+      gate: result.gate_revenue,
+      ppv: result.ppv_revenue,
+      broadcast: result.broadcast_revenue,
+      venueRental: result.venue_rental_cost,
+      totalRevenue: result.total_revenue,
+      totalCosts: result.total_costs,
+      profit: result.profit,
+    });
     container.parentElement.appendChild(summary);
     requestAnimationFrame(() => summary.classList.add('entered'));
   }
@@ -1859,16 +2194,15 @@ function renderFinalResults(result, container) {
   if (result.tickets_sold) {
     html += `<div class="event-attendance">Attendance: ${result.tickets_sold.toLocaleString()} / ${result.venue_capacity.toLocaleString()} (${result.fill_pct}%)</div>`;
   }
-  html += `
-    <div class="event-revenue-summary entered">
-      <div class="rev-item"><span class="rev-label">Gate</span><span class="rev-value">${formatCurrency(result.gate_revenue)}</span></div>
-      <div class="rev-item"><span class="rev-label">PPV</span><span class="rev-value">${formatCurrency(result.ppv_revenue)}</span></div>
-      ${result.broadcast_revenue > 0 ? `<div class="rev-item"><span class="rev-label">Broadcast</span><span class="rev-value">${formatCurrency(result.broadcast_revenue)}</span></div>` : ''}
-      ${result.venue_rental_cost > 0 ? `<div class="rev-item"><span class="rev-label">Venue Rental</span><span class="rev-value negative">-${formatCurrency(result.venue_rental_cost)}</span></div>` : ''}
-      <div class="rev-item"><span class="rev-label">Costs</span><span class="rev-value">${formatCurrency(result.total_costs)}</span></div>
-      <div class="rev-item"><span class="rev-label">Profit</span><span class="rev-value ${result.profit >= 0 ? 'positive' : 'negative'}">${formatCurrency(result.profit)}</span></div>
-    </div>
-  `;
+  html += buildEventEconomicsHtml(result.financials, {
+    gate: result.gate_revenue,
+    ppv: result.ppv_revenue,
+    broadcast: result.broadcast_revenue,
+    venueRental: result.venue_rental_cost,
+    totalRevenue: result.total_revenue,
+    totalCosts: result.total_costs,
+    profit: result.profit,
+  });
   container.innerHTML = html;
 }
 
@@ -3032,6 +3366,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', () => navigate(el.dataset.view));
   });
+  initSortableTables();
 
   // Fighters filter
   document.getElementById('fighters-wc-filter').addEventListener('change', e => {
