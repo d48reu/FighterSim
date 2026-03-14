@@ -66,6 +66,7 @@ from simulation.narrative import (
 from simulation.market import (
     compute_asking_salary,
     compute_contract_acceptance_probability,
+    compute_market_signals,
     compute_sponsorship_terms,
 )
 from simulation.trajectory import analyze_fighter_trajectory
@@ -872,6 +873,63 @@ def _asking_length_months(fighter: Fighter) -> int:
         return 12
 
 
+def _market_context_dict(
+    fighter: Fighter, session, org_id: Optional[int] = None
+) -> dict:
+    signals = compute_market_signals(fighter, session, org_id)
+    trajectory = signals["trajectory"]
+    matchup = signals["matchup"]
+    matchup_assessment = matchup["assessment"] if matchup else None
+    return {
+        "trajectory_label": trajectory["label"],
+        "trajectory_score": trajectory["score"],
+        "recent_form": trajectory["recent_form"],
+        "market_value_hint": trajectory["market_value_hint"],
+        "trajectory_reasons": trajectory["reasons"],
+        "booking_value": (
+            matchup_assessment["booking_value"] if matchup_assessment else None
+        ),
+        "next_opponent_name": matchup["opponent_name"] if matchup else None,
+        "salary_multiplier": round(signals["salary_multiplier"], 2),
+        "acceptance_adjustment": round(signals["acceptance_adjustment"], 3),
+        "ai_interest_score": round(signals["ai_interest_score"], 1),
+    }
+
+
+def _offer_evaluation_dict(
+    fighter: Fighter,
+    player_org: Organization,
+    offered_salary: float,
+    session,
+    *,
+    org_id: Optional[int] = None,
+    is_renewal: bool = False,
+) -> dict:
+    effective_org_id = org_id if org_id is not None else player_org.id
+    market_context = _market_context_dict(fighter, session, effective_org_id)
+    asking_salary = _asking_salary(fighter, session, effective_org_id)
+    acceptance_probability = compute_contract_acceptance_probability(
+        fighter,
+        player_org,
+        offered_salary,
+        session,
+        org_id=effective_org_id,
+        is_renewal=is_renewal,
+    )
+    tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+    if "quitter" in tags:
+        acceptance_probability *= 0.85
+    return {
+        "asking_salary": asking_salary,
+        "offered_salary": offered_salary,
+        "offer_ratio": round(offered_salary / asking_salary, 3)
+        if asking_salary > 0
+        else 1.0,
+        "acceptance_probability": round(min(0.95, acceptance_probability), 4),
+        "market_context": market_context,
+    }
+
+
 def get_free_agents(
     weight_class: Optional[str] = None,
     style: Optional[str] = None,
@@ -915,6 +973,7 @@ def get_free_agents(
             d["asking_salary"] = _asking_salary(f, session, player_org_id)
             d["asking_fights"] = _asking_fights(f)
             d["asking_length_months"] = _asking_length_months(f)
+            d["market_context"] = _market_context_dict(f, session, player_org_id)
             results.append(d)
 
         if sort_by == "overall":
@@ -1012,19 +1071,14 @@ def make_contract_offer(
                 "message": "You can't afford this contract. Need at least 3x the salary in the bank.",
             }
 
-        asking = _asking_salary(fighter, session, player_org.id)
-        acceptance_prob = compute_contract_acceptance_probability(
+        offer_evaluation = _offer_evaluation_dict(
             fighter,
             player_org,
             salary,
             session,
             org_id=player_org.id,
         )
-
-        # Quitter tag from reality show: -15% acceptance
-        tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
-        if "quitter" in tags:
-            acceptance_prob *= 0.85
+        acceptance_prob = offer_evaluation["acceptance_probability"]
 
         if random.random() < acceptance_prob:
             from datetime import timedelta
@@ -1043,10 +1097,18 @@ def make_contract_offer(
             session.add(contract)
             session.commit()
             msg = random.choice(_OFFER_ACCEPTED_MSGS).format(name=fighter.name)
-            return {"accepted": True, "message": msg}
+            return {
+                "accepted": True,
+                "message": msg,
+                "offer_evaluation": offer_evaluation,
+            }
         else:
             msg = random.choice(_OFFER_REJECTED_MSGS).format(name=fighter.name)
-            return {"accepted": False, "message": msg}
+            return {
+                "accepted": False,
+                "message": msg,
+                "offer_evaluation": offer_evaluation,
+            }
 
 
 def release_fighter(fighter_id: int) -> dict:
@@ -1150,8 +1212,7 @@ def renew_contract(
                 "message": "You can't afford this renewal. Need at least 3x the salary in the bank.",
             }
 
-        asking = _asking_salary(fighter, session, player_org.id)
-        acceptance_prob = compute_contract_acceptance_probability(
+        offer_evaluation = _offer_evaluation_dict(
             fighter,
             player_org,
             salary,
@@ -1159,11 +1220,7 @@ def renew_contract(
             org_id=player_org.id,
             is_renewal=True,
         )
-
-        # Quitter tag from reality show: -15% acceptance
-        tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
-        if "quitter" in tags:
-            acceptance_prob *= 0.85
+        acceptance_prob = offer_evaluation["acceptance_probability"]
 
         if random.random() < acceptance_prob:
             from datetime import timedelta
@@ -1175,10 +1232,18 @@ def renew_contract(
             contract.fights_remaining = fight_count
             session.commit()
             msg = random.choice(_OFFER_ACCEPTED_MSGS).format(name=fighter.name)
-            return {"accepted": True, "message": msg}
+            return {
+                "accepted": True,
+                "message": msg,
+                "offer_evaluation": offer_evaluation,
+            }
         else:
             msg = random.choice(_OFFER_REJECTED_MSGS).format(name=fighter.name)
-            return {"accepted": False, "message": msg}
+            return {
+                "accepted": False,
+                "message": msg,
+                "offer_evaluation": offer_evaluation,
+            }
 
 
 def get_finances() -> dict:
@@ -3931,6 +3996,7 @@ def get_show_eligible_fighters(weight_class: str) -> list[dict]:
                 continue
             d = _fighter_dict(f)
             d["asking_salary"] = _asking_salary(f, session, player_org_id)
+            d["market_context"] = _market_context_dict(f, session, player_org_id)
             results.append(d)
         results.sort(key=lambda x: x["overall"], reverse=True)
         return results
@@ -4438,6 +4504,9 @@ def get_show_contestants_for_signing(show_id: int) -> list[dict]:
             d["discount_pct"] = round(discount * 100)
             d["base_asking_salary"] = base_asking
             d["modified_asking_salary"] = modified_asking
+            d["market_context"] = _market_context_dict(
+                fighter, session, show.organization_id
+            )
             results.append(d)
 
         results.sort(key=lambda x: x["discount_pct"], reverse=True)
