@@ -473,6 +473,8 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('panel-actions').innerHTML   = '';
   document.getElementById('panel-actions').classList.add('hidden');
   document.getElementById('panel-cs-badge').classList.add('hidden');
+  document.getElementById('panel-market-context').innerHTML = '';
+  document.getElementById('panel-market-context').classList.add('hidden');
   document.getElementById('panel-offer-result').innerHTML = '';
   document.getElementById('panel-sponsorships').innerHTML = '';
   document.getElementById('panel-sponsorships').classList.add('hidden');
@@ -591,6 +593,15 @@ async function showFighterPanel(fighterId, extraData) {
     } else {
         highlightsSection.classList.add('hidden');
         highlightsList.innerHTML = '';
+    }
+
+    const marketEl = document.getElementById('panel-market-context');
+    if (extraData?.market_context && window.MarketUi?.renderMarketContextCard) {
+      marketEl.classList.remove('hidden');
+      marketEl.innerHTML = window.MarketUi.renderMarketContextCard(extraData.market_context);
+    } else {
+      marketEl.classList.add('hidden');
+      marketEl.innerHTML = '';
     }
 
     // Context-specific actions
@@ -813,11 +824,13 @@ async function loadFreeAgents() {
 
     tbody.querySelectorAll('tr[data-fighter-id]').forEach(row => {
       row.addEventListener('click', () => {
+        const fighter = agents.find(f => f.id === Number(row.dataset.fighterId));
         state.panelContext = 'free-agents';
         showFighterPanel(Number(row.dataset.fighterId), {
           asking_salary: Number(row.dataset.askingSalary),
           asking_fights: Number(row.dataset.askingFights),
           asking_length_months: Number(row.dataset.askingLength),
+          market_context: fighter?.market_context || null,
         });
       });
     });
@@ -838,7 +851,13 @@ async function makeOffer(fighterId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fighter_id: fighterId, salary, fight_count: fightCount, length_months: lengthMonths }),
     });
-    resultEl.innerHTML = `<div class="offer-result ${result.accepted ? 'success' : 'rejected'}">${esc(result.message)}</div>`;
+    const evaluationHtml = window.MarketUi?.renderOfferEvaluation
+      ? window.MarketUi.renderOfferEvaluation(result.offer_evaluation)
+      : '';
+    resultEl.innerHTML = `
+      <div class="offer-result ${result.accepted ? 'success' : 'rejected'}">${esc(result.message)}</div>
+      ${evaluationHtml}
+    `;
     if (result.accepted) {
       // Remove row from free agents table
       const row = document.querySelector(`#free-agents-tbody tr[data-fighter-id="${fighterId}"]`);
@@ -849,6 +868,7 @@ async function makeOffer(fighterId) {
     resultEl.innerHTML = `<div class="offer-result rejected">Error: ${esc(err.message)}</div>`;
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Roster
@@ -1028,7 +1048,13 @@ async function renewContract(fighterId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fighter_id: fighterId, salary, fight_count: fightCount, length_months: lengthMonths }),
     });
-    resultEl.innerHTML = `<div class="offer-result ${result.accepted ? 'success' : 'rejected'}">${esc(result.message)}</div>`;
+    const evaluationHtml = window.MarketUi?.renderOfferEvaluation
+      ? window.MarketUi.renderOfferEvaluation(result.offer_evaluation)
+      : '';
+    resultEl.innerHTML = `
+      <div class="offer-result ${result.accepted ? 'success' : 'rejected'}">${esc(result.message)}</div>
+      ${evaluationHtml}
+    `;
     if (result.accepted) {
       setStatus(result.message);
       loadRoster();
@@ -3181,7 +3207,7 @@ async function showCompletedState(show) {
     if (contestants.length === 0) {
       list.innerHTML = '<p class="muted">All contestants already signed.</p>';
     } else {
-      list.innerHTML = contestants.map(c => `
+      list.innerHTML = contestants.map((c, idx) => `
         <div class="show-signing-row">
           <div class="signing-info">
             <span class="signing-name">${esc(c.name)}</span>
@@ -3192,11 +3218,24 @@ async function showCompletedState(show) {
             <span>$${c.modified_asking_salary?.toLocaleString()}/yr</span>
             ${c.placement === 'Winner' ?
               `<button class="btn btn-primary" onclick="signShowWinner(${show.id})">Sign Winner</button>` :
-              `<button class="btn btn-secondary" onclick="openPanel(${c.id},'free-agents')">View</button>`
+              `<button class="btn btn-secondary show-signing-view" data-index="${idx}">View</button>`
             }
           </div>
         </div>
       `).join('');
+      list.querySelectorAll('.show-signing-view').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const contestant = contestants[Number(btn.dataset.index)];
+          if (!contestant) return;
+          state.panelContext = 'free-agents';
+          showFighterPanel(contestant.id, {
+            asking_salary: contestant.modified_asking_salary || contestant.asking_salary,
+            asking_fights: contestant.asking_fights || 4,
+            asking_length_months: contestant.asking_length_months || 12,
+            market_context: contestant.market_context || null,
+          });
+        });
+      });
     }
   } catch (err) {
     document.getElementById('show-signing-list').innerHTML = '<p class="muted">Error loading contestants.</p>';
