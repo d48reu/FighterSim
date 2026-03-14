@@ -1016,6 +1016,7 @@ def get_roster() -> list[dict]:
             d["expiry_date"] = (
                 contract.expiry_date.isoformat() if contract.expiry_date else None
             )
+            d["market_context"] = _market_context_dict(fighter, session, player_org.id)
             results.append(d)
         return results
 

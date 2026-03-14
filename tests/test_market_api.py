@@ -52,6 +52,77 @@ def _make_fighter(
     )
 
 
+def test_roster_and_show_surfaces_expose_market_context(tmp_path):
+    db_path = tmp_path / "market_api.db"
+    db_url = f"sqlite:///{db_path}"
+    engine = create_engine(db_url)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        player_org = Organization(
+            name="Player Org",
+            prestige=65.0,
+            bank_balance=5_000_000,
+            is_player=True,
+        )
+        target = _make_fighter(
+            "Rising Target",
+            age=24,
+            overall_bias=6,
+            confidence=86.0,
+            hype=72.0,
+            popularity=65.0,
+        )
+        roster_anchor = _make_fighter(
+            "Roster Anchor",
+            age=29,
+            overall_bias=5,
+            confidence=72.0,
+            hype=68.0,
+            popularity=62.0,
+            style=FighterStyle.WRESTLER,
+        )
+        session.add_all(
+            [
+                player_org,
+                target,
+                roster_anchor,
+                GameState(id=1, current_date=date(2026, 1, 1), player_org_id=1),
+            ]
+        )
+        session.flush()
+        session.add(
+            Contract(
+                fighter_id=roster_anchor.id,
+                organization_id=player_org.id,
+                status=ContractStatus.ACTIVE,
+                salary=100_000,
+                fight_count_total=4,
+                fights_remaining=4,
+                expiry_date=date(2026, 12, 1),
+            )
+        )
+        session.commit()
+
+    services.init_db(db_url)
+
+    roster = services.get_roster()
+    roster_entry = next(f for f in roster if f["name"] == "Roster Anchor")
+    assert "market_context" in roster_entry
+    assert roster_entry["market_context"]["trajectory_label"] in {
+        "Rising",
+        "Peaking",
+        "Volatile",
+        "Stalled",
+        "Declining",
+    }
+
+    show_pool = services.get_show_eligible_fighters("Lightweight")
+    target_entry = next(f for f in show_pool if f["name"] == "Rising Target")
+    assert "market_context" in target_entry
+    assert "booking_value" in target_entry["market_context"]
+
+
 def test_free_agents_expose_market_context_and_offers_return_evaluation(tmp_path):
     db_path = tmp_path / "market_api.db"
     db_url = f"sqlite:///{db_path}"

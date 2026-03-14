@@ -1201,6 +1201,40 @@ tbody td { padding: 9px 10px; }
   line-height: 1.4;
 }
 
+.market-inline-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.market-inline-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  color: var(--info);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.market-inline-chip.subdued {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.market-inline-hint {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .offer-eval-card {
   margin-top: 8px;
 }
@@ -3325,6 +3359,7 @@ tbody td { padding: 9px 10px; }
 .show-selected-fighter:hover { background: rgba(255,255,255,0.05); }
 
 .show-fighter-info { display: flex; gap: 8px; align-items: center; }
+.show-fighter-copy { display: flex; flex-direction: column; gap: 2px; }
 .show-fighter-ovr { font-weight: var(--fw-bold); color: var(--accent); min-width: 30px; }
 .show-fighter-salary { color: var(--muted); font-size: var(--fs-caption); }
 

@@ -30,6 +30,18 @@
       .join('');
   }
 
+  function renderCompactMarketLine(marketContext) {
+    if (!marketContext) return '';
+
+    return `
+      <div class="market-inline-line">
+        <span class="market-inline-chip">${esc(marketContext.trajectory_label || 'Stalled')}</span>
+        <span class="market-inline-chip subdued">${esc(marketContext.booking_value || 'No clear fit')}</span>
+      </div>
+      <div class="market-inline-hint">${esc(marketContext.market_value_hint || 'Market is stable.')}</div>
+    `;
+  }
+
   function renderMarketContextCard(marketContext) {
     if (!marketContext) return '';
 
@@ -100,6 +112,7 @@
   }
 
   const api = {
+    renderCompactMarketLine,
     renderMarketContextCard,
     renderOfferEvaluation,
   };

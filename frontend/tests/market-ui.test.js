@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   renderMarketContextCard,
   renderOfferEvaluation,
+  renderCompactMarketLine,
 } = require('../static/js/market-ui.js');
 
 test('renderMarketContextCard surfaces the key market signals', () => {
@@ -52,4 +53,16 @@ test('renderOfferEvaluation summarizes acceptance odds and offer leverage', () =
   assert.match(html, /\$100,000/);
   assert.match(html, /\$120,000/);
   assert.match(html, /Peaking/);
+});
+
+test('renderCompactMarketLine gives a table-friendly market summary', () => {
+  const html = renderCompactMarketLine({
+    trajectory_label: 'Rising',
+    booking_value: 'Strong Main Event',
+    market_value_hint: 'Prospect value is climbing.',
+  });
+
+  assert.match(html, /Rising/);
+  assert.match(html, /Strong Main Event/);
+  assert.match(html, /Prospect value is climbing\./);
 });

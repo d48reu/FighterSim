@@ -909,7 +909,10 @@ async function loadRoster() {
           data-fights-remaining="${f.fights_remaining}"
           data-fight-count-total="${f.fight_count_total}"
           data-expiry-date="${f.expiry_date || ''}">
-        <td>${esc(f.name)}</td>
+        <td>
+          <div>${esc(f.name)}</div>
+          ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context) : ''}
+        </td>
         <td>${f.age}</td>
         <td><span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}">${esc(f.weight_class)}</span></td>
         <td>${esc(f.style)}</td>
@@ -924,12 +927,14 @@ async function loadRoster() {
 
     tbody.querySelectorAll('tr[data-fighter-id]').forEach(row => {
       row.addEventListener('click', () => {
+        const fighter = roster.find(f => f.id === Number(row.dataset.fighterId));
         state.panelContext = 'roster';
         showFighterPanel(Number(row.dataset.fighterId), {
           salary: Number(row.dataset.salary),
           fights_remaining: Number(row.dataset.fightsRemaining),
           fight_count_total: Number(row.dataset.fightCountTotal),
           expiry_date: row.dataset.expiryDate,
+          market_context: fighter?.market_context || null,
         });
       });
     });
@@ -2965,8 +2970,11 @@ async function loadShowEligibleFighters() {
            data-id="${f.id}" onclick="toggleShowFighter(${f.id})">
         <div class="show-fighter-info">
           <span class="show-fighter-ovr">${f.overall}</span>
-          <span>${esc(f.name)}</span>
-          <span style="color:var(--muted);font-size:12px">${f.age}y ${f.record}</span>
+          <div class="show-fighter-copy">
+            <span>${esc(f.name)}</span>
+            <span style="color:var(--muted);font-size:12px">${f.age}y ${f.record}</span>
+            ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context) : ''}
+          </div>
         </div>
         <span class="show-fighter-salary">$${f.asking_salary?.toLocaleString() || '?'}</span>
       </div>
