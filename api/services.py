@@ -63,6 +63,11 @@ from simulation.narrative import (
     generate_fight_history_paragraph,
     extract_career_highlights,
 )
+from simulation.market import (
+    compute_asking_salary,
+    compute_contract_acceptance_probability,
+    compute_sponsorship_terms,
+)
 from simulation.trajectory import analyze_fighter_trajectory
 from simulation.matchmaking import assess_matchup
 
@@ -828,12 +833,23 @@ def set_nickname(fighter_id: int, nickname: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _asking_salary(fighter: Fighter) -> int:
-    ovr = fighter.overall
-    hype = fighter.hype if fighter.hype else 10.0
-    wins = fighter.wins or 0
-    raw = ovr * 800 * (1 + hype / 200) + wins * 200
-    return int(round(raw, -2))
+def _asking_salary(fighter: Fighter, session=None, org_id: Optional[int] = None) -> int:
+    if session is not None:
+        return compute_asking_salary(fighter, session, org_id)
+
+    with _SessionFactory() as local_session:
+        player_org = local_session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        effective_org_id = (
+            org_id if org_id is not None else (player_org.id if player_org else None)
+        )
+        refreshed = local_session.get(Fighter, fighter.id)
+        return compute_asking_salary(
+            refreshed or fighter,
+            local_session,
+            effective_org_id,
+        )
 
 
 def _asking_fights(fighter: Fighter) -> int:
@@ -863,6 +879,11 @@ def get_free_agents(
     sort_by: Optional[str] = None,
 ) -> list[dict]:
     with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        player_org_id = player_org.id if player_org else None
+
         # Subquery: fighter IDs with an active contract
         active_ids = (
             session.execute(
@@ -891,7 +912,7 @@ def get_free_agents(
             if min_overall and f.overall < min_overall:
                 continue
             d = _fighter_dict(f, session)
-            d["asking_salary"] = _asking_salary(f)
+            d["asking_salary"] = _asking_salary(f, session, player_org_id)
             d["asking_fights"] = _asking_fights(f)
             d["asking_length_months"] = _asking_length_months(f)
             results.append(d)
@@ -991,10 +1012,14 @@ def make_contract_offer(
                 "message": "You can't afford this contract. Need at least 3x the salary in the bank.",
             }
 
-        asking = _asking_salary(fighter)
-        salary_factor = salary / asking if asking > 0 else 1.0
-        prestige_factor = player_org.prestige / 100
-        acceptance_prob = min(0.95, salary_factor * 0.6 + prestige_factor * 0.4)
+        asking = _asking_salary(fighter, session, player_org.id)
+        acceptance_prob = compute_contract_acceptance_probability(
+            fighter,
+            player_org,
+            salary,
+            session,
+            org_id=player_org.id,
+        )
 
         # Quitter tag from reality show: -15% acceptance
         tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
@@ -1125,11 +1150,15 @@ def renew_contract(
                 "message": "You can't afford this renewal. Need at least 3x the salary in the bank.",
             }
 
-        asking = _asking_salary(fighter)
-        salary_factor = salary / asking if asking > 0 else 1.0
-        prestige_factor = player_org.prestige / 100
-        acceptance_prob = min(0.95, salary_factor * 0.6 + prestige_factor * 0.4)
-        acceptance_prob = min(0.95, acceptance_prob * 1.15)  # loyalty bonus
+        asking = _asking_salary(fighter, session, player_org.id)
+        acceptance_prob = compute_contract_acceptance_probability(
+            fighter,
+            player_org,
+            salary,
+            session,
+            org_id=player_org.id,
+            is_renewal=True,
+        )
 
         # Quitter tag from reality show: -15% acceptance
         tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
@@ -3424,6 +3453,12 @@ def get_fighter_sponsorships(fighter_id: int) -> dict:
         # Build available tiers
         available_tiers = []
         for tier_name, tier_data in SPONSOR_TIERS.items():
+            projected = compute_sponsorship_terms(
+                fighter,
+                tier_data["monthly_stipend"],
+                session,
+                org_id=player_org.id,
+            )
             hype_met = fighter.hype >= tier_data["min_hype"]
             pop_met = fighter.popularity >= tier_data["min_popularity"]
             already_has = tier_name in active_tiers
@@ -3435,6 +3470,17 @@ def get_fighter_sponsorships(fighter_id: int) -> dict:
                     "min_hype": tier_data["min_hype"],
                     "min_popularity": tier_data["min_popularity"],
                     "duration_months": tier_data["duration_months"],
+                    "projected_monthly_stipend": projected["monthly_stipend"],
+                    "trajectory_label": projected["market_signals"]["trajectory"][
+                        "label"
+                    ],
+                    "booking_value": (
+                        projected["market_signals"]["matchup"]["assessment"][
+                            "booking_value"
+                        ]
+                        if projected["market_signals"]["matchup"]
+                        else None
+                    ),
                     "hype_met": hype_met,
                     "popularity_met": pop_met,
                     "already_has": already_has,
@@ -3509,6 +3555,13 @@ def seek_sponsorship(fighter_id: int, tier: str) -> dict:
                 "message": f"Fighter already has an active {tier} sponsorship.",
             }
 
+        terms = compute_sponsorship_terms(
+            fighter,
+            tier_data["monthly_stipend"],
+            session,
+            org_id=player_org.id,
+        )
+
         # Acceptance probability
         hype_surplus = fighter.hype - tier_data["min_hype"]
         pop_surplus = fighter.popularity - tier_data["min_popularity"]
@@ -3519,6 +3572,10 @@ def seek_sponsorship(fighter_id: int, tier: str) -> dict:
             + hype_surplus / 15 * 0.20
             + pop_surplus / 15 * 0.15
             + cornerstone_bonus,
+        )
+        acceptance_prob = min(
+            0.95,
+            max(0.10, acceptance_prob + terms["acceptance_adjustment"]),
         )
 
         if random.random() >= acceptance_prob:
@@ -3533,7 +3590,7 @@ def seek_sponsorship(fighter_id: int, tier: str) -> dict:
         game_date = _get_game_date(session)
         brand_name = random.choice(tier_data["brands"])
         duration = tier_data["duration_months"]
-        stipend = tier_data["monthly_stipend"]
+        stipend = terms["monthly_stipend"]
 
         # Cornerstone fighters get +20% stipend
         if fighter.is_cornerstone:
@@ -3827,6 +3884,11 @@ def _show_dict(
 def get_show_eligible_fighters(weight_class: str) -> list[dict]:
     """Return free agents in weight class, not injured, not on active show."""
     with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        player_org_id = player_org.id if player_org else None
+
         # IDs with active contracts
         active_ids = set(
             session.execute(
@@ -3868,7 +3930,7 @@ def get_show_eligible_fighters(weight_class: str) -> list[dict]:
             if f.id in excluded:
                 continue
             d = _fighter_dict(f)
-            d["asking_salary"] = _asking_salary(f)
+            d["asking_salary"] = _asking_salary(f, session, player_org_id)
             results.append(d)
         results.sort(key=lambda x: x["overall"], reverse=True)
         return results
@@ -4290,7 +4352,7 @@ def sign_show_winner(show_id: int) -> dict:
         if existing:
             return {"error": f"{fighter.name} already has an active contract."}
 
-        asking = _asking_salary(fighter)
+        asking = _asking_salary(fighter, session, player_org.id)
         discounted = int(round(asking * 0.75, -2))  # 25% discount
         game_date = _get_game_date(session)
 
@@ -4346,7 +4408,7 @@ def get_show_contestants_for_signing(show_id: int) -> list[dict]:
             if not fighter or fighter.id in active_ids:
                 continue
 
-            base_asking = _asking_salary(fighter)
+            base_asking = _asking_salary(fighter, session, show.organization_id)
 
             # Determine discount based on placement
             if fighter.id == show.winner_id:

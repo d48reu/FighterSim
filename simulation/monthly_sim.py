@@ -39,6 +39,11 @@ from models.models import (
     FighterDevelopment,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
+from simulation.market import (
+    compute_asking_salary,
+    compute_contract_acceptance_probability,
+    compute_market_signals,
+)
 from simulation.rankings import mark_rankings_dirty
 from simulation.narrative import (
     apply_fight_tags,
@@ -138,24 +143,49 @@ def _process_contracts(session: Session, today: date, rng: random.Random) -> Non
         fighter = session.get(Fighter, contract.fighter_id)
         org = session.get(Organization, contract.organization_id)
 
-        # 60% chance AI org renews; player org handled via UI
-        if org and not org.is_player and rng.random() < 0.6:
-            # Renew for another 12 months, 4 fights
-            contract.expiry_date = today + timedelta(days=365)
-            contract.fights_remaining = 4
-            contract.fight_count_total = 4
-            # Slight salary bump
-            contract.salary = round(contract.salary * rng.uniform(1.0, 1.15), 2)
-        else:
-            contract.status = ContractStatus.EXPIRED
-            if org and org.is_player and fighter:
-                session.add(
-                    Notification(
-                        message=f"{fighter.name}'s contract has expired",
-                        type="contract_expired",
-                        created_date=today,
-                    )
+        # AI org renewals are driven by the same market signals as player deals.
+        if org and not org.is_player and fighter:
+            renewal_prob = compute_contract_acceptance_probability(
+                fighter,
+                org,
+                contract.salary * rng.uniform(1.0, 1.12),
+                session,
+                org_id=org.id,
+                is_renewal=True,
+            )
+            if fighter:
+                renewal_prob = min(
+                    0.97,
+                    max(
+                        0.15,
+                        renewal_prob
+                        + (
+                            compute_market_signals(fighter, session, org.id)[
+                                "ai_interest_score"
+                            ]
+                            - fighter.overall
+                        )
+                        / 200,
+                    ),
                 )
+            if rng.random() < renewal_prob:
+                # Renew for another 12 months, 4 fights
+                contract.expiry_date = today + timedelta(days=365)
+                contract.fights_remaining = 4
+                contract.fight_count_total = 4
+                contract.salary = round(contract.salary * rng.uniform(1.02, 1.15), 2)
+                continue
+
+        # Player org is handled via UI; failed AI renewals expire here.
+        contract.status = ContractStatus.EXPIRED
+        if org and org.is_player and fighter:
+            session.add(
+                Notification(
+                    message=f"{fighter.name}'s contract has expired",
+                    type="contract_expired",
+                    created_date=today,
+                )
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1275,7 +1305,14 @@ def _ai_sign_free_agents(
                 wc_counts[wc] = wc_counts.get(wc, 0) + 1
 
         candidates = [f for f in free_agents if f.overall >= min_ovr]
-        rng.shuffle(candidates)
+        candidates.sort(
+            key=lambda fighter: (
+                compute_market_signals(fighter, session, org.id)["ai_interest_score"],
+                fighter.hype,
+                fighter.popularity,
+            ),
+            reverse=True,
+        )
 
         for fighter in candidates:
             if signed >= max_signings:
@@ -1291,11 +1328,7 @@ def _ai_sign_free_agents(
                 continue
 
             # Salary offer and acceptance
-            asking = (
-                fighter.overall * 800 * (1 + (fighter.hype or 10.0) / 200)
-                + (fighter.wins or 0) * 200
-            )
-            asking = int(round(asking, -2))
+            asking = compute_asking_salary(fighter, session, org.id)
             offer_salary = round(asking * rng.uniform(0.8, 1.1), 2)
 
             # Budget gate: 3x salary in bank
@@ -1303,9 +1336,13 @@ def _ai_sign_free_agents(
                 continue
 
             # Acceptance formula (same as player)
-            salary_factor = offer_salary / asking if asking > 0 else 1.0
-            prestige_factor = org.prestige / 100
-            acceptance_prob = min(0.95, salary_factor * 0.6 + prestige_factor * 0.4)
+            acceptance_prob = compute_contract_acceptance_probability(
+                fighter,
+                org,
+                offer_salary,
+                session,
+                org_id=org.id,
+            )
 
             if rng.random() < acceptance_prob:
                 expiry = sim_date + timedelta(days=365)
@@ -1459,14 +1496,19 @@ def _ai_claim_expired_fighters(
         ai_org = rng.choices(ai_orgs, weights=weights, k=1)[0]
 
         # Sign probability
+        signals = compute_market_signals(fighter, session, ai_org.id)
         sign_prob = ai_org.prestige / (ai_org.prestige + player_prestige + 1)
+        sign_prob = min(
+            0.95,
+            max(
+                0.10,
+                sign_prob + (signals["ai_interest_score"] - fighter.overall) / 160,
+            ),
+        )
 
         if rng.random() < sign_prob:
-            asking = (
-                fighter.overall * 800 * (1 + (fighter.hype or 10.0) / 200)
-                + (fighter.wins or 0) * 200
-            )
-            offer_salary = round(int(round(asking, -2)) * rng.uniform(0.85, 1.05), 2)
+            asking = compute_asking_salary(fighter, session, ai_org.id)
+            offer_salary = round(asking * rng.uniform(0.85, 1.05), 2)
 
             expiry = sim_date + timedelta(days=365)
             new_contract = Contract(
@@ -1655,6 +1697,7 @@ def _compute_legacy_score(fighter: Fighter, session: Session) -> float:
     score = fighter.wins * 2.0 - fighter.losses * 0.5
 
     # Quality of opposition: per-win opponent overall bonus
+
     wins_a = session.execute(
         select(Fight, Fighter)
         .join(Fighter, Fight.fighter_b_id == Fighter.id)
