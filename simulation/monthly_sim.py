@@ -10,24 +10,43 @@ from __future__ import annotations
 import json
 import random
 from datetime import date, timedelta
-from typing import Callable
+from typing import Callable, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select, update, or_ as db_or, and_ as db_and
+from sqlalchemy import select, or_ as db_or, and_ as db_and
 
 from models.models import (
-    Fighter, Organization, Contract, Event, Fight,
-    Ranking, WeightClass, ContractStatus, EventStatus, Notification, GameState,
-    BroadcastDeal, BroadcastDealStatus,
-    Sponsorship, SponsorshipStatus,
-    RealityShow, ShowContestant, ShowEpisode, ShowStatus,
-    NewsHeadline, LegendCoach, FighterDevelopment,
+    Fighter,
+    Organization,
+    Contract,
+    Event,
+    Fight,
+    WeightClass,
+    ContractStatus,
+    EventStatus,
+    Notification,
+    GameState,
+    BroadcastDeal,
+    BroadcastDealStatus,
+    Sponsorship,
+    SponsorshipStatus,
+    RealityShow,
+    ShowContestant,
+    ShowEpisode,
+    ShowStatus,
+    NewsHeadline,
+    LegendCoach,
+    FighterDevelopment,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.rankings import mark_rankings_dirty
 from simulation.narrative import (
-    apply_fight_tags, decay_hype, update_goat_scores, update_rivalries,
-    generate_fight_headline, generate_signing_headline,
+    apply_fight_tags,
+    decay_hype,
+    update_goat_scores,
+    update_rivalries,
+    generate_fight_headline,
+    generate_signing_headline,
 )
 
 
@@ -75,6 +94,7 @@ def _age_fighter(fighter: Fighter, rng: random.Random) -> None:
 # Contract management
 # ---------------------------------------------------------------------------
 
+
 def _process_contracts(session: Session, today: date, rng: random.Random) -> None:
     """Expire contracts past their date and auto-renew or release fighters."""
     # Notify about contracts expiring within 60 days (before processing expirations)
@@ -94,11 +114,13 @@ def _process_contracts(session: Session, today: date, rng: random.Random) -> Non
         fighter = session.get(Fighter, contract.fighter_id)
         org = session.get(Organization, contract.organization_id)
         if org and org.is_player and fighter:
-            session.add(Notification(
-                message=f"{fighter.name}'s contract expires soon ({contract.expiry_date.isoformat()})",
-                type="contract_expiring_soon",
-                created_date=today,
-            ))
+            session.add(
+                Notification(
+                    message=f"{fighter.name}'s contract expires soon ({contract.expiry_date.isoformat()})",
+                    type="contract_expiring_soon",
+                    created_date=today,
+                )
+            )
 
     # Process expired contracts
     expired = (
@@ -127,23 +149,24 @@ def _process_contracts(session: Session, today: date, rng: random.Random) -> Non
         else:
             contract.status = ContractStatus.EXPIRED
             if org and org.is_player and fighter:
-                session.add(Notification(
-                    message=f"{fighter.name}'s contract has expired",
-                    type="contract_expired",
-                    created_date=today,
-                ))
+                session.add(
+                    Notification(
+                        message=f"{fighter.name}'s contract has expired",
+                        type="contract_expired",
+                        created_date=today,
+                    )
+                )
 
 
 # ---------------------------------------------------------------------------
 # Injury recovery
 # ---------------------------------------------------------------------------
 
+
 def _recover_injuries(session: Session) -> None:
     """Tick down injury counters and restore condition."""
     injured = (
-        session.execute(
-            select(Fighter).where(Fighter.injury_months > 0)
-        )
+        session.execute(select(Fighter).where(Fighter.injury_months > 0))
         .scalars()
         .all()
     )
@@ -158,14 +181,25 @@ def _recover_injuries(session: Session) -> None:
 # ---------------------------------------------------------------------------
 
 _VENUES = [
-    "Madison Square Garden", "T-Mobile Arena", "Barclays Center",
-    "United Center", "Crypto.com Arena", "Chase Center",
-    "Rogers Centre", "O2 Arena", "Melbourne Arena",
+    "Madison Square Garden",
+    "T-Mobile Arena",
+    "Barclays Center",
+    "United Center",
+    "Crypto.com Arena",
+    "Chase Center",
+    "Rogers Centre",
+    "O2 Arena",
+    "Melbourne Arena",
 ]
 
 _EVENT_PREFIXES = [
-    "Combat Night", "Fight Night", "Battle at the", "Rumble in",
-    "Collision Course", "War at", "Championship Series",
+    "Combat Night",
+    "Fight Night",
+    "Battle at the",
+    "Rumble in",
+    "Collision Course",
+    "War at",
+    "Championship Series",
 ]
 
 
@@ -177,19 +211,16 @@ def _generate_ai_event(
 ) -> None:
     """Book and simulate an AI org event with random fighters on its roster."""
     # Find active contracts for this org
-    active_contracts = (
-        session.execute(
-            select(Contract, Fighter)
-            .join(Fighter, Contract.fighter_id == Fighter.id)
-            .where(
-                Contract.organization_id == org.id,
-                Contract.status == ContractStatus.ACTIVE,
-                Contract.fights_remaining > 0,
-                Fighter.injury_months == 0,
-            )
+    active_contracts = session.execute(
+        select(Contract, Fighter)
+        .join(Fighter, Contract.fighter_id == Fighter.id)
+        .where(
+            Contract.organization_id == org.id,
+            Contract.status == ContractStatus.ACTIVE,
+            Contract.fights_remaining > 0,
+            Fighter.injury_months == 0,
         )
-        .all()
-    )
+    ).all()
 
     if len(active_contracts) < 4:
         return  # not enough fighters for an event
@@ -219,7 +250,7 @@ def _generate_ai_event(
     for i, fa in enumerate(fighters):
         if fa.id in paired:
             continue
-        for fb in fighters[i + 1:]:
+        for fb in fighters[i + 1 :]:
             if fb.id in paired or fb.weight_class != fa.weight_class:
                 continue
 
@@ -238,8 +269,13 @@ def _generate_ai_event(
             b_stats = _fighter_to_stats(fb)
             sev_a = _get_cut_severity(fa)
             sev_b = _get_cut_severity(fb)
-            result = simulate_fight(a_stats, b_stats, seed=rng.randint(0, 999999),
-                                    cut_severity_a=sev_a, cut_severity_b=sev_b)
+            result = simulate_fight(
+                a_stats,
+                b_stats,
+                seed=rng.randint(0, 999999),
+                cut_severity_a=sev_a,
+                cut_severity_b=sev_b,
+            )
 
             fight.winner_id = result.winner_id
             fight.method = result.method
@@ -271,11 +307,24 @@ def _generate_ai_event(
             # Generate headline
             headline_text = generate_fight_headline(winner, loser, fight, session)
             if headline_text:
-                cat = "title" if fight.is_title_fight else ("upset" if loser.overall - winner.overall >= 10 else "fight_result")
-                session.add(NewsHeadline(
-                    headline=headline_text, category=cat,
-                    game_date=sim_date, fighter_id=winner.id, event_id=event.id,
-                ))
+                cat = (
+                    "title"
+                    if fight.is_title_fight
+                    else (
+                        "upset"
+                        if loser.overall - winner.overall >= 10
+                        else "fight_result"
+                    )
+                )
+                session.add(
+                    NewsHeadline(
+                        headline=headline_text,
+                        category=cat,
+                        game_date=sim_date,
+                        fighter_id=winner.id,
+                        event_id=event.id,
+                    )
+                )
 
             paired.add(fa.id)
             paired.add(fb.id)
@@ -292,16 +341,16 @@ def _generate_ai_event(
     org.last_event_date = sim_date
 
     # Deduct salaries for fighters on this event
-    total_salaries = sum(
-        c.salary for c, f in active_contracts if f.id in paired
-    )
+    total_salaries = sum(c.salary for c, f in active_contracts if f.id in paired)
     org.bank_balance -= total_salaries + event.gate_revenue * 0.4  # costs
     org.bank_balance += event.total_revenue
 
 
 def _get_cut_severity(f: Fighter) -> str:
     """Calculate weight cut severity for a fighter."""
-    if not getattr(f, "natural_weight", None) or not getattr(f, "fighting_weight", None):
+    if not getattr(f, "natural_weight", None) or not getattr(
+        f, "fighting_weight", None
+    ):
         return "easy"
     if f.natural_weight <= f.fighting_weight:
         return "easy"
@@ -315,24 +364,32 @@ def _get_cut_severity(f: Fighter) -> str:
     return "extreme"
 
 
-def _process_broadcast_deals(session: Session, sim_date: date, player_org: Organization) -> list[str]:
+def _process_broadcast_deals(
+    session: Session, sim_date: date, player_org: Organization
+) -> list[str]:
     """Check broadcast deal compliance, expiry, and apply prestige gain."""
     notifications = []
     if not player_org:
         return notifications
 
-    deals = session.execute(
-        select(BroadcastDeal).where(
-            BroadcastDeal.organization_id == player_org.id,
-            BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+    deals = (
+        session.execute(
+            select(BroadcastDeal).where(
+                BroadcastDeal.organization_id == player_org.id,
+                BroadcastDeal.status == BroadcastDealStatus.ACTIVE,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     for deal in deals:
         # Check expiry
         if sim_date >= deal.expiry_date:
             deal.status = BroadcastDealStatus.EXPIRED
-            notifications.append(f"Your {deal.tier} deal with {deal.network_name} has expired.")
+            notifications.append(
+                f"Your {deal.tier} deal with {deal.network_name} has expired."
+            )
             continue
 
         # Apply monthly prestige gain
@@ -367,18 +424,24 @@ def _process_broadcast_deals(session: Session, sim_date: date, player_org: Organ
     return notifications
 
 
-def _process_sponsorships(session: Session, sim_date: date, player_org: Organization) -> list[str]:
+def _process_sponsorships(
+    session: Session, sim_date: date, player_org: Organization
+) -> list[str]:
     """Process sponsorship payments, expiry, and compliance checks."""
     notifications = []
     if not player_org:
         return notifications
 
-    sponsorships = session.execute(
-        select(Sponsorship).where(
-            Sponsorship.organization_id == player_org.id,
-            Sponsorship.status == SponsorshipStatus.ACTIVE,
+    sponsorships = (
+        session.execute(
+            select(Sponsorship).where(
+                Sponsorship.organization_id == player_org.id,
+                Sponsorship.status == SponsorshipStatus.ACTIVE,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     total_income = 0.0
     for sp in sponsorships:
@@ -451,6 +514,7 @@ def _fighter_to_stats(f: Fighter) -> FighterStats:
 # Reality Show processing
 # ---------------------------------------------------------------------------
 
+
 def _process_reality_show(
     session: Session, sim_date: date, player_org: Organization, rng: random.Random
 ) -> list[str]:
@@ -468,7 +532,7 @@ def _process_reality_show(
     if not show:
         return notifications
 
-    from api.services import SHENANIGANS, SHOW_PRODUCTION_COST
+    from api.services import SHENANIGANS
 
     total_episodes = 4 if show.format_size == 8 else 5
     ep_num = show.episodes_aired + 1
@@ -486,11 +550,15 @@ def _process_reality_show(
     is_fight_episode = ep_type != "intro"
 
     # Get active contestants
-    contestants = session.execute(
-        select(ShowContestant).where(
-            ShowContestant.show_id == show.id,
+    contestants = (
+        session.execute(
+            select(ShowContestant).where(
+                ShowContestant.show_id == show.id,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     active_contestants = [sc for sc in contestants if sc.status == "active"]
     suspended_contestants = [sc for sc in contestants if sc.status == "suspended"]
 
@@ -520,7 +588,8 @@ def _process_reality_show(
 
         # Pick a target fighter
         eligible_targets = [
-            sc for sc in active_contestants
+            sc
+            for sc in active_contestants
             if shenanigan_targets_count.get(sc.fighter_id, 0) < 2
         ]
         if not eligible_targets:
@@ -532,7 +601,11 @@ def _process_reality_show(
             fighter = session.get(Fighter, sc.fighter_id)
             tags = []
             try:
-                tags = json.loads(fighter.narrative_tags) if fighter and fighter.narrative_tags else []
+                tags = (
+                    json.loads(fighter.narrative_tags)
+                    if fighter and fighter.narrative_tags
+                    else []
+                )
             except (json.JSONDecodeError, TypeError):
                 pass
             w = 1.0
@@ -545,7 +618,9 @@ def _process_reality_show(
             target_weights.append(w)
 
         target_sc = rng.choices(eligible_targets, weights=target_weights, k=1)[0]
-        shenanigan_targets_count[target_sc.fighter_id] = shenanigan_targets_count.get(target_sc.fighter_id, 0) + 1
+        shenanigan_targets_count[target_sc.fighter_id] = (
+            shenanigan_targets_count.get(target_sc.fighter_id, 0) + 1
+        )
 
         shenanigan = rng.choices(pool, weights=weights, k=1)[0]
         fighter = session.get(Fighter, target_sc.fighter_id)
@@ -558,19 +633,28 @@ def _process_reality_show(
         # Build description
         desc = rng.choice(shenanigan["templates"]).format(
             name=fighter.name if fighter else "Unknown",
-            target=rng.choice([sc for sc in active_contestants if sc.fighter_id != target_sc.fighter_id]).fighter_id
+            target=rng.choice(
+                [
+                    sc
+                    for sc in active_contestants
+                    if sc.fighter_id != target_sc.fighter_id
+                ]
+            ).fighter_id
             if shenanigan["type"] == "callout_favorite" and len(active_contestants) > 1
-            else ""
+            else "",
         )
 
         # For callout_favorite, pick actual target name
         if shenanigan["type"] == "callout_favorite" and len(active_contestants) > 1:
-            others = [sc for sc in active_contestants if sc.fighter_id != target_sc.fighter_id]
+            others = [
+                sc for sc in active_contestants if sc.fighter_id != target_sc.fighter_id
+            ]
             if others:
                 other_sc = rng.choice(others)
                 other_fighter = session.get(Fighter, other_sc.fighter_id)
                 desc = rng.choice(shenanigan["templates"]).format(
-                    name=fighter.name, target=other_fighter.name if other_fighter else "Unknown"
+                    name=fighter.name,
+                    target=other_fighter.name if other_fighter else "Unknown",
                 )
                 # Apply hype to both
                 if other_fighter:
@@ -595,25 +679,35 @@ def _process_reality_show(
         # Apply effects
         if fighter:
             if effects.get("popularity"):
-                fighter.popularity = min(100.0, max(0.0, fighter.popularity + effects["popularity"]))
+                fighter.popularity = min(
+                    100.0, max(0.0, fighter.popularity + effects["popularity"])
+                )
             if effects.get("hype"):
                 fighter.hype = min(100.0, max(0.0, fighter.hype + effects["hype"]))
                 target_sc.show_hype_earned += abs(effects["hype"])
             if effects.get("confidence"):
-                fighter.confidence = min(100.0, max(0.0, fighter.confidence + effects["confidence"]))
+                fighter.confidence = min(
+                    100.0, max(0.0, fighter.confidence + effects["confidence"])
+                )
             if effects.get("cardio"):
                 fighter.cardio = max(1, min(100, fighter.cardio + effects["cardio"]))
             if effects.get("speed"):
                 fighter.speed = max(1, min(100, fighter.speed + effects["speed"]))
             if effects.get("random_attr"):
-                attr = rng.choice(["striking", "grappling", "wrestling", "cardio", "chin", "speed"])
+                attr = rng.choice(
+                    ["striking", "grappling", "wrestling", "cardio", "chin", "speed"]
+                )
                 val = getattr(fighter, attr)
                 setattr(fighter, attr, min(85, val + effects["random_attr"]))
 
             # Apply tag
             if shenanigan["tag"]:
                 try:
-                    tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
+                    tags = (
+                        json.loads(fighter.narrative_tags)
+                        if fighter.narrative_tags
+                        else []
+                    )
                 except (json.JSONDecodeError, TypeError):
                     tags = []
                 if shenanigan["tag"] not in tags:
@@ -650,12 +744,16 @@ def _process_reality_show(
             show.show_hype = max(0.0, min(100.0, show.show_hype + effects["show_hype"]))
 
         if effects.get("others_confidence"):
-            other_active = [sc for sc in active_contestants if sc.fighter_id != target_sc.fighter_id]
+            other_active = [
+                sc for sc in active_contestants if sc.fighter_id != target_sc.fighter_id
+            ]
             targets = rng.sample(other_active, min(2, len(other_active)))
             for osc in targets:
                 of = session.get(Fighter, osc.fighter_id)
                 if of:
-                    of.confidence = max(0.0, min(100.0, of.confidence + effects["others_confidence"]))
+                    of.confidence = max(
+                        0.0, min(100.0, of.confidence + effects["others_confidence"])
+                    )
 
         target_sc.shenanigan_count += 1
         shenanigan_results.append(result_entry)
@@ -677,27 +775,61 @@ def _process_reality_show(
             fa = session.get(Fighter, sc_a.fighter_id) if sc_a else None
             fb = session.get(Fighter, sc_b.fighter_id) if sc_b else None
 
-            # Handle walkovers
+            # Handle walkovers / bracket-preserving fallback
             a_can_fight = sc_a.status == "active" and fa and fa.injury_months == 0
             b_can_fight = sc_b.status == "active" and fb and fb.injury_months == 0
 
             if not a_can_fight and not b_can_fight:
+                winner_sc, winner, loser_sc, loser = _resolve_show_unavailable_matchup(
+                    sc_a,
+                    fa,
+                    sc_b,
+                    fb,
+                )
+                winner_sc.show_wins += 1
+                winner_sc.status = "active"
+                winner_sc.eliminated_round = None
+                winner_sc.eliminated_by = None
+                loser_sc.status = "eliminated"
+                loser_sc.eliminated_round = show.current_round + 1
+                loser_sc.eliminated_by = "technical_advancement"
+                loser_sc.show_losses += 1
+                fight_results.append(
+                    {
+                        "fighter_a_id": fa.id if fa else None,
+                        "fighter_a": fa.name if fa else "Unknown",
+                        "fighter_b_id": fb.id if fb else None,
+                        "fighter_b": fb.name if fb else "Unknown",
+                        "winner_id": winner.id if winner else None,
+                        "winner": winner.name if winner else "Unknown",
+                        "is_walkover": True,
+                        "method": "Technical Advancement",
+                        "round": None,
+                        "time": None,
+                        "narrative": (
+                            f"Both fighters were unable to compete, so {winner.name if winner else 'Unknown'} "
+                            "advanced on show performance tiebreakers."
+                        ),
+                    }
+                )
                 continue
             if not a_can_fight:
                 sc_b.show_wins += 1
-                fight_results.append({
-                    "fighter_a_id": fa.id if fa else None,
-                    "fighter_a": fa.name if fa else "Unknown",
-                    "fighter_b_id": fb.id if fb else None,
-                    "fighter_b": fb.name if fb else "Unknown",
-                    "winner_id": fb.id if fb else None,
-                    "winner": fb.name if fb else "Unknown",
-                    "is_walkover": True,
-                    "method": "Walkover",
-                    "round": None,
-                    "time": None,
-                    "narrative": f"{fb.name} advances via walkover — opponent was unable to compete.",
-                })
+                fight_results.append(
+                    {
+                        "fighter_a_id": fa.id if fa else None,
+                        "fighter_a": fa.name if fa else "Unknown",
+                        "fighter_b_id": fb.id if fb else None,
+                        "fighter_b": fb.name if fb else "Unknown",
+                        "winner_id": fb.id if fb else None,
+                        "winner": fb.name if fb else "Unknown",
+                        "is_walkover": True,
+                        "method": "Walkover",
+                        "round": None,
+                        "time": None,
+                        "narrative": f"{fb.name} advances via walkover — opponent was unable to compete.",
+                    }
+                )
                 sc_a.status = "eliminated"
                 sc_a.eliminated_round = show.current_round + 1
                 sc_a.eliminated_by = "walkover"
@@ -705,19 +837,21 @@ def _process_reality_show(
                 continue
             if not b_can_fight:
                 sc_a.show_wins += 1
-                fight_results.append({
-                    "fighter_a_id": fa.id if fa else None,
-                    "fighter_a": fa.name if fa else "Unknown",
-                    "fighter_b_id": fb.id if fb else None,
-                    "fighter_b": fb.name if fb else "Unknown",
-                    "winner_id": fa.id if fa else None,
-                    "winner": fa.name if fa else "Unknown",
-                    "is_walkover": True,
-                    "method": "Walkover",
-                    "round": None,
-                    "time": None,
-                    "narrative": f"{fa.name} advances via walkover — opponent was unable to compete.",
-                })
+                fight_results.append(
+                    {
+                        "fighter_a_id": fa.id if fa else None,
+                        "fighter_a": fa.name if fa else "Unknown",
+                        "fighter_b_id": fb.id if fb else None,
+                        "fighter_b": fb.name if fb else "Unknown",
+                        "winner_id": fa.id if fa else None,
+                        "winner": fa.name if fa else "Unknown",
+                        "is_walkover": True,
+                        "method": "Walkover",
+                        "round": None,
+                        "time": None,
+                        "narrative": f"{fa.name} advances via walkover — opponent was unable to compete.",
+                    }
+                )
                 sc_b.status = "eliminated"
                 sc_b.eliminated_round = show.current_round + 1
                 sc_b.eliminated_by = "walkover"
@@ -727,7 +861,9 @@ def _process_reality_show(
             # Simulate fight (3 rounds)
             a_stats = _fighter_to_stats(fa)
             b_stats = _fighter_to_stats(fb)
-            result = simulate_fight(a_stats, b_stats, seed=rng.randint(0, 999999), max_rounds=3)
+            result = simulate_fight(
+                a_stats, b_stats, seed=rng.randint(0, 999999), max_rounds=3
+            )
 
             winner = fa if result.winner_id == fa.id else fb
             loser = fb if winner is fa else fa
@@ -755,34 +891,40 @@ def _process_reality_show(
 
             mark_rankings_dirty(session, WeightClass(fa.weight_class))
 
-            fight_results.append({
-                "fighter_a_id": fa.id,
-                "fighter_a": fa.name,
-                "fighter_b_id": fb.id,
-                "fighter_b": fb.name,
-                "winner_id": result.winner_id,
-                "winner": winner.name,
-                "loser": loser.name,
-                "is_walkover": False,
-                "method": result.method,
-                "round": result.round_ended,
-                "time": result.time_ended,
-                "narrative": result.narrative,
-            })
+            fight_results.append(
+                {
+                    "fighter_a_id": fa.id,
+                    "fighter_a": fa.name,
+                    "fighter_b_id": fb.id,
+                    "fighter_b": fb.name,
+                    "winner_id": result.winner_id,
+                    "winner": winner.name,
+                    "loser": loser.name,
+                    "is_walkover": False,
+                    "method": result.method,
+                    "round": result.round_ended,
+                    "time": result.time_ended,
+                    "narrative": result.narrative,
+                }
+            )
 
     # --- Training gains for all active contestants ---
     still_active = [sc for sc in contestants if sc.status == "active"]
     for sc in still_active:
         fighter = session.get(Fighter, sc.fighter_id)
         if fighter:
-            attr = rng.choice(["striking", "grappling", "wrestling", "cardio", "chin", "speed"])
+            attr = rng.choice(
+                ["striking", "grappling", "wrestling", "cardio", "chin", "speed"]
+            )
             gain = rng.randint(1, 3)
             current = getattr(fighter, attr)
             setattr(fighter, attr, min(85, current + gain))
 
     # --- Update show hype ---
     hype_base = rng.uniform(5, 10)
-    finish_bonus = sum(3 for fr in fight_results if fr.get("method") in ("KO/TKO", "Submission"))
+    finish_bonus = sum(
+        3 for fr in fight_results if fr.get("method") in ("KO/TKO", "Submission")
+    )
     drama_bonus = sum(2 for s in shenanigan_results if s["category"] == "negative")
     hype_generated = hype_base + finish_bonus + drama_bonus
     show.show_hype = min(100.0, show.show_hype + hype_generated)
@@ -862,7 +1004,9 @@ def _process_reality_show(
         _conclude_show(session, show, contestants, sim_date, player_org)
         notifications.append(f"Reality show '{show.name}' has concluded!")
     else:
-        notifications.append(f"'{show.name}' Episode {ep_num} aired — {ep_type.replace('_', ' ').title()}")
+        notifications.append(
+            f"'{show.name}' Episode {ep_num} aired — {ep_type.replace('_', ' ').title()}"
+        )
 
     return notifications
 
@@ -874,18 +1018,37 @@ def _get_round_matchups(show, ep_type, contestants_by_seed, session):
             return [(1, 8), (4, 5), (3, 6), (2, 7)]
         elif ep_type == "semifinal":
             # Get QF winners from episode results
-            return _get_next_round_matchups(show, "quarterfinal", contestants_by_seed, session)
+            return _get_next_round_matchups(
+                show, "quarterfinal", contestants_by_seed, session
+            )
         elif ep_type == "finale":
-            return _get_next_round_matchups(show, "semifinal", contestants_by_seed, session)
+            return _get_next_round_matchups(
+                show, "semifinal", contestants_by_seed, session
+            )
     else:
         if ep_type == "first_round":
-            return [(1, 16), (8, 9), (4, 13), (5, 12), (3, 14), (6, 11), (2, 15), (7, 10)]
+            return [
+                (1, 16),
+                (8, 9),
+                (4, 13),
+                (5, 12),
+                (3, 14),
+                (6, 11),
+                (2, 15),
+                (7, 10),
+            ]
         elif ep_type == "quarterfinal":
-            return _get_next_round_matchups(show, "first_round", contestants_by_seed, session)
+            return _get_next_round_matchups(
+                show, "first_round", contestants_by_seed, session
+            )
         elif ep_type == "semifinal":
-            return _get_next_round_matchups(show, "quarterfinal", contestants_by_seed, session)
+            return _get_next_round_matchups(
+                show, "quarterfinal", contestants_by_seed, session
+            )
         elif ep_type == "finale":
-            return _get_next_round_matchups(show, "semifinal", contestants_by_seed, session)
+            return _get_next_round_matchups(
+                show, "semifinal", contestants_by_seed, session
+            )
     return []
 
 
@@ -910,7 +1073,9 @@ def _get_next_round_matchups(show, prev_ep_type, contestants_by_seed, session):
     for seed, sc in contestants_by_seed.items():
         id_to_seed[sc.fighter_id] = seed
 
-    winner_seeds = [id_to_seed.get(wid) for wid in winner_ids if id_to_seed.get(wid) is not None]
+    winner_seeds = [
+        id_to_seed.get(wid) for wid in winner_ids if id_to_seed.get(wid) is not None
+    ]
 
     # Pair winners sequentially: 1st vs 2nd, 3rd vs 4th, etc.
     matchups = []
@@ -918,6 +1083,27 @@ def _get_next_round_matchups(show, prev_ep_type, contestants_by_seed, session):
         if i + 1 < len(winner_seeds):
             matchups.append((winner_seeds[i], winner_seeds[i + 1]))
     return matchups
+
+
+def _resolve_show_unavailable_matchup(sc_a, fa, sc_b, fb):
+    """Pick an advancer when both sides of a show matchup are unavailable."""
+    ranked = sorted(
+        [
+            (sc_a, fa),
+            (sc_b, fb),
+        ],
+        key=lambda row: (
+            row[0].show_wins,
+            row[0].show_hype_earned,
+            -(row[0].show_losses or 0),
+            -(row[0].seed or 99),
+            (row[1].overall if row[1] else 0),
+        ),
+        reverse=True,
+    )
+    winner_sc, winner = ranked[0]
+    loser_sc, loser = ranked[1]
+    return winner_sc, winner, loser_sc, loser
 
 
 def _conclude_show(session, show, contestants, sim_date, player_org):
@@ -936,7 +1122,10 @@ def _conclude_show(session, show, contestants, sim_date, player_org):
             finale_fight = fight_data[0]
             show.winner_id = finale_fight.get("winner_id")
             # Runner-up is the loser of the finale
-            fighter_ids = {finale_fight.get("fighter_a_id"), finale_fight.get("fighter_b_id")}
+            fighter_ids = {
+                finale_fight.get("fighter_a_id"),
+                finale_fight.get("fighter_b_id"),
+            }
             fighter_ids.discard(show.winner_id)
             if fighter_ids:
                 show.runner_up_id = fighter_ids.pop()
@@ -965,7 +1154,9 @@ def _conclude_show(session, show, contestants, sim_date, player_org):
                 tags.append("show_runner_up")
             fighter.hype = min(100.0, fighter.hype + 15)
             fighter.popularity = min(100.0, fighter.popularity + 10)
-        elif sc.eliminated_round and sc.eliminated_round >= (3 if show.format_size == 16 else 2):
+        elif sc.eliminated_round and sc.eliminated_round >= (
+            3 if show.format_size == 16 else 2
+        ):
             if "show_veteran" not in tags:
                 tags.append("show_veteran")
             fighter.hype = min(100.0, fighter.hype + 8)
@@ -995,16 +1186,19 @@ def _conclude_show(session, show, contestants, sim_date, player_org):
     if show.winner_id:
         winner = session.get(Fighter, show.winner_id)
         if winner:
-            session.add(Notification(
-                message=f"{winner.name} won '{show.name}'! Sign them at a 25% discount.",
-                type="show_winner",
-                created_date=sim_date,
-            ))
+            session.add(
+                Notification(
+                    message=f"{winner.name} won '{show.name}'! Sign them at a 25% discount.",
+                    type="show_winner",
+                    created_date=sim_date,
+                )
+            )
 
 
 # ---------------------------------------------------------------------------
 # AI rival behaviors
 # ---------------------------------------------------------------------------
+
 
 def _ai_sign_free_agents(
     session: Session, ai_orgs: list, sim_date: date, rng: random.Random, player_org
@@ -1014,7 +1208,9 @@ def _ai_sign_free_agents(
     active_ids = set(
         session.execute(
             select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
     # Also exclude fighters on active reality shows or shows that just completed this month
@@ -1031,12 +1227,16 @@ def _ai_sign_free_agents(
                     ),
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     excluded_ids = active_ids | show_ids
 
     all_fighters = session.execute(select(Fighter)).scalars().all()
-    free_agents = [f for f in all_fighters if f.id not in excluded_ids and not f.is_retired]
+    free_agents = [
+        f for f in all_fighters if f.id not in excluded_ids and not f.is_retired
+    ]
 
     if not free_agents:
         return
@@ -1053,17 +1253,25 @@ def _ai_sign_free_agents(
         min_ovr = max(45, int(org.prestige * 0.55))
 
         # Count roster by weight class for thin-class logic
-        org_contracts = session.execute(
-            select(Contract.fighter_id).where(
-                Contract.organization_id == org.id,
-                Contract.status == ContractStatus.ACTIVE,
+        org_contracts = (
+            session.execute(
+                select(Contract.fighter_id).where(
+                    Contract.organization_id == org.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         org_fighter_ids = set(org_contracts)
         wc_counts: dict[str, int] = {}
         for f in all_fighters:
             if f.id in org_fighter_ids:
-                wc = f.weight_class.value if hasattr(f.weight_class, "value") else str(f.weight_class)
+                wc = (
+                    f.weight_class.value
+                    if hasattr(f.weight_class, "value")
+                    else str(f.weight_class)
+                )
                 wc_counts[wc] = wc_counts.get(wc, 0) + 1
 
         candidates = [f for f in free_agents if f.overall >= min_ovr]
@@ -1074,12 +1282,19 @@ def _ai_sign_free_agents(
                 break
 
             # Prefer thin weight classes — 70% skip for non-thin
-            wc = fighter.weight_class.value if hasattr(fighter.weight_class, "value") else str(fighter.weight_class)
+            wc = (
+                fighter.weight_class.value
+                if hasattr(fighter.weight_class, "value")
+                else str(fighter.weight_class)
+            )
             if wc_counts.get(wc, 0) >= 4 and rng.random() < 0.70:
                 continue
 
             # Salary offer and acceptance
-            asking = fighter.overall * 800 * (1 + (fighter.hype or 10.0) / 200) + (fighter.wins or 0) * 200
+            asking = (
+                fighter.overall * 800 * (1 + (fighter.hype or 10.0) / 200)
+                + (fighter.wins or 0) * 200
+            )
             asking = int(round(asking, -2))
             offer_salary = round(asking * rng.uniform(0.8, 1.1), 2)
 
@@ -1109,19 +1324,25 @@ def _ai_sign_free_agents(
 
                 # Notify player for high-overall signings
                 if player_org and fighter.overall >= 65:
-                    session.add(Notification(
-                        message=f"{org.name} signed free agent {fighter.name} (OVR {fighter.overall})",
-                        type="rival_signed",
-                        created_date=sim_date,
-                    ))
+                    session.add(
+                        Notification(
+                            message=f"{org.name} signed free agent {fighter.name} (OVR {fighter.overall})",
+                            type="rival_signed",
+                            created_date=sim_date,
+                        )
+                    )
 
                 # Generate signing headline for notable signings
                 signing_hl = generate_signing_headline(fighter, org)
                 if signing_hl:
-                    session.add(NewsHeadline(
-                        headline=signing_hl, category="signing",
-                        game_date=sim_date, fighter_id=fighter.id,
-                    ))
+                    session.add(
+                        NewsHeadline(
+                            headline=signing_hl,
+                            category="signing",
+                            game_date=sim_date,
+                            fighter_id=fighter.id,
+                        )
+                    )
 
         # Remove signed fighters from free_agents list for next org
         free_agents = [f for f in free_agents if f.id not in active_ids]
@@ -1168,11 +1389,13 @@ def _ai_poach_expiring(
             prob += 0.05
 
         if rng.random() < prob:
-            session.add(Notification(
-                message=f"{ai_org.name} has made an offer to {fighter.name}. Renew now or risk losing them!",
-                type="rival_poach",
-                created_date=sim_date,
-            ))
+            session.add(
+                Notification(
+                    message=f"{ai_org.name} has made an offer to {fighter.name}. Renew now or risk losing them!",
+                    type="rival_poach",
+                    created_date=sim_date,
+                )
+            )
 
 
 def _ai_claim_expired_fighters(
@@ -1183,7 +1406,9 @@ def _ai_claim_expired_fighters(
     active_ids = set(
         session.execute(
             select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
     # Exclude show contestants (active or just-completed)
@@ -1200,7 +1425,9 @@ def _ai_claim_expired_fighters(
                     ),
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     excluded_ids = active_ids | show_ids
 
@@ -1235,7 +1462,10 @@ def _ai_claim_expired_fighters(
         sign_prob = ai_org.prestige / (ai_org.prestige + player_prestige + 1)
 
         if rng.random() < sign_prob:
-            asking = fighter.overall * 800 * (1 + (fighter.hype or 10.0) / 200) + (fighter.wins or 0) * 200
+            asking = (
+                fighter.overall * 800 * (1 + (fighter.hype or 10.0) / 200)
+                + (fighter.wins or 0) * 200
+            )
             offer_salary = round(int(round(asking, -2)) * rng.uniform(0.85, 1.05), 2)
 
             expiry = sim_date + timedelta(days=365)
@@ -1255,19 +1485,25 @@ def _ai_claim_expired_fighters(
             if player_org:
                 was_player_fighter = contract.organization_id == player_org.id
                 if was_player_fighter or fighter.overall >= 65:
-                    session.add(Notification(
-                        message=f"{ai_org.name} claimed {fighter.name} (OVR {fighter.overall})",
-                        type="rival_signed",
-                        created_date=sim_date,
-                    ))
+                    session.add(
+                        Notification(
+                            message=f"{ai_org.name} claimed {fighter.name} (OVR {fighter.overall})",
+                            type="rival_signed",
+                            created_date=sim_date,
+                        )
+                    )
 
             # Generate signing headline for notable signings
             signing_hl = generate_signing_headline(fighter, ai_org)
             if signing_hl:
-                session.add(NewsHeadline(
-                    headline=signing_hl, category="signing",
-                    game_date=sim_date, fighter_id=fighter.id,
-                ))
+                session.add(
+                    NewsHeadline(
+                        headline=signing_hl,
+                        category="signing",
+                        game_date=sim_date,
+                        fighter_id=fighter.id,
+                    )
+                )
 
 
 def _fluctuate_ai_prestige(
@@ -1280,27 +1516,37 @@ def _fluctuate_ai_prestige(
 
         # Activity bonus: +0.3 per event in last 90 days, max +0.9
         recent_cutoff = sim_date - timedelta(days=90)
-        recent_events = session.execute(
-            select(Event).where(
-                Event.organization_id == org.id,
-                Event.status == EventStatus.COMPLETED,
-                Event.event_date >= recent_cutoff,
+        recent_events = (
+            session.execute(
+                select(Event).where(
+                    Event.organization_id == org.id,
+                    Event.status == EventStatus.COMPLETED,
+                    Event.event_date >= recent_cutoff,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         activity_bonus = min(0.9, len(recent_events) * 0.3)
         delta += activity_bonus
 
         # Roster quality bonus: avg overall of top 5 fighters
-        org_fighter_ids = session.execute(
-            select(Contract.fighter_id).where(
-                Contract.organization_id == org.id,
-                Contract.status == ContractStatus.ACTIVE,
+        org_fighter_ids = (
+            session.execute(
+                select(Contract.fighter_id).where(
+                    Contract.organization_id == org.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if org_fighter_ids:
-            org_fighters = session.execute(
-                select(Fighter).where(Fighter.id.in_(org_fighter_ids))
-            ).scalars().all()
+            org_fighters = (
+                session.execute(select(Fighter).where(Fighter.id.in_(org_fighter_ids)))
+                .scalars()
+                .all()
+            )
             top5 = sorted(org_fighters, key=lambda f: f.overall, reverse=True)[:5]
             avg_ovr = sum(f.overall for f in top5) / len(top5)
             if avg_ovr >= 75:
@@ -1383,6 +1629,7 @@ def _should_retire(fighter: Fighter, session: Session, rng: random.Random) -> bo
 
     # Loss streak
     from simulation.narrative import _loss_streak
+
     ls = _loss_streak(fighter.id, session)
     if ls >= 3:
         prob += 0.10
@@ -1408,7 +1655,6 @@ def _compute_legacy_score(fighter: Fighter, session: Session) -> float:
     score = fighter.wins * 2.0 - fighter.losses * 0.5
 
     # Quality of opposition: per-win opponent overall bonus
-    from sqlalchemy import or_
     wins_a = session.execute(
         select(Fight, Fighter)
         .join(Fighter, Fight.fighter_b_id == Fighter.id)
@@ -1443,9 +1689,15 @@ def _compute_legacy_score(fighter: Fighter, session: Session) -> float:
 
     # Tag bonuses
     tag_bonuses = {
-        "goat_watch": 8, "legendary_rivalry": 5, "ageless_wonder": 4,
-        "clutch_performer": 3, "show_winner": 3, "unstoppable": 3,
-        "iron_chin_proven": 2, "ko_specialist": 2, "submission_ace": 2,
+        "goat_watch": 8,
+        "legendary_rivalry": 5,
+        "ageless_wonder": 4,
+        "clutch_performer": 3,
+        "show_winner": 3,
+        "unstoppable": 3,
+        "iron_chin_proven": 2,
+        "ko_specialist": 2,
+        "submission_ace": 2,
     }
     for tag, bonus in tag_bonuses.items():
         if tag in tags:
@@ -1455,7 +1707,11 @@ def _compute_legacy_score(fighter: Fighter, session: Session) -> float:
 
 
 def _retire_fighter(
-    session: Session, fighter: Fighter, sim_date: date, player_org: Organization, rng: random.Random
+    session: Session,
+    fighter: Fighter,
+    sim_date: date,
+    player_org: Organization,
+    rng: random.Random,
 ) -> None:
     """Process a fighter's retirement."""
     fighter.is_retired = True
@@ -1471,9 +1727,15 @@ def _retire_fighter(
 
     # Add retired tag, remove active-career tags
     active_tags_to_remove = [
-        "retirement_watch", "rising_prospect", "title_contender",
-        "on_a_tear", "unstoppable", "at_the_crossroads", "fading",
-        "sky_high_confidence", "shell_shocked",
+        "retirement_watch",
+        "rising_prospect",
+        "title_contender",
+        "on_a_tear",
+        "unstoppable",
+        "at_the_crossroads",
+        "fading",
+        "sky_high_confidence",
+        "shell_shocked",
     ]
     for tag in active_tags_to_remove:
         if tag in tags:
@@ -1483,12 +1745,16 @@ def _retire_fighter(
     fighter.narrative_tags = json.dumps(tags)
 
     # Expire all active contracts
-    active_contracts = session.execute(
-        select(Contract).where(
-            Contract.fighter_id == fighter.id,
-            Contract.status == ContractStatus.ACTIVE,
+    active_contracts = (
+        session.execute(
+            select(Contract).where(
+                Contract.fighter_id == fighter.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     was_player_fighter = False
     for c in active_contracts:
         if player_org and c.organization_id == player_org.id:
@@ -1496,12 +1762,16 @@ def _retire_fighter(
         c.status = ContractStatus.EXPIRED
 
     # Cancel active sponsorships
-    active_sponsorships = session.execute(
-        select(Sponsorship).where(
-            Sponsorship.fighter_id == fighter.id,
-            Sponsorship.status == SponsorshipStatus.ACTIVE,
+    active_sponsorships = (
+        session.execute(
+            select(Sponsorship).where(
+                Sponsorship.fighter_id == fighter.id,
+                Sponsorship.status == SponsorshipStatus.ACTIVE,
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for sp in active_sponsorships:
         sp.status = SponsorshipStatus.CANCELLED
 
@@ -1515,22 +1785,31 @@ def _retire_fighter(
         dev.camp_id = None
 
     # Generate notification
-    division = fighter.weight_class.value if hasattr(fighter.weight_class, "value") else str(fighter.weight_class)
+    division = (
+        fighter.weight_class.value
+        if hasattr(fighter.weight_class, "value")
+        else str(fighter.weight_class)
+    )
     if fighter.legacy_score >= 50 or was_player_fighter:
         msg = f"{fighter.name} has retired from {division} with a {fighter.record} record (Legacy: {fighter.legacy_score:.0f})"
     else:
         msg = f"{fighter.name} has retired from {division} ({fighter.record})"
-    session.add(Notification(
-        message=msg,
-        type="retirement",
-        created_date=sim_date,
-    ))
+    session.add(
+        Notification(
+            message=msg,
+            type="retirement",
+            created_date=sim_date,
+        )
+    )
 
     # Generate news headline
     fmt = {
-        "name": fighter.name, "record": fighter.record,
-        "division": division, "age": fighter.age,
-        "wins": fighter.wins, "ko_wins": fighter.ko_wins,
+        "name": fighter.name,
+        "record": fighter.record,
+        "division": division,
+        "age": fighter.age,
+        "wins": fighter.wins,
+        "ko_wins": fighter.ko_wins,
         "legacy": fighter.legacy_score,
     }
     if fighter.legacy_score >= 60:
@@ -1538,19 +1817,25 @@ def _retire_fighter(
     else:
         template = rng.choice(_RETIREMENT_HEADLINES_NORMAL)
     headline = template.format(**fmt)
-    session.add(NewsHeadline(
-        headline=headline, category="retirement",
-        game_date=sim_date, fighter_id=fighter.id,
-    ))
+    session.add(
+        NewsHeadline(
+            headline=headline,
+            category="retirement",
+            game_date=sim_date,
+            fighter_id=fighter.id,
+        )
+    )
 
 
 def _process_retirements(
     session: Session, sim_date: date, rng: random.Random, player_org: Organization
 ) -> int:
     """Evaluate all fighters for retirement. Returns count of retirements."""
-    all_fighters = session.execute(
-        select(Fighter).where(Fighter.is_retired == False)
-    ).scalars().all()
+    all_fighters = (
+        session.execute(select(Fighter).where(Fighter.is_retired == False))
+        .scalars()
+        .all()
+    )
 
     retired_count = 0
     for fighter in all_fighters:
@@ -1564,6 +1849,7 @@ def _process_retirements(
 # ---------------------------------------------------------------------------
 # Main monthly tick
 # ---------------------------------------------------------------------------
+
 
 def sim_month(
     session: Session,
@@ -1586,7 +1872,6 @@ def sim_month(
     Returns:
         Summary dict with actions taken.
     """
-    from typing import Optional  # local to avoid circular at module level
 
     # Read game clock — authoritative date source
     game_state = session.get(GameState, 1)
@@ -1609,39 +1894,53 @@ def sim_month(
         select(Organization).where(Organization.is_player == True)
     ).scalar_one_or_none()
     if player_org:
-        active_player_contracts = session.execute(
-            select(Contract).where(
-                Contract.organization_id == player_org.id,
-                Contract.status == ContractStatus.ACTIVE,
+        active_player_contracts = (
+            session.execute(
+                select(Contract).where(
+                    Contract.organization_id == player_org.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         monthly_payroll = sum(c.salary / 12 for c in active_player_contracts)
         player_org.bank_balance -= monthly_payroll
         if player_org.bank_balance < 0:
-            session.add(Notification(
-                message="Your organization's finances are in the red. Consider releasing fighters.",
-                type="finances_critical",
-                created_date=sim_date,
-            ))
+            session.add(
+                Notification(
+                    message="Your organization's finances are in the red. Consider releasing fighters.",
+                    type="finances_critical",
+                    created_date=sim_date,
+                )
+            )
         if player_org.bank_balance < -500_000:
-            session.add(Notification(
-                message="Bankruptcy warning! Your debt exceeds $500,000. Take immediate action.",
-                type="bankruptcy_warning",
-                created_date=sim_date,
-            ))
+            session.add(
+                Notification(
+                    message="Bankruptcy warning! Your debt exceeds $500,000. Take immediate action.",
+                    type="bankruptcy_warning",
+                    created_date=sim_date,
+                )
+            )
 
         # Legend coach payroll
-        legend_coaches = session.execute(
-            select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
-        ).scalars().all()
+        legend_coaches = (
+            session.execute(
+                select(LegendCoach).where(LegendCoach.organization_id == player_org.id)
+            )
+            .scalars()
+            .all()
+        )
         legend_payroll = sum(c.salary for c in legend_coaches)
         if legend_payroll > 0:
             player_org.bank_balance -= legend_payroll
 
     # 1. Age all fighters (bulk update — fast regardless of roster size)
-    all_fighters = session.execute(
-        select(Fighter).where(Fighter.is_retired == False)
-    ).scalars().all()
+    all_fighters = (
+        session.execute(select(Fighter).where(Fighter.is_retired == False))
+        .scalars()
+        .all()
+    )
     for fighter in all_fighters:
         _age_fighter(fighter, rng)
         # Track peak overall
@@ -1661,43 +1960,56 @@ def sim_month(
     # 1b. Fighter development (player org only)
     if player_org:
         from api.services import process_fighter_development
-        dev_notifications = process_fighter_development(session, player_org.id, sim_date)
+
+        dev_notifications = process_fighter_development(
+            session, player_org.id, sim_date
+        )
         for msg in dev_notifications:
-            session.add(Notification(
-                message=msg,
-                type="development",
-                created_date=sim_date,
-            ))
+            session.add(
+                Notification(
+                    message=msg,
+                    type="development",
+                    created_date=sim_date,
+                )
+            )
 
     # 1c. Process broadcast deals (player org only)
     if player_org:
-        broadcast_notifications = _process_broadcast_deals(session, sim_date, player_org)
+        broadcast_notifications = _process_broadcast_deals(
+            session, sim_date, player_org
+        )
         for msg in broadcast_notifications:
-            session.add(Notification(
-                message=msg,
-                type="broadcast",
-                created_date=sim_date,
-            ))
+            session.add(
+                Notification(
+                    message=msg,
+                    type="broadcast",
+                    created_date=sim_date,
+                )
+            )
 
     # 1d. Process sponsorships (player org only)
     if player_org:
         sponsorship_notifications = _process_sponsorships(session, sim_date, player_org)
         for msg in sponsorship_notifications:
-            session.add(Notification(
-                message=msg,
-                type="sponsorship",
-                created_date=sim_date,
-            ))
+            session.add(
+                Notification(
+                    message=msg,
+                    type="sponsorship",
+                    created_date=sim_date,
+                )
+            )
 
     # 1e. Process reality show episode (player org only)
     if player_org:
         show_notifications = _process_reality_show(session, sim_date, player_org, rng)
         for msg in show_notifications:
-            session.add(Notification(
-                message=msg,
-                type="show",
-                created_date=sim_date,
-            ))
+            session.add(
+                Notification(
+                    message=msg,
+                    type="show",
+                    created_date=sim_date,
+                )
+            )
 
     # 2. Recover injuries
     _recover_injuries(session)
@@ -1708,9 +2020,7 @@ def sim_month(
 
     # Query AI orgs early (used by multiple steps)
     ai_orgs = (
-        session.execute(
-            select(Organization).where(Organization.is_player == False)
-        )
+        session.execute(select(Organization).where(Organization.is_player == False))
         .scalars()
         .all()
     )
@@ -1759,7 +2069,3 @@ def sim_month(
         progress_callback(f"Month {sim_date} complete")
 
     return summary
-
-
-# Avoid circular import
-from typing import Optional
