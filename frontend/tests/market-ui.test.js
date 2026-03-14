@@ -5,6 +5,9 @@ const {
   renderMarketContextCard,
   renderOfferEvaluation,
   renderCompactMarketLine,
+  getBookingSortValue,
+  matchesTrajectoryFilter,
+  getMarketSignalTone,
 } = require('../static/js/market-ui.js');
 
 test('renderMarketContextCard surfaces the key market signals', () => {
@@ -60,9 +63,30 @@ test('renderCompactMarketLine gives a table-friendly market summary', () => {
     trajectory_label: 'Rising',
     booking_value: 'Strong Main Event',
     market_value_hint: 'Prospect value is climbing.',
+    salary_multiplier: 1.04,
+    acceptance_adjustment: 0.02,
   });
 
   assert.match(html, /Rising/);
   assert.match(html, /Strong Main Event/);
   assert.match(html, /Prospect value is climbing\./);
+  assert.match(html, /buy-now/);
+});
+
+test('getBookingSortValue ranks marquee bookings above filler', () => {
+  assert.ok(getBookingSortValue('Strong Main Event') > getBookingSortValue('Strong Co-Main'));
+  assert.ok(getBookingSortValue('Strong Co-Main') > getBookingSortValue('Risky Development Fight'));
+  assert.ok(getBookingSortValue('Risky Development Fight') > getBookingSortValue('Low-Value Filler'));
+});
+
+test('matchesTrajectoryFilter respects all/current trajectory labels', () => {
+  assert.equal(matchesTrajectoryFilter({ trajectory_label: 'Rising' }, ''), true);
+  assert.equal(matchesTrajectoryFilter({ trajectory_label: 'Rising' }, 'Rising'), true);
+  assert.equal(matchesTrajectoryFilter({ trajectory_label: 'Rising' }, 'Declining'), false);
+});
+
+test('getMarketSignalTone tags hot, expensive, and cold assets', () => {
+  assert.equal(getMarketSignalTone({ trajectory_label: 'Rising', salary_multiplier: 1.05, acceptance_adjustment: 0.02 }), 'buy-now');
+  assert.equal(getMarketSignalTone({ trajectory_label: 'Peaking', salary_multiplier: 1.22, acceptance_adjustment: 0.1 }), 'overpay');
+  assert.equal(getMarketSignalTone({ trajectory_label: 'Declining', salary_multiplier: 0.92, acceptance_adjustment: -0.03 }), 'cold-asset');
 });

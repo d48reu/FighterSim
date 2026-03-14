@@ -342,6 +342,23 @@
           <h3>&#128081; Cornerstones <span class="cs-count" id="cs-count">0/3</span></h3>
           <div id="cs-cards" class="cs-cards"></div>
         </div>
+        <div class="filter-bar roster-filter-bar">
+          <select id="roster-trajectory-filter">
+            <option value="">All Trajectories</option>
+            <option value="Rising">Rising</option>
+            <option value="Peaking">Peaking</option>
+            <option value="Volatile">Volatile</option>
+            <option value="Stalled">Stalled</option>
+            <option value="Declining">Declining</option>
+          </select>
+          <select id="roster-sort">
+            <option value="overall">Sort: Overall</option>
+            <option value="salary">Sort: Salary</option>
+            <option value="market_booking">Sort: Booking Fit</option>
+            <option value="market_ai_heat">Sort: AI Heat</option>
+            <option value="expiry_date">Sort: Expiry</option>
+          </select>
+        </div>
         <div id="roster-payroll-bar" class="payroll-bar">
           <div class="payroll-item">
             <div class="payroll-item-label">Fighters</div>
@@ -602,11 +619,21 @@
           <label>Min OVR <span id="fa-ovr-val">0</span>
             <input type="range" id="fa-ovr-filter" min="0" max="100" value="0">
           </label>
+          <select id="fa-trajectory-filter">
+            <option value="">All Trajectories</option>
+            <option value="Rising">Rising</option>
+            <option value="Peaking">Peaking</option>
+            <option value="Volatile">Volatile</option>
+            <option value="Stalled">Stalled</option>
+            <option value="Declining">Declining</option>
+          </select>
           <select id="fa-sort">
             <option value="overall">Sort: Overall</option>
             <option value="salary">Sort: Salary</option>
             <option value="age">Sort: Age</option>
             <option value="hype">Sort: Hype</option>
+            <option value="market_booking">Sort: Booking Fit</option>
+            <option value="market_ai_heat">Sort: AI Heat</option>
           </select>
         </div>
         <div class="table-wrapper">

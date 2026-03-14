@@ -30,12 +30,45 @@
       .join('');
   }
 
+  function getBookingSortValue(bookingValue) {
+    return {
+      'Strong Main Event': 4,
+      'Strong Co-Main': 3,
+      'Risky Development Fight': 2,
+      'Low-Value Filler': 1,
+    }[bookingValue] || 0;
+  }
+
+  function matchesTrajectoryFilter(marketContext, trajectoryFilter) {
+    if (!trajectoryFilter) return true;
+    return (marketContext?.trajectory_label || '') === trajectoryFilter;
+  }
+
+  function getMarketSignalTone(marketContext) {
+    if (!marketContext) return 'neutral';
+    const trajectory = marketContext.trajectory_label || 'Stalled';
+    const salaryMultiplier = Number(marketContext.salary_multiplier || 1);
+    const acceptanceAdjustment = Number(marketContext.acceptance_adjustment || 0);
+
+    if ((trajectory === 'Rising' || trajectory === 'Peaking') && salaryMultiplier <= 1.08 && acceptanceAdjustment <= 0.04) {
+      return 'buy-now';
+    }
+    if (salaryMultiplier >= 1.18 || acceptanceAdjustment >= 0.08) {
+      return 'overpay';
+    }
+    if (trajectory === 'Declining' || (trajectory === 'Stalled' && acceptanceAdjustment < 0)) {
+      return 'cold-asset';
+    }
+    return 'neutral';
+  }
+
   function renderCompactMarketLine(marketContext) {
     if (!marketContext) return '';
+    const tone = getMarketSignalTone(marketContext);
 
     return `
-      <div class="market-inline-line">
-        <span class="market-inline-chip">${esc(marketContext.trajectory_label || 'Stalled')}</span>
+      <div class="market-inline-line ${tone}">
+        <span class="market-inline-chip tone-${tone}">${esc(marketContext.trajectory_label || 'Stalled')}</span>
         <span class="market-inline-chip subdued">${esc(marketContext.booking_value || 'No clear fit')}</span>
       </div>
       <div class="market-inline-hint">${esc(marketContext.market_value_hint || 'Market is stable.')}</div>
@@ -112,6 +145,9 @@
   }
 
   const api = {
+    getBookingSortValue,
+    matchesTrajectoryFilter,
+    getMarketSignalTone,
     renderCompactMarketLine,
     renderMarketContextCard,
     renderOfferEvaluation,

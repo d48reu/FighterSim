@@ -57,6 +57,12 @@ function parseRecordValue(record) {
 
 function getSortValue(item, key) {
   if (key === 'trajectory') return item.trajectory?.label || '';
+  if (key === 'market_booking') {
+    return window.MarketUi?.getBookingSortValue
+      ? window.MarketUi.getBookingSortValue(item.market_context?.booking_value)
+      : 0;
+  }
+  if (key === 'market_ai_heat') return Number(item.market_context?.ai_interest_score || 0);
   if (key === 'record') return parseRecordValue(item.record);
   if (key === 'rank' && item.rank == null) return 0;
   if (item[key] == null) return '';
@@ -106,6 +112,36 @@ function setTableSort(tableName, key) {
       direction: (key === 'name' || key === 'weight_class' || key === 'style' || key === 'archetype' || key === 'trajectory' || key === 'retired_date') ? 'asc' : 'desc',
     };
   }
+
+  if (tableName === 'freeAgents') {
+    const select = document.getElementById('fa-sort');
+    if (select) {
+      const reverseMap = {
+        overall: 'overall',
+        asking_salary: 'salary',
+        age: 'age',
+        hype: 'hype',
+        market_booking: 'market_booking',
+        market_ai_heat: 'market_ai_heat',
+      };
+      if (reverseMap[key]) select.value = reverseMap[key];
+    }
+  }
+
+  if (tableName === 'roster') {
+    const select = document.getElementById('roster-sort');
+    if (select) {
+      const reverseMap = {
+        overall: 'overall',
+        salary: 'salary',
+        expiry_date: 'expiry_date',
+        market_booking: 'market_booking',
+        market_ai_heat: 'market_ai_heat',
+      };
+      if (reverseMap[key]) select.value = reverseMap[key];
+    }
+  }
+
   updateSortableHeaders();
   if (tableName === 'fighters') loadFighters(document.getElementById('fighters-wc-filter').value || null);
   if (tableName === 'roster') loadRoster();
@@ -791,15 +827,26 @@ async function loadFreeAgents() {
   const wc = document.getElementById('fa-wc-filter').value;
   const style = document.getElementById('fa-style-filter').value;
   const minOvr = document.getElementById('fa-ovr-filter').value;
-  const sortBy = document.getElementById('fa-sort').value;
+  const trajectoryFilter = document.getElementById('fa-trajectory-filter').value;
+  const activeSortKey = state.tableSorts.freeAgents?.key || 'overall';
 
   if (wc) params.set('weight_class', wc);
   if (style) params.set('style', style);
   if (minOvr && parseInt(minOvr) > 0) params.set('min_overall', minOvr);
-  if (sortBy) params.set('sort_by', sortBy);
+  const serverSortMap = {
+    overall: 'overall',
+    asking_salary: 'salary',
+    age: 'age',
+    hype: 'hype',
+  };
+  if (serverSortMap[activeSortKey]) params.set('sort_by', serverSortMap[activeSortKey]);
 
   try {
-    const agents = sortCollection(await api(`/api/free-agents?${params}`), 'freeAgents');
+    let agents = await api(`/api/free-agents?${params}`);
+    agents = agents.filter((agent) => window.MarketUi?.matchesTrajectoryFilter
+      ? window.MarketUi.matchesTrajectoryFilter(agent.market_context, trajectoryFilter)
+      : true);
+    agents = sortCollection(agents, 'freeAgents');
     if (agents.length === 0) {
       tbody.innerHTML = '<tr><td colspan="10" class="muted">No free agents found.</td></tr>';
       return;
@@ -809,7 +856,10 @@ async function loadFreeAgents() {
           data-asking-salary="${f.asking_salary}"
           data-asking-fights="${f.asking_fights}"
           data-asking-length="${f.asking_length_months}">
-        <td>${esc(f.name)}</td>
+        <td>
+          <div>${esc(f.name)}</div>
+          ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context) : ''}
+        </td>
         <td>${f.age}</td>
         <td><span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}">${esc(f.weight_class)}</span></td>
         <td>${esc(f.style)}</td>
@@ -879,12 +929,17 @@ async function loadRoster() {
   const tbody = document.getElementById('roster-tbody');
   tbody.innerHTML = '<tr><td colspan="10" class="muted">Loading...</td></tr>';
 
+  const trajectoryFilter = document.getElementById('roster-trajectory-filter')?.value || '';
+
   try {
     const [rosterData, fin] = await Promise.all([
       api('/api/roster'),
       api('/api/finances'),
     ]);
-    const roster = sortCollection(rosterData, 'roster');
+    let roster = rosterData.filter((fighter) => window.MarketUi?.matchesTrajectoryFilter
+      ? window.MarketUi.matchesTrajectoryFilter(fighter.market_context, trajectoryFilter)
+      : true);
+    roster = sortCollection(roster, 'roster');
 
     // Payroll bar
     document.getElementById('roster-count').textContent   = fin.roster_size;
@@ -3427,7 +3482,32 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('fa-ovr-val').textContent = e.target.value;
   });
   document.getElementById('fa-ovr-filter').addEventListener('change', () => loadFreeAgents());
-  document.getElementById('fa-sort').addEventListener('change', () => loadFreeAgents());
+  document.getElementById('fa-trajectory-filter').addEventListener('change', () => loadFreeAgents());
+  document.getElementById('fa-sort').addEventListener('change', (e) => {
+    const sortKeyMap = {
+      overall: 'overall',
+      salary: 'asking_salary',
+      age: 'age',
+      hype: 'hype',
+      market_booking: 'market_booking',
+      market_ai_heat: 'market_ai_heat',
+    };
+    state.tableSorts.freeAgents = {
+      key: sortKeyMap[e.target.value] || 'overall',
+      direction: e.target.value === 'age' ? 'asc' : 'desc',
+    };
+    loadFreeAgents();
+  });
+
+  // Roster market controls
+  document.getElementById('roster-trajectory-filter').addEventListener('change', () => loadRoster());
+  document.getElementById('roster-sort').addEventListener('change', (e) => {
+    state.tableSorts.roster = {
+      key: e.target.value || 'overall',
+      direction: e.target.value === 'expiry_date' ? 'asc' : 'desc',
+    };
+    loadRoster();
+  });
 
   // Rankings tabs
   document.querySelectorAll('.wc-tab').forEach(el => {

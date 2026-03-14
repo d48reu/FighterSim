@@ -1228,6 +1228,24 @@ tbody td { padding: 9px 10px; }
   color: var(--muted);
 }
 
+.market-inline-chip.tone-buy-now {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.32);
+  color: #86efac;
+}
+
+.market-inline-chip.tone-overpay {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #fcd34d;
+}
+
+.market-inline-chip.tone-cold-asset {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
 .market-inline-hint {
   margin-top: 4px;
   color: var(--muted);
