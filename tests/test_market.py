@@ -19,6 +19,7 @@ from models.models import (
 from simulation.market import (
     compute_asking_salary,
     compute_contract_acceptance_probability,
+    compute_market_recommendation,
     compute_market_signals,
     compute_sponsorship_terms,
 )
@@ -264,5 +265,37 @@ def test_renewals_and_sponsorships_use_market_adjustments():
         assert declining_terms["monthly_stipend"] < 10_000
         assert rising_terms["acceptance_adjustment"] > 0
         assert declining_terms["acceptance_adjustment"] < 0
+    finally:
+        session.close()
+
+
+def test_market_recommendations_flag_buy_now_sell_soon_and_renewal_leverage():
+    session, org, rising, declining = _build_market_fixture()
+    try:
+        rising_signals = compute_market_signals(rising, session, org.id)
+        declining_signals = compute_market_signals(declining, session, org.id)
+
+        free_agent_rec = compute_market_recommendation(
+            rising_signals, surface="free_agent"
+        )
+        show_signing_rec = compute_market_recommendation(
+            rising_signals,
+            surface="show_signing",
+            discount_pct=15,
+        )
+        roster_rec = compute_market_recommendation(declining_signals, surface="roster")
+        renewal_rec = compute_market_recommendation(
+            rising_signals,
+            surface="expiring_contract",
+            days_to_expiry=30,
+            fights_remaining=1,
+        )
+
+        assert free_agent_rec["label"] in {"Fair Price", "Overpay Risk", "Buy Now"}
+        assert show_signing_rec["label"] == "Buy Now"
+        assert show_signing_rec["tone"] == "buy-now"
+        assert roster_rec["label"] == "Sell Soon"
+        assert roster_rec["tone"] == "cold-asset"
+        assert renewal_rec["label"] == "High-Leverage Renewal"
     finally:
         session.close()

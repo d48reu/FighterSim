@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  renderRecommendationBadge,
   renderMarketContextCard,
   renderOfferEvaluation,
   renderCompactMarketLine,
@@ -9,6 +10,18 @@ const {
   matchesTrajectoryFilter,
   getMarketSignalTone,
 } = require('../static/js/market-ui.js');
+
+test('renderRecommendationBadge surfaces the recommendation label and tone', () => {
+  const html = renderRecommendationBadge({
+    label: 'Buy Now',
+    tone: 'buy-now',
+    reason: 'Trajectory is strong and price is still manageable.',
+  });
+
+  assert.match(html, /Buy Now/);
+  assert.match(html, /buy-now/);
+  assert.match(html, /price is still manageable/);
+});
 
 test('renderMarketContextCard surfaces the key market signals', () => {
   const html = renderMarketContextCard({

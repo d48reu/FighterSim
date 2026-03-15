@@ -293,7 +293,10 @@ async function loadExpiringContracts() {
     widget.classList.remove('hidden');
     tbody.innerHTML = expiring.map(f => `
       <tr>
-        <td>${esc(f.name)}</td>
+        <td>
+          <div>${esc(f.name)}</div>
+          ${window.MarketUi?.renderRecommendationBadge ? window.MarketUi.renderRecommendationBadge(f.recommendation) : ''}
+        </td>
         <td>${f.expiry_date || '—'}</td>
         <td>${f.fights_remaining}</td>
       </tr>
@@ -634,7 +637,10 @@ async function showFighterPanel(fighterId, extraData) {
     const marketEl = document.getElementById('panel-market-context');
     if (extraData?.market_context && window.MarketUi?.renderMarketContextCard) {
       marketEl.classList.remove('hidden');
-      marketEl.innerHTML = window.MarketUi.renderMarketContextCard(extraData.market_context);
+      const recommendationHtml = window.MarketUi?.renderRecommendationBadge
+        ? window.MarketUi.renderRecommendationBadge(extraData.recommendation)
+        : '';
+      marketEl.innerHTML = `${recommendationHtml}${window.MarketUi.renderMarketContextCard(extraData.market_context)}`;
     } else {
       marketEl.classList.add('hidden');
       marketEl.innerHTML = '';
@@ -858,7 +864,7 @@ async function loadFreeAgents() {
           data-asking-length="${f.asking_length_months}">
         <td>
           <div>${esc(f.name)}</div>
-          ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context) : ''}
+          ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context, f.recommendation) : ''}
         </td>
         <td>${f.age}</td>
         <td><span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}">${esc(f.weight_class)}</span></td>
@@ -881,6 +887,7 @@ async function loadFreeAgents() {
           asking_fights: Number(row.dataset.askingFights),
           asking_length_months: Number(row.dataset.askingLength),
           market_context: fighter?.market_context || null,
+          recommendation: fighter?.recommendation || null,
         });
       });
     });
@@ -966,7 +973,7 @@ async function loadRoster() {
           data-expiry-date="${f.expiry_date || ''}">
         <td>
           <div>${esc(f.name)}</div>
-          ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context) : ''}
+          ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context, f.recommendation) : ''}
         </td>
         <td>${f.age}</td>
         <td><span class="badge wc-badge-color" data-wc="${esc(f.weight_class)}">${esc(f.weight_class)}</span></td>
@@ -990,6 +997,7 @@ async function loadRoster() {
           fight_count_total: Number(row.dataset.fightCountTotal),
           expiry_date: row.dataset.expiryDate,
           market_context: fighter?.market_context || null,
+          recommendation: fighter?.recommendation || null,
         });
       });
     });
@@ -3028,7 +3036,7 @@ async function loadShowEligibleFighters() {
           <div class="show-fighter-copy">
             <span>${esc(f.name)}</span>
             <span style="color:var(--muted);font-size:12px">${f.age}y ${f.record}</span>
-            ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context) : ''}
+            ${window.MarketUi?.renderCompactMarketLine ? window.MarketUi.renderCompactMarketLine(f.market_context, f.recommendation) : ''}
           </div>
         </div>
         <span class="show-fighter-salary">$${f.asking_salary?.toLocaleString() || '?'}</span>
@@ -3276,6 +3284,7 @@ async function showCompletedState(show) {
             <span class="signing-name">${esc(c.name)}</span>
             <span class="signing-meta">OVR ${c.overall} | ${c.show_wins}-${c.show_losses} show record | Seed #${c.seed}</span>
             ${c.discount_pct > 0 ? `<span class="signing-discount">${c.placement} — ${c.discount_pct}% discount</span>` : `<span class="signing-meta">${c.placement}</span>`}
+            ${window.MarketUi?.renderRecommendationBadge ? window.MarketUi.renderRecommendationBadge(c.recommendation) : ''}
           </div>
           <div style="display:flex;align-items:center;gap:12px">
             <span>$${c.modified_asking_salary?.toLocaleString()}/yr</span>
@@ -3296,6 +3305,7 @@ async function showCompletedState(show) {
             asking_fights: contestant.asking_fights || 4,
             asking_length_months: contestant.asking_length_months || 12,
             market_context: contestant.market_context || null,
+            recommendation: contestant.recommendation || null,
           });
         });
       });

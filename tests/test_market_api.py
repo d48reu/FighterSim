@@ -98,8 +98,8 @@ def test_roster_and_show_surfaces_expose_market_context(tmp_path):
                 status=ContractStatus.ACTIVE,
                 salary=100_000,
                 fight_count_total=4,
-                fights_remaining=4,
-                expiry_date=date(2026, 12, 1),
+                fights_remaining=1,
+                expiry_date=date(2026, 2, 1),
             )
         )
         session.commit()
@@ -109,6 +109,7 @@ def test_roster_and_show_surfaces_expose_market_context(tmp_path):
     roster = services.get_roster()
     roster_entry = next(f for f in roster if f["name"] == "Roster Anchor")
     assert "market_context" in roster_entry
+    assert "recommendation" in roster_entry
     assert roster_entry["market_context"]["trajectory_label"] in {
         "Rising",
         "Peaking",
@@ -117,9 +118,15 @@ def test_roster_and_show_surfaces_expose_market_context(tmp_path):
         "Declining",
     }
 
+    expiring = services.get_expiring_contracts()
+    expiring_entry = next(f for f in expiring if f["name"] == "Roster Anchor")
+    assert "market_context" in expiring_entry
+    assert "recommendation" in expiring_entry
+
     show_pool = services.get_show_eligible_fighters("Lightweight")
     target_entry = next(f for f in show_pool if f["name"] == "Rising Target")
     assert "market_context" in target_entry
+    assert "recommendation" in target_entry
     assert "booking_value" in target_entry["market_context"]
 
 
@@ -169,8 +176,8 @@ def test_free_agents_expose_market_context_and_offers_return_evaluation(tmp_path
                 status=ContractStatus.ACTIVE,
                 salary=100_000,
                 fight_count_total=4,
-                fights_remaining=4,
-                expiry_date=date(2026, 12, 1),
+                fights_remaining=1,
+                expiry_date=date(2026, 2, 1),
             )
         )
         session.commit()
@@ -181,6 +188,7 @@ def test_free_agents_expose_market_context_and_offers_return_evaluation(tmp_path
     target_entry = next(f for f in free_agents if f["name"] == "Rising Target")
 
     assert "market_context" in target_entry
+    assert "recommendation" in target_entry
     market_context = target_entry["market_context"]
     assert market_context["trajectory_label"] in {
         "Rising",
@@ -202,6 +210,7 @@ def test_free_agents_expose_market_context_and_offers_return_evaluation(tmp_path
 
     assert "offer_evaluation" in result
     evaluation = result["offer_evaluation"]
+    assert "recommendation" in evaluation
     assert evaluation["asking_salary"] == target_entry["asking_salary"]
     assert evaluation["offered_salary"] == target_entry["asking_salary"]
     assert 0.0 < evaluation["acceptance_probability"] <= 1.0

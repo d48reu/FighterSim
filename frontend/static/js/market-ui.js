@@ -62,13 +62,18 @@
     return 'neutral';
   }
 
-  function renderCompactMarketLine(marketContext) {
+  function renderRecommendationBadge(recommendation) {
+    if (!recommendation) return '';
+    return `<span class="market-recommendation-badge tone-${esc(recommendation.tone || 'neutral')}" title="${esc(recommendation.reason || '')}">${esc(recommendation.label || 'Fair Value')}</span>`;
+  }
+
+  function renderCompactMarketLine(marketContext, recommendation = null) {
     if (!marketContext) return '';
-    const tone = getMarketSignalTone(marketContext);
+    const tone = recommendation?.tone || getMarketSignalTone(marketContext);
 
     return `
       <div class="market-inline-line ${tone}">
-        <span class="market-inline-chip tone-${tone}">${esc(marketContext.trajectory_label || 'Stalled')}</span>
+        ${renderRecommendationBadge(recommendation || { label: marketContext.trajectory_label || 'Stalled', tone })}
         <span class="market-inline-chip subdued">${esc(marketContext.booking_value || 'No clear fit')}</span>
       </div>
       <div class="market-inline-hint">${esc(marketContext.market_value_hint || 'Market is stable.')}</div>
@@ -121,6 +126,7 @@
           <div class="market-card-title">Offer Evaluation</div>
           <span class="market-trajectory-badge">${(Number(offerEvaluation.acceptance_probability || 0) * 100).toFixed(1)}%</span>
         </div>
+        ${renderRecommendationBadge(offerEvaluation.recommendation)}
         <div class="market-grid">
           <div class="market-stat">
             <span class="market-stat-label">Asking</span>
@@ -148,6 +154,7 @@
     getBookingSortValue,
     matchesTrajectoryFilter,
     getMarketSignalTone,
+    renderRecommendationBadge,
     renderCompactMarketLine,
     renderMarketContextCard,
     renderOfferEvaluation,

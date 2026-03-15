@@ -1246,6 +1246,38 @@ tbody td { padding: 9px 10px; }
   color: #fca5a5;
 }
 
+.market-recommendation-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.market-recommendation-badge.tone-buy-now {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(34, 197, 94, 0.36);
+  color: #86efac;
+}
+
+.market-recommendation-badge.tone-overpay {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.38);
+  color: #fcd34d;
+}
+
+.market-recommendation-badge.tone-cold-asset {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.34);
+  color: #fca5a5;
+}
+
 .market-inline-hint {
   margin-top: 4px;
   color: var(--muted);

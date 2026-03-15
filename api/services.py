@@ -66,6 +66,7 @@ from simulation.narrative import (
 from simulation.market import (
     compute_asking_salary,
     compute_contract_acceptance_probability,
+    compute_market_recommendation,
     compute_market_signals,
     compute_sponsorship_terms,
 )
@@ -896,6 +897,28 @@ def _market_context_dict(
     }
 
 
+def _recommendation_dict(
+    fighter: Fighter,
+    session,
+    *,
+    org_id: Optional[int] = None,
+    surface: str,
+    offer_ratio: Optional[float] = None,
+    discount_pct: Optional[float] = None,
+    days_to_expiry: Optional[int] = None,
+    fights_remaining: Optional[int] = None,
+) -> dict:
+    signals = compute_market_signals(fighter, session, org_id)
+    return compute_market_recommendation(
+        signals,
+        surface=surface,
+        offer_ratio=offer_ratio,
+        discount_pct=discount_pct,
+        days_to_expiry=days_to_expiry,
+        fights_remaining=fights_remaining,
+    )
+
+
 def _offer_evaluation_dict(
     fighter: Fighter,
     player_org: Organization,
@@ -919,14 +942,20 @@ def _offer_evaluation_dict(
     tags = json.loads(fighter.narrative_tags) if fighter.narrative_tags else []
     if "quitter" in tags:
         acceptance_probability *= 0.85
+    offer_ratio = offered_salary / asking_salary if asking_salary > 0 else 1.0
     return {
         "asking_salary": asking_salary,
         "offered_salary": offered_salary,
-        "offer_ratio": round(offered_salary / asking_salary, 3)
-        if asking_salary > 0
-        else 1.0,
+        "offer_ratio": round(offer_ratio, 3),
         "acceptance_probability": round(min(0.95, acceptance_probability), 4),
         "market_context": market_context,
+        "recommendation": _recommendation_dict(
+            fighter,
+            session,
+            org_id=effective_org_id,
+            surface="offer_evaluation",
+            offer_ratio=offer_ratio,
+        ),
     }
 
 
@@ -974,6 +1003,12 @@ def get_free_agents(
             d["asking_fights"] = _asking_fights(f)
             d["asking_length_months"] = _asking_length_months(f)
             d["market_context"] = _market_context_dict(f, session, player_org_id)
+            d["recommendation"] = _recommendation_dict(
+                f,
+                session,
+                org_id=player_org_id,
+                surface="free_agent",
+            )
             results.append(d)
 
         if sort_by == "overall":
@@ -1017,6 +1052,12 @@ def get_roster() -> list[dict]:
                 contract.expiry_date.isoformat() if contract.expiry_date else None
             )
             d["market_context"] = _market_context_dict(fighter, session, player_org.id)
+            d["recommendation"] = _recommendation_dict(
+                fighter,
+                session,
+                org_id=player_org.id,
+                surface="roster",
+            )
             results.append(d)
         return results
 
@@ -1178,6 +1219,22 @@ def get_expiring_contracts() -> list[dict]:
                 d["fights_remaining"] = contract.fights_remaining
                 d["expiry_date"] = (
                     contract.expiry_date.isoformat() if contract.expiry_date else None
+                )
+                days_to_expiry = (
+                    (contract.expiry_date - game_date).days
+                    if contract.expiry_date
+                    else None
+                )
+                d["market_context"] = _market_context_dict(
+                    fighter, session, player_org.id
+                )
+                d["recommendation"] = _recommendation_dict(
+                    fighter,
+                    session,
+                    org_id=player_org.id,
+                    surface="expiring_contract",
+                    days_to_expiry=days_to_expiry,
+                    fights_remaining=contract.fights_remaining,
                 )
                 results.append(d)
         return results
@@ -3998,6 +4055,12 @@ def get_show_eligible_fighters(weight_class: str) -> list[dict]:
             d = _fighter_dict(f)
             d["asking_salary"] = _asking_salary(f, session, player_org_id)
             d["market_context"] = _market_context_dict(f, session, player_org_id)
+            d["recommendation"] = _recommendation_dict(
+                f,
+                session,
+                org_id=player_org_id,
+                surface="show_signing",
+            )
             results.append(d)
         results.sort(key=lambda x: x["overall"], reverse=True)
         return results
@@ -4507,6 +4570,13 @@ def get_show_contestants_for_signing(show_id: int) -> list[dict]:
             d["modified_asking_salary"] = modified_asking
             d["market_context"] = _market_context_dict(
                 fighter, session, show.organization_id
+            )
+            d["recommendation"] = _recommendation_dict(
+                fighter,
+                session,
+                org_id=show.organization_id,
+                surface="show_signing",
+                discount_pct=round(discount * 100),
             )
             results.append(d)
 
