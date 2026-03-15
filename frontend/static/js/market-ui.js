@@ -156,11 +156,35 @@
   }
 
   function renderScoutingBoard(board) {
+    const renderBucket = (title, items) => {
+      const safeItems = Array.isArray(items) ? items : [];
+      const body = safeItems.length
+        ? safeItems.map((item) => `
+            <div class="decision-center-item">
+              <div class="decision-center-item-top">
+                <strong>${esc(item.name || item.weight_class || 'Unknown')}</strong>
+                ${renderRecommendationBadge(item.recommendation)}
+              </div>
+              ${item.meta ? `<div class="decision-center-meta">${esc(item.meta)}</div>` : ''}
+              ${item.scouting_report ? `<div class="decision-center-meta">Scout Confidence: ${esc(item.scouting_report.confidence_label)} · ${esc(item.scouting_report.estimated_overall_range)}</div>` : ''}
+              ${item.scouting_report?.upside_label ? `<div class="market-inline-chip subdued">${esc(item.scouting_report.upside_label)}</div>` : ''}
+              ${item.scouting_report?.fog_note ? `<div class="decision-center-reason">${esc(item.scouting_report.fog_note)}</div>` : ''}
+            </div>
+          `).join('')
+        : '<div class="decision-center-empty">No immediate scouting leads.</div>';
+      return `
+        <div class="decision-center-column">
+          <div class="decision-center-title">${esc(title)}</div>
+          ${body}
+        </div>
+      `;
+    };
+
     return [
-      renderDecisionCenterColumn('Featured Prospects', board?.featured_prospects || []),
-      renderDecisionCenterColumn('Under the Radar', board?.under_the_radar || []),
-      renderDecisionCenterColumn('Immediate Options', board?.ready_now || []),
-      renderDecisionCenterColumn('Division Targets', board?.division_targets || []),
+      renderBucket('Featured Prospects', board?.featured_prospects || []),
+      renderBucket('Under the Radar', board?.under_the_radar || []),
+      renderBucket('Immediate Options', board?.ready_now || []),
+      renderBucket('Division Targets', board?.division_targets || []),
     ].join('');
   }
 

@@ -8,7 +8,13 @@ test('renderScoutingBoard shows the main scouting buckets and fighters', () => {
     featured_prospects: [
       {
         name: 'Blue Chip Prospect',
-        meta: 'Welterweight · OVR 79 · age 23',
+        meta: 'Welterweight · age 23',
+        scouting_report: {
+          estimated_overall_range: '74-80 OVR',
+          confidence_label: 'Medium',
+          upside_label: 'Blue-Chip Ceiling',
+          fog_note: 'Tape looks great, but the full package is not fully verified.',
+        },
         recommendation: { label: 'Buy Now', tone: 'buy-now', reason: 'Trajectory is strong.' },
       },
     ],
@@ -16,7 +22,13 @@ test('renderScoutingBoard shows the main scouting buckets and fighters', () => {
     ready_now: [
       {
         name: 'Ready Now',
-        meta: 'Welterweight · Strong Main Event fit',
+        meta: 'Welterweight · immediate option',
+        scouting_report: {
+          estimated_overall_range: '76-79 OVR',
+          confidence_label: 'High',
+          upside_label: 'Ready Now',
+          fog_note: 'Enough tape exists to trust the read.',
+        },
         recommendation: { label: 'Fair Price', tone: 'neutral', reason: 'Useful now.' },
       },
     ],
@@ -27,4 +39,7 @@ test('renderScoutingBoard shows the main scouting buckets and fighters', () => {
   assert.match(html, /Blue Chip Prospect/);
   assert.match(html, /Ready Now/);
   assert.match(html, /Immediate Options/);
+  assert.match(html, /74-80 OVR/);
+  assert.match(html, /Scout Confidence: Medium/);
+  assert.match(html, /full package is not fully verified/);
 });

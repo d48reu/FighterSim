@@ -147,3 +147,12 @@ def test_scouting_board_surfaces_prospects_sleepers_and_division_targets(tmp_pat
         item["weight_class"] == "Welterweight" for item in board["division_targets"]
     )
     assert all("recommendation" in item for item in board["featured_prospects"])
+    assert all("scouting_report" in item for item in board["featured_prospects"])
+    assert all(
+        "estimated_overall_range" in item["scouting_report"]
+        for item in board["featured_prospects"]
+    )
+    assert all(
+        item["scouting_report"]["confidence_label"] in {"Low", "Medium", "High"}
+        for item in board["featured_prospects"]
+    )

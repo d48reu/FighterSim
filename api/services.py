@@ -1761,6 +1761,67 @@ def get_roster_decision_center() -> dict:
         }
 
 
+def _scouting_report_dict(agent: dict, bucket: str) -> dict:
+    age = agent["age"]
+    popularity = agent["popularity"]
+    hype = agent["hype"]
+    overall = agent["overall"]
+    trajectory = agent.get("market_context", {}).get("trajectory_label", "Stalled")
+
+    confidence_score = 78
+    if age <= 24:
+        confidence_score -= 18
+    elif age <= 27:
+        confidence_score -= 8
+    if popularity < 35:
+        confidence_score -= 12
+    elif popularity < 50:
+        confidence_score -= 6
+    if hype < 40:
+        confidence_score -= 6
+    if trajectory in {"Volatile", "Stalled"}:
+        confidence_score -= 6
+    confidence_score = max(32, min(92, confidence_score))
+
+    if confidence_score >= 75:
+        confidence_label = "High"
+        spread = 2
+    elif confidence_score >= 55:
+        confidence_label = "Medium"
+        spread = 4
+    else:
+        confidence_label = "Low"
+        spread = 6
+
+    min_ovr = max(45, overall - spread)
+    max_ovr = min(99, overall + spread)
+
+    if bucket == "featured_prospects":
+        upside_label = "Blue-Chip Ceiling" if overall >= 75 else "Prospect Upside"
+        fog_note = "Tape looks promising, but the full package is still developing."
+    elif bucket == "under_the_radar":
+        upside_label = "Sleeper Value"
+        fog_note = (
+            "Public buzz is light, so the market may be missing part of the upside."
+        )
+    elif bucket == "ready_now":
+        upside_label = "Ready Now"
+        fog_note = (
+            "There is enough tape to trust the read more than a raw prospect flyer."
+        )
+    else:
+        upside_label = "Division Fit"
+        fog_note = "Worth scouting deeper if this division becomes a priority."
+
+    return {
+        "confidence_label": confidence_label,
+        "confidence_score": confidence_score,
+        "estimated_overall_range": f"{min_ovr}-{max_ovr} OVR",
+        "upside_label": upside_label,
+        "fog_note": fog_note,
+    }
+
+
 def get_scouting_board() -> dict:
     free_agents = get_free_agents()
     decision_center = get_roster_decision_center()
@@ -1830,26 +1891,32 @@ def get_scouting_board() -> dict:
                 "id": target["id"],
                 "name": target["name"],
                 "weight_class": target["weight_class"],
-                "meta": f"{target['weight_class']} · OVR {target['overall']} · {target['record']}",
+                "meta": f"{target['weight_class']} · age {target['age']} · {target['record']}",
                 "recommendation": target.get("recommendation"),
                 "reason": outlook["recommendation"]["reason"],
+                "scouting_report": _scouting_report_dict(target, "division_targets"),
             }
         )
 
-    def to_card(agent: dict) -> dict:
+    def to_card(agent: dict, bucket: str) -> dict:
         return {
             "id": agent["id"],
             "name": agent["name"],
             "weight_class": agent["weight_class"],
-            "meta": f"{agent['weight_class']} · OVR {agent['overall']} · age {agent['age']}",
+            "meta": f"{agent['weight_class']} · age {agent['age']}",
             "recommendation": agent.get("recommendation"),
             "reason": agent.get("recommendation", {}).get("reason"),
+            "scouting_report": _scouting_report_dict(agent, bucket),
         }
 
     return {
-        "featured_prospects": [to_card(agent) for agent in featured_prospects],
-        "under_the_radar": [to_card(agent) for agent in under_the_radar],
-        "ready_now": [to_card(agent) for agent in ready_now],
+        "featured_prospects": [
+            to_card(agent, "featured_prospects") for agent in featured_prospects
+        ],
+        "under_the_radar": [
+            to_card(agent, "under_the_radar") for agent in under_the_radar
+        ],
+        "ready_now": [to_card(agent, "ready_now") for agent in ready_now],
         "division_targets": division_targets[:5],
     }
 
