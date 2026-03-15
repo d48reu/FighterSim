@@ -773,6 +773,98 @@ def get_rankings_for_class(weight_class_str: str) -> list[dict]:
         return _get_rankings(session, wc, top_n=15)
 
 
+def _title_picture_data(session, wc: WeightClass) -> dict:
+    rebuild_rankings(session, wc)
+    session.commit()
+    rankings = _get_rankings(session, wc, top_n=8)
+    if not rankings:
+        return {
+            "champion": None,
+            "contenders": [],
+            "title_eliminator": None,
+            "division_heat": {"label": "Cold", "reason": "No rankings available yet."},
+            "politics": [],
+        }
+
+    fighter_lookup = {
+        row["name"]: session.get(
+            Fighter,
+            session.execute(
+                select(Ranking.fighter_id).where(
+                    Ranking.weight_class == wc,
+                    Ranking.rank == row["rank"],
+                )
+            ).scalar_one(),
+        )
+        for row in rankings
+    }
+
+    champion_row = rankings[0]
+    champion = fighter_lookup.get(champion_row["name"])
+    contenders = rankings[1:5]
+
+    title_eliminator = None
+    if len(contenders) >= 2:
+        contender_a = fighter_lookup.get(contenders[0]["name"])
+        contender_b = fighter_lookup.get(contenders[1]["name"])
+        if contender_a and contender_b:
+            analysis = assess_matchup(contender_a, contender_b)
+            title_eliminator = {
+                "fighter_a": contenders[0],
+                "fighter_b": contenders[1],
+                "booking_value": analysis["booking_value"],
+                "competitiveness": analysis["competitiveness"],
+                "reasons": analysis["reasons"],
+            }
+
+    top_hype = []
+    for row in rankings[:5]:
+        fighter = fighter_lookup.get(row["name"])
+        if fighter:
+            top_hype.append(fighter.hype)
+    avg_hype = sum(top_hype) / len(top_hype) if top_hype else 0.0
+    score_gap = 99.0
+    if len(contenders) >= 2:
+        score_gap = abs(contenders[0]["score"] - contenders[1]["score"])
+    if avg_hype >= 68 and score_gap <= 3:
+        heat = {
+            "label": "Boiling",
+            "reason": "Top contenders are hot and tightly packed.",
+        }
+    elif avg_hype >= 52:
+        heat = {
+            "label": "Warm",
+            "reason": "The division has enough star power to keep title stakes alive.",
+        }
+    else:
+        heat = {
+            "label": "Cold",
+            "reason": "The division needs stronger contenders or more star heat.",
+        }
+
+    politics = []
+    if champion:
+        days_inactive = _days_since_last_fight(champion.id, session)
+        if days_inactive is not None and days_inactive > 180:
+            politics.append(f"Champion has not fought in {days_inactive} days.")
+    if len(contenders) >= 2 and score_gap <= 2:
+        politics.append("Two contenders are separated by less than 2 ranking points.")
+    elif contenders:
+        politics.append(f"Clear next contender: {contenders[0]['name']}.")
+    if title_eliminator:
+        politics.append(
+            f"Best eliminator right now is {title_eliminator['fighter_a']['name']} vs {title_eliminator['fighter_b']['name']}."
+        )
+
+    return {
+        "champion": champion_row,
+        "contenders": contenders,
+        "title_eliminator": title_eliminator,
+        "division_heat": heat,
+        "politics": politics,
+    }
+
+
 def get_title_picture(weight_class_str: str) -> dict:
     try:
         wc = WeightClass(weight_class_str)
@@ -786,100 +878,30 @@ def get_title_picture(weight_class_str: str) -> dict:
         }
 
     with _SessionFactory() as session:
-        rebuild_rankings(session, wc)
-        session.commit()
-        rankings = _get_rankings(session, wc, top_n=8)
-        if not rankings:
-            return {
-                "champion": None,
-                "contenders": [],
-                "title_eliminator": None,
-                "division_heat": {
-                    "label": "Cold",
-                    "reason": "No rankings available yet.",
-                },
-                "politics": [],
-            }
+        return _title_picture_data(session, wc)
 
-        fighter_lookup = {
-            row["name"]: session.get(
-                Fighter,
-                session.execute(
-                    select(Ranking.fighter_id).where(
-                        Ranking.weight_class == wc,
-                        Ranking.rank == row["rank"],
-                    )
-                ).scalar_one(),
-            )
-            for row in rankings
-        }
 
-        champion_row = rankings[0]
-        champion = fighter_lookup.get(champion_row["name"])
-        contenders = rankings[1:5]
-
-        title_eliminator = None
-        if len(contenders) >= 2:
-            contender_a = fighter_lookup.get(contenders[0]["name"])
-            contender_b = fighter_lookup.get(contenders[1]["name"])
-            if contender_a and contender_b:
-                analysis = assess_matchup(contender_a, contender_b)
-                title_eliminator = {
-                    "fighter_a": contenders[0],
-                    "fighter_b": contenders[1],
-                    "booking_value": analysis["booking_value"],
-                    "competitiveness": analysis["competitiveness"],
-                    "reasons": analysis["reasons"],
-                }
-
-        top_hype = []
-        for row in rankings[:5]:
-            fighter = fighter_lookup.get(row["name"])
-            if fighter:
-                top_hype.append(fighter.hype)
-        avg_hype = sum(top_hype) / len(top_hype) if top_hype else 0.0
-        score_gap = 99.0
-        if len(contenders) >= 2:
-            score_gap = abs(contenders[0]["score"] - contenders[1]["score"])
-        if avg_hype >= 68 and score_gap <= 3:
-            heat = {
-                "label": "Boiling",
-                "reason": "Top contenders are hot and tightly packed.",
-            }
-        elif avg_hype >= 52:
-            heat = {
-                "label": "Warm",
-                "reason": "The division has enough star power to keep title stakes alive.",
-            }
-        else:
-            heat = {
-                "label": "Cold",
-                "reason": "The division needs stronger contenders or more star heat.",
-            }
-
-        politics = []
-        if champion:
-            days_inactive = _days_since_last_fight(champion.id, session)
-            if days_inactive is not None and days_inactive > 180:
-                politics.append(f"Champion has not fought in {days_inactive} days.")
-        if len(contenders) >= 2 and score_gap <= 2:
-            politics.append(
-                "Two contenders are separated by less than 2 ranking points."
-            )
-        elif contenders:
-            politics.append(f"Clear next contender: {contenders[0]['name']}.")
-        if title_eliminator:
-            politics.append(
-                f"Best eliminator right now is {title_eliminator['fighter_a']['name']} vs {title_eliminator['fighter_b']['name']}."
-            )
-
-        return {
-            "champion": champion_row,
-            "contenders": contenders,
-            "title_eliminator": title_eliminator,
-            "division_heat": heat,
-            "politics": politics,
-        }
+def _title_booking_requirement(session, weight_class_str: str) -> dict:
+    try:
+        wc = WeightClass(weight_class_str)
+    except ValueError:
+        return {"champion_id": None, "days_inactive": None, "must_defend": False}
+    picture = _title_picture_data(session, wc)
+    champion = picture.get("champion")
+    if not champion:
+        return {"champion_id": None, "days_inactive": None, "must_defend": False}
+    fighter_id = session.execute(
+        select(Ranking.fighter_id).where(
+            Ranking.weight_class == wc,
+            Ranking.rank == champion["rank"],
+        )
+    ).scalar_one_or_none()
+    days_inactive = _days_since_last_fight(fighter_id, session) if fighter_id else None
+    return {
+        "champion_id": fighter_id,
+        "days_inactive": days_inactive,
+        "must_defend": days_inactive is not None and days_inactive > 180,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -3301,6 +3323,20 @@ def add_fight_to_event(
                 return {
                     "error": f"{fname} does not have a valid contract with fights remaining."
                 }
+
+        title_requirement = _title_booking_requirement(session, fa_wc)
+        champion_in_matchup = title_requirement["champion_id"] in {
+            fighter_a_id,
+            fighter_b_id,
+        }
+        if (
+            title_requirement["must_defend"]
+            and champion_in_matchup
+            and not is_title_fight
+        ):
+            return {
+                "error": "Champion inactivity requires the next booked bout to be a title defense.",
+            }
 
         card_position = len(event.fights)
         fight = Fight(
