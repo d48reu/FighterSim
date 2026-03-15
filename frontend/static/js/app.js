@@ -276,10 +276,12 @@ async function loadDashRecentResults() {
 async function loadFinances() {
   try {
     const fin = await api('/api/finances');
-    document.getElementById('dash-payroll').textContent    = formatCurrency(fin.monthly_payroll);
-    document.getElementById('dash-balance').textContent    = formatCurrency(fin.bank_balance);
-    document.getElementById('dash-roster-size').textContent = fin.roster_size;
+    document.getElementById('dash-payroll').textContent = formatCurrency(fin.monthly_payroll);
     document.getElementById('dash-fight-costs').textContent = formatCurrency(fin.projected_fight_costs);
+    document.getElementById('dash-broadcast-status').textContent = fin.broadcast_deal
+      ? `${fin.broadcast_tier || 'Active'} Deal`
+      : 'No Deal';
+    document.getElementById('dash-sponsorship-income').textContent = `${formatCurrency(fin.monthly_sponsorship_income || 0)}/mo`;
   } catch (err) {
     // silently fail — cards stay at "—"
   }
