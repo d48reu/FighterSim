@@ -1440,6 +1440,10 @@ tbody td { padding: 9px 10px; }
   margin-top: -6px;
 }
 
+.relationship-card {
+  margin-top: 8px;
+}
+
 /* ── Game date display ─────────────────────────── */
 
 .game-date-display {

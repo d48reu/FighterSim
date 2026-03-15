@@ -319,6 +319,26 @@
     `;
   }
 
+  function renderRelationshipMemory(memory) {
+    if (!memory) return '';
+    return `
+      <div class="market-card relationship-card">
+        <div class="market-card-header">
+          <div class="market-card-title">Relationship Memory</div>
+          <span class="market-trajectory-badge">Trust: ${esc(memory.trust_label || 'Medium')}</span>
+        </div>
+        <div class="market-grid">
+          <div class="market-stat"><span class="market-stat-label">Lowballs</span><span class="market-stat-value">${memory.lowball_offer_count || 0}</span></div>
+          <div class="market-stat"><span class="market-stat-label">Rejected Offers</span><span class="market-stat-value">${memory.rejected_offer_count || 0}</span></div>
+          <div class="market-stat"><span class="market-stat-label">Signings</span><span class="market-stat-value">${memory.successful_signings || 0}</span></div>
+          <div class="market-stat"><span class="market-stat-label">Renewals</span><span class="market-stat-value">${memory.successful_renewals || 0}</span></div>
+          <div class="market-stat"><span class="market-stat-label">Releases</span><span class="market-stat-value">${memory.releases || 0}</span></div>
+        </div>
+        <div class="market-card-summary">${esc(memory.summary || 'No history yet.')}</div>
+      </div>
+    `;
+  }
+
   function renderOfferEvaluation(offerEvaluation) {
     if (!offerEvaluation) return '';
 
@@ -330,6 +350,7 @@
         </div>
         ${renderRecommendationBadge(offerEvaluation.recommendation)}
         ${renderNegotiationProfile(offerEvaluation.negotiation_profile)}
+        ${renderRelationshipMemory(offerEvaluation.relationship_memory)}
         <div class="market-grid">
           <div class="market-stat">
             <span class="market-stat-label">Asking</span>
@@ -367,6 +388,7 @@
     renderSmartAssistantWidget,
     renderTitlePicture,
     renderNegotiationProfile,
+    renderRelationshipMemory,
     renderMarketContextCard,
     renderOfferEvaluation,
   };

@@ -7,8 +7,17 @@ from datetime import date
 from typing import Optional, List
 
 from sqlalchemy import (
-    Boolean, Column, Date, Enum, Float, ForeignKey, Index,
-    Integer, String, Text, CheckConstraint
+    Boolean,
+    Column,
+    Date,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    CheckConstraint,
 )
 from sqlalchemy.orm import relationship, Mapped
 
@@ -18,6 +27,7 @@ from .database import Base
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class WeightClass(str, enum.Enum):
     FLYWEIGHT = "Flyweight"
@@ -74,12 +84,12 @@ class ShowStatus(str, enum.Enum):
 
 
 class Archetype(str, enum.Enum):
-    PHENOM         = "Phenom"
-    LATE_BLOOMER   = "Late Bloomer"
-    GATEKEEPER     = "Gatekeeper"
-    JOURNEYMAN     = "Journeyman"
+    PHENOM = "Phenom"
+    LATE_BLOOMER = "Late Bloomer"
+    GATEKEEPER = "Gatekeeper"
+    JOURNEYMAN = "Journeyman"
     GOAT_CANDIDATE = "GOAT Candidate"
-    SHOOTING_STAR  = "Shooting Star"
+    SHOOTING_STAR = "Shooting Star"
 
 
 class OriginType(str, enum.Enum):
@@ -91,6 +101,7 @@ class OriginType(str, enum.Enum):
 # ---------------------------------------------------------------------------
 # Fighter
 # ---------------------------------------------------------------------------
+
 
 class Fighter(Base):
     """Represents a fighter in the simulation."""
@@ -136,7 +147,9 @@ class Fighter(Base):
     narrative_tags: Mapped[Optional[str]] = Column(Text, default="[]")
     popularity: Mapped[float] = Column(Float, default=10.0)
     hype: Mapped[float] = Column(Float, default=10.0)
-    rivalry_with: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
+    rivalry_with: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("fighters.id"), nullable=True
+    )
     goat_score: Mapped[float] = Column(Float, default=0.0)
     traits: Mapped[Optional[str]] = Column(Text, default="[]")
     is_cornerstone: Mapped[bool] = Column(Boolean, default=False)
@@ -210,6 +223,7 @@ class Fighter(Base):
 # Organization
 # ---------------------------------------------------------------------------
 
+
 class Organization(Base):
     """Represents an MMA promotion."""
 
@@ -238,6 +252,7 @@ class Organization(Base):
 # Contract
 # ---------------------------------------------------------------------------
 
+
 class Contract(Base):
     """A fighter's contract with an organization."""
 
@@ -245,15 +260,21 @@ class Contract(Base):
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
     fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
-    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    organization_id: Mapped[int] = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False
+    )
     status: Mapped[str] = Column(Enum(ContractStatus), default=ContractStatus.ACTIVE)
     salary: Mapped[float] = Column(Float, nullable=False)
-    fight_count_total: Mapped[int] = Column(Integer, nullable=False)  # fights in contract
+    fight_count_total: Mapped[int] = Column(
+        Integer, nullable=False
+    )  # fights in contract
     fights_remaining: Mapped[int] = Column(Integer, nullable=False)
     expiry_date: Mapped[date] = Column(Date, nullable=False)
 
     fighter: Mapped["Fighter"] = relationship("Fighter", back_populates="contracts")
-    organization: Mapped["Organization"] = relationship("Organization", back_populates="contracts")
+    organization: Mapped["Organization"] = relationship(
+        "Organization", back_populates="contracts"
+    )
 
     __table_args__ = (
         Index("ix_contract_expiry", "expiry_date"),
@@ -268,6 +289,30 @@ class Contract(Base):
 # Event
 # ---------------------------------------------------------------------------
 
+
+class FighterRelationshipMemory(Base):
+    """Persistent memory of how a fighter's relationship with an org evolves."""
+
+    __tablename__ = "fighter_relationship_memory"
+
+    id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
+    fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
+    organization_id: Mapped[int] = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False
+    )
+    lowball_offer_count: Mapped[int] = Column(Integer, default=0)
+    rejected_offer_count: Mapped[int] = Column(Integer, default=0)
+    successful_signings: Mapped[int] = Column(Integer, default=0)
+    successful_renewals: Mapped[int] = Column(Integer, default=0)
+    releases: Mapped[int] = Column(Integer, default=0)
+    last_offer_ratio: Mapped[float] = Column(Float, default=1.0)
+    last_interaction_date: Mapped[Optional[date]] = Column(Date, nullable=True)
+
+    __table_args__ = (
+        Index("ix_relationship_fighter_org", "fighter_id", "organization_id"),
+    )
+
+
 class Event(Base):
     """An MMA event with a fight card."""
 
@@ -277,7 +322,9 @@ class Event(Base):
     name: Mapped[str] = Column(String(120), nullable=False)
     event_date: Mapped[date] = Column(Date, nullable=False)
     venue: Mapped[str] = Column(String(120), nullable=False)
-    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    organization_id: Mapped[int] = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False
+    )
     status: Mapped[str] = Column(Enum(EventStatus), default=EventStatus.COMPLETED)
     has_press_conference: Mapped[bool] = Column(Boolean, default=False)
     gate_revenue: Mapped[float] = Column(Float, default=0.0)
@@ -287,15 +334,17 @@ class Event(Base):
     tickets_sold: Mapped[int] = Column(Integer, default=0)
     venue_capacity: Mapped[int] = Column(Integer, default=0)
 
-    organization: Mapped["Organization"] = relationship("Organization", back_populates="events")
+    organization: Mapped["Organization"] = relationship(
+        "Organization", back_populates="events"
+    )
     fights: Mapped[List["Fight"]] = relationship(
-        "Fight", back_populates="event", cascade="all, delete-orphan",
-        order_by="Fight.card_position"
+        "Fight",
+        back_populates="event",
+        cascade="all, delete-orphan",
+        order_by="Fight.card_position",
     )
 
-    __table_args__ = (
-        Index("ix_event_date", "event_date"),
-    )
+    __table_args__ = (Index("ix_event_date", "event_date"),)
 
     @property
     def total_revenue(self) -> float:
@@ -309,6 +358,7 @@ class Event(Base):
 # Fight
 # ---------------------------------------------------------------------------
 
+
 class Fight(Base):
     """A single bout result."""
 
@@ -316,8 +366,12 @@ class Fight(Base):
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
     event_id: Mapped[int] = Column(Integer, ForeignKey("events.id"), nullable=False)
-    fighter_a_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
-    fighter_b_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
+    fighter_a_id: Mapped[int] = Column(
+        Integer, ForeignKey("fighters.id"), nullable=False
+    )
+    fighter_b_id: Mapped[int] = Column(
+        Integer, ForeignKey("fighters.id"), nullable=False
+    )
     weight_class: Mapped[str] = Column(Enum(WeightClass), nullable=False)
     card_position: Mapped[int] = Column(Integer, default=0)
 
@@ -326,7 +380,9 @@ class Fight(Base):
     press_conference: Mapped[Optional[str]] = Column(Text, nullable=True)
 
     # Result
-    winner_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
+    winner_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("fighters.id"), nullable=True
+    )
     method: Mapped[Optional[str]] = Column(Enum(FightMethod), nullable=True)
     round_ended: Mapped[Optional[int]] = Column(Integer, nullable=True)
     time_ended: Mapped[Optional[str]] = Column(String(10), nullable=True)
@@ -354,6 +410,7 @@ class Fight(Base):
 # Rankings cache
 # ---------------------------------------------------------------------------
 
+
 class Ranking(Base):
     """Cached ranking entry per weight class."""
 
@@ -366,14 +423,13 @@ class Ranking(Base):
     score: Mapped[float] = Column(Float, nullable=False)
     dirty: Mapped[bool] = Column(Boolean, default=True)
 
-    __table_args__ = (
-        Index("ix_ranking_weight_class", "weight_class"),
-    )
+    __table_args__ = (Index("ix_ranking_weight_class", "weight_class"),)
 
 
 # ---------------------------------------------------------------------------
 # Notifications
 # ---------------------------------------------------------------------------
+
 
 class Notification(Base):
     """Lightweight event log for contract and finance alerts."""
@@ -391,6 +447,7 @@ class Notification(Base):
 # Game State
 # ---------------------------------------------------------------------------
 
+
 class GameState(Base):
     """Persistent game clock and player org reference."""
 
@@ -398,7 +455,9 @@ class GameState(Base):
 
     id: Mapped[int] = Column(Integer, primary_key=True)
     current_date: Mapped[date] = Column(Date, nullable=False)
-    player_org_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    player_org_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("organizations.id"), nullable=True
+    )
     origin_type: Mapped[Optional[str]] = Column(String(50), nullable=True)
 
 
@@ -406,16 +465,21 @@ class GameState(Base):
 # Broadcast Deals
 # ---------------------------------------------------------------------------
 
+
 class BroadcastDeal(Base):
     """A TV/streaming broadcast deal for an organization."""
 
     __tablename__ = "broadcast_deals"
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
-    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    organization_id: Mapped[int] = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False
+    )
     tier: Mapped[str] = Column(String(50), nullable=False)
     network_name: Mapped[str] = Column(String(100), nullable=False)
-    status: Mapped[str] = Column(Enum(BroadcastDealStatus), default=BroadcastDealStatus.ACTIVE)
+    status: Mapped[str] = Column(
+        Enum(BroadcastDealStatus), default=BroadcastDealStatus.ACTIVE
+    )
     fee_per_event: Mapped[float] = Column(Float, nullable=False)
     ppv_multiplier: Mapped[float] = Column(Float, default=1.0)
     duration_months: Mapped[int] = Column(Integer, nullable=False)
@@ -428,9 +492,7 @@ class BroadcastDeal(Base):
     compliance_warnings: Mapped[int] = Column(Integer, default=0)
     prestige_per_month: Mapped[float] = Column(Float, default=0.0)
 
-    __table_args__ = (
-        Index("ix_broadcast_org", "organization_id"),
-    )
+    __table_args__ = (Index("ix_broadcast_org", "organization_id"),)
 
     def __repr__(self) -> str:
         return f"<BroadcastDeal {self.tier} for org_id={self.organization_id} status={self.status}>"
@@ -439,6 +501,7 @@ class BroadcastDeal(Base):
 # ---------------------------------------------------------------------------
 # Training Camps & Fighter Development
 # ---------------------------------------------------------------------------
+
 
 class TrainingCamp(Base):
     """A training facility where fighters develop their skills."""
@@ -464,7 +527,9 @@ class FighterDevelopment(Base):
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
     fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
-    camp_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("training_camps.id"), nullable=True)
+    camp_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("training_camps.id"), nullable=True
+    )
     focus: Mapped[str] = Column(String(50), nullable=False, default="Balanced")
     months_at_camp: Mapped[int] = Column(Integer, default=0)
     total_development_spend: Mapped[float] = Column(Float, default=0.0)
@@ -473,14 +538,13 @@ class FighterDevelopment(Base):
     fighter: Mapped["Fighter"] = relationship("Fighter")
     camp: Mapped[Optional["TrainingCamp"]] = relationship("TrainingCamp")
 
-    __table_args__ = (
-        Index("ix_dev_fighter", "fighter_id"),
-    )
+    __table_args__ = (Index("ix_dev_fighter", "fighter_id"),)
 
 
 # ---------------------------------------------------------------------------
 # Sponsorships
 # ---------------------------------------------------------------------------
+
 
 class Sponsorship(Base):
     """A sponsorship deal for an individual fighter."""
@@ -489,10 +553,14 @@ class Sponsorship(Base):
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
     fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
-    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    organization_id: Mapped[int] = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False
+    )
     tier: Mapped[str] = Column(String(50), nullable=False)
     brand_name: Mapped[str] = Column(String(100), nullable=False)
-    status: Mapped[str] = Column(Enum(SponsorshipStatus), default=SponsorshipStatus.ACTIVE)
+    status: Mapped[str] = Column(
+        Enum(SponsorshipStatus), default=SponsorshipStatus.ACTIVE
+    )
     monthly_stipend: Mapped[float] = Column(Float, nullable=False)
     duration_months: Mapped[int] = Column(Integer, nullable=False)
     start_date: Mapped[date] = Column(Date, nullable=False)
@@ -513,6 +581,7 @@ class Sponsorship(Base):
 # Reality Show
 # ---------------------------------------------------------------------------
 
+
 class RealityShow(Base):
     """A reality TV show (Ultimate Fighter-style) produced by the player org."""
 
@@ -520,7 +589,9 @@ class RealityShow(Base):
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = Column(String(120), nullable=False)
-    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    organization_id: Mapped[int] = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False
+    )
     weight_class: Mapped[str] = Column(Enum(WeightClass), nullable=False)
     status: Mapped[str] = Column(Enum(ShowStatus), default=ShowStatus.IN_PROGRESS)
     format_size: Mapped[int] = Column(Integer, nullable=False)  # 8 or 16
@@ -532,15 +603,21 @@ class RealityShow(Base):
     total_production_spend: Mapped[float] = Column(Float, default=0.0)
     total_revenue: Mapped[float] = Column(Float, default=0.0)
     show_hype: Mapped[float] = Column(Float, default=20.0)
-    winner_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
-    runner_up_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
+    winner_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("fighters.id"), nullable=True
+    )
+    runner_up_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("fighters.id"), nullable=True
+    )
 
     contestants: Mapped[List["ShowContestant"]] = relationship(
         "ShowContestant", back_populates="show", cascade="all, delete-orphan"
     )
     episodes: Mapped[List["ShowEpisode"]] = relationship(
-        "ShowEpisode", back_populates="show", cascade="all, delete-orphan",
-        order_by="ShowEpisode.episode_number"
+        "ShowEpisode",
+        back_populates="show",
+        cascade="all, delete-orphan",
+        order_by="ShowEpisode.episode_number",
     )
 
     __table_args__ = (
@@ -558,18 +635,26 @@ class ShowContestant(Base):
     __tablename__ = "show_contestants"
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
-    show_id: Mapped[int] = Column(Integer, ForeignKey("reality_shows.id"), nullable=False)
+    show_id: Mapped[int] = Column(
+        Integer, ForeignKey("reality_shows.id"), nullable=False
+    )
     fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), nullable=False)
     seed: Mapped[int] = Column(Integer, nullable=False)
-    status: Mapped[str] = Column(String(30), default="active")  # active/eliminated/quit/suspended
+    status: Mapped[str] = Column(
+        String(30), default="active"
+    )  # active/eliminated/quit/suspended
     eliminated_round: Mapped[Optional[int]] = Column(Integer, nullable=True)
-    eliminated_by: Mapped[Optional[str]] = Column(String(50), nullable=True)  # loss/quit/injury/expelled
+    eliminated_by: Mapped[Optional[str]] = Column(
+        String(50), nullable=True
+    )  # loss/quit/injury/expelled
     show_wins: Mapped[int] = Column(Integer, default=0)
     show_losses: Mapped[int] = Column(Integer, default=0)
     show_hype_earned: Mapped[float] = Column(Float, default=0.0)
     shenanigan_count: Mapped[int] = Column(Integer, default=0)
 
-    show: Mapped["RealityShow"] = relationship("RealityShow", back_populates="contestants")
+    show: Mapped["RealityShow"] = relationship(
+        "RealityShow", back_populates="contestants"
+    )
     fighter: Mapped["Fighter"] = relationship("Fighter")
 
     __table_args__ = (
@@ -587,27 +672,32 @@ class ShowEpisode(Base):
     __tablename__ = "show_episodes"
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
-    show_id: Mapped[int] = Column(Integer, ForeignKey("reality_shows.id"), nullable=False)
+    show_id: Mapped[int] = Column(
+        Integer, ForeignKey("reality_shows.id"), nullable=False
+    )
     episode_number: Mapped[int] = Column(Integer, nullable=False)
-    episode_type: Mapped[str] = Column(String(30), nullable=False)  # intro/quarterfinal/semifinal/finale/first_round
+    episode_type: Mapped[str] = Column(
+        String(30), nullable=False
+    )  # intro/quarterfinal/semifinal/finale/first_round
     air_date: Mapped[date] = Column(Date, nullable=False)
     fight_results: Mapped[Optional[str]] = Column(Text, nullable=True)  # JSON
     shenanigans: Mapped[Optional[str]] = Column(Text, nullable=True)  # JSON
     episode_narrative: Mapped[Optional[str]] = Column(Text, nullable=True)
     episode_rating: Mapped[float] = Column(Float, default=0.0)
     hype_generated: Mapped[float] = Column(Float, default=0.0)
-    event_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("events.id"), nullable=True)
+    event_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("events.id"), nullable=True
+    )
 
     show: Mapped["RealityShow"] = relationship("RealityShow", back_populates="episodes")
 
-    __table_args__ = (
-        Index("ix_episode_show", "show_id"),
-    )
+    __table_args__ = (Index("ix_episode_show", "show_id"),)
 
 
 # ---------------------------------------------------------------------------
 # News Headlines
 # ---------------------------------------------------------------------------
+
 
 class NewsHeadline(Base):
     """A generated news headline for the dashboard ticker."""
@@ -618,17 +708,20 @@ class NewsHeadline(Base):
     headline: Mapped[str] = Column(String(300), nullable=False)
     category: Mapped[str] = Column(String(50), nullable=False)
     game_date: Mapped[date] = Column(Date, nullable=False)
-    fighter_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("fighters.id"), nullable=True)
-    event_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("events.id"), nullable=True)
-
-    __table_args__ = (
-        Index("ix_news_date", "game_date"),
+    fighter_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("fighters.id"), nullable=True
     )
+    event_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("events.id"), nullable=True
+    )
+
+    __table_args__ = (Index("ix_news_date", "game_date"),)
 
 
 # ---------------------------------------------------------------------------
 # Legend Coaches
 # ---------------------------------------------------------------------------
+
 
 class LegendCoach(Base):
     """A retired legend hired as coaching staff for a training camp."""
@@ -636,9 +729,15 @@ class LegendCoach(Base):
     __tablename__ = "legend_coaches"
 
     id: Mapped[int] = Column(Integer, primary_key=True, autoincrement=True)
-    fighter_id: Mapped[int] = Column(Integer, ForeignKey("fighters.id"), unique=True, nullable=False)
-    organization_id: Mapped[int] = Column(Integer, ForeignKey("organizations.id"), nullable=False)
-    camp_id: Mapped[Optional[int]] = Column(Integer, ForeignKey("training_camps.id"), nullable=True)
+    fighter_id: Mapped[int] = Column(
+        Integer, ForeignKey("fighters.id"), unique=True, nullable=False
+    )
+    organization_id: Mapped[int] = Column(
+        Integer, ForeignKey("organizations.id"), nullable=False
+    )
+    camp_id: Mapped[Optional[int]] = Column(
+        Integer, ForeignKey("training_camps.id"), nullable=True
+    )
     salary: Mapped[float] = Column(Float, nullable=False)
     hired_date: Mapped[date] = Column(Date, nullable=False)
     specialty_bonus: Mapped[float] = Column(Float, default=0.0)
@@ -652,4 +751,6 @@ class LegendCoach(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<LegendCoach fighter_id={self.fighter_id} org_id={self.organization_id}>"
+        return (
+            f"<LegendCoach fighter_id={self.fighter_id} org_id={self.organization_id}>"
+        )

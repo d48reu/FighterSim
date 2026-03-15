@@ -36,6 +36,7 @@ from models.models import (
     NewsHeadline,
     LegendCoach,
     Ranking,
+    FighterRelationshipMemory,
 )
 from simulation.fight_engine import FighterStats, simulate_fight
 from simulation.monthly_sim import sim_month
@@ -198,6 +199,69 @@ def _days_since_last_fight(fighter_id: int, session) -> Optional[int]:
     return (game_date - last_event.event_date).days if last_event else None
 
 
+def _get_relationship_memory_record(
+    session, organization_id: int, fighter_id: int, *, create: bool = False
+) -> Optional[FighterRelationshipMemory]:
+    memory = session.execute(
+        select(FighterRelationshipMemory).where(
+            FighterRelationshipMemory.organization_id == organization_id,
+            FighterRelationshipMemory.fighter_id == fighter_id,
+        )
+    ).scalar_one_or_none()
+    if memory or not create:
+        return memory
+    memory = FighterRelationshipMemory(
+        organization_id=organization_id,
+        fighter_id=fighter_id,
+    )
+    session.add(memory)
+    session.flush()
+    return memory
+
+
+def _relationship_memory_dict(memory: Optional[FighterRelationshipMemory]) -> dict:
+    if not memory:
+        return {
+            "trust_score": 50.0,
+            "trust_label": "Medium",
+            "summary": "No meaningful history with this fighter yet.",
+            "lowball_offer_count": 0,
+            "rejected_offer_count": 0,
+            "successful_signings": 0,
+            "successful_renewals": 0,
+            "releases": 0,
+        }
+
+    trust_score = 50.0
+    trust_score += memory.successful_signings * 10
+    trust_score += memory.successful_renewals * 12
+    trust_score -= memory.lowball_offer_count * 8
+    trust_score -= memory.rejected_offer_count * 4
+    trust_score -= memory.releases * 12
+    trust_score = max(0.0, min(100.0, trust_score))
+    trust_label = (
+        "High" if trust_score >= 67 else "Medium" if trust_score >= 40 else "Low"
+    )
+
+    if trust_label == "High":
+        summary = "They trust your promotion and remember being treated well."
+    elif trust_label == "Low":
+        summary = "They remember the lowball and are skeptical of your intentions."
+    else:
+        summary = "The relationship is workable, but not especially strong."
+
+    return {
+        "trust_score": round(trust_score, 1),
+        "trust_label": trust_label,
+        "summary": summary,
+        "lowball_offer_count": memory.lowball_offer_count,
+        "rejected_offer_count": memory.rejected_offer_count,
+        "successful_signings": memory.successful_signings,
+        "successful_renewals": memory.successful_renewals,
+        "releases": memory.releases,
+    }
+
+
 def _negotiation_profile_dict(
     f: Fighter, session, org_id: Optional[int] = None
 ) -> dict:
@@ -297,6 +361,15 @@ def _fighter_dict(f: Fighter, session=None) -> dict:
     negotiation_profile = (
         _negotiation_profile_dict(f, session) if session is not None else None
     )
+    relationship_memory = None
+    if session is not None:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if player_org:
+            relationship_memory = _relationship_memory_dict(
+                _get_relationship_memory_record(session, player_org.id, f.id)
+            )
     return {
         "id": f.id,
         "name": f.name,
@@ -339,6 +412,7 @@ def _fighter_dict(f: Fighter, session=None) -> dict:
         "peak_overall": getattr(f, "peak_overall", 0) or f.overall,
         "trajectory": trajectory,
         "negotiation_profile": negotiation_profile,
+        "relationship_memory": relationship_memory,
     }
 
 
@@ -1467,6 +1541,10 @@ def _offer_evaluation_dict(
         acceptance_probability *= 0.85
     offer_ratio = offered_salary / asking_salary if asking_salary > 0 else 1.0
     negotiation_profile = _negotiation_profile_dict(fighter, session, effective_org_id)
+    relationship_record = _get_relationship_memory_record(
+        session, effective_org_id, fighter.id
+    )
+    relationship_memory = _relationship_memory_dict(relationship_record)
     bidding_pressure = _bidding_pressure_dict(fighter, session, effective_org_id)
     preference_adjustments = []
 
@@ -1564,6 +1642,23 @@ def _offer_evaluation_dict(
             }
         )
         acceptance_probability -= 0.05
+    relationship_delta = 0.0
+    relationship_delta += relationship_memory["successful_signings"] * 0.02
+    relationship_delta += relationship_memory["successful_renewals"] * 0.04
+    relationship_delta -= relationship_memory["lowball_offer_count"] * 0.03
+    relationship_delta -= relationship_memory["rejected_offer_count"] * 0.015
+    relationship_delta -= relationship_memory["releases"] * 0.05
+    relationship_delta = max(-0.15, min(0.15, relationship_delta))
+    if relationship_delta:
+        preference_adjustments.append(
+            {
+                "key": "relationship",
+                "delta": relationship_delta,
+                "reason": relationship_memory["summary"],
+            }
+        )
+        acceptance_probability += relationship_delta
+
     if bidding_pressure["adjustment"]:
         preference_adjustments.append(
             {
@@ -1582,6 +1677,7 @@ def _offer_evaluation_dict(
         "acceptance_probability": round(acceptance_probability, 4),
         "market_context": market_context,
         "negotiation_profile": negotiation_profile,
+        "relationship_memory": relationship_memory,
         "bidding_pressure": {
             **bidding_pressure,
             "adjustment": round(bidding_pressure["adjustment"], 3),
@@ -1764,10 +1860,18 @@ def make_contract_offer(
         )
         acceptance_prob = offer_evaluation["acceptance_probability"]
 
-        if random.random() < acceptance_prob:
-            from datetime import timedelta
+        from datetime import timedelta
 
-            game_date = _get_game_date(session)
+        game_date = _get_game_date(session)
+        relationship_record = _get_relationship_memory_record(
+            session, player_org.id, fighter_id, create=True
+        )
+        relationship_record.last_interaction_date = game_date
+        relationship_record.last_offer_ratio = offer_evaluation["offer_ratio"]
+        if offer_evaluation["offer_ratio"] < 1.0:
+            relationship_record.lowball_offer_count += 1
+
+        if random.random() < acceptance_prob:
             expiry = game_date + timedelta(days=length_months * 30)
             contract = Contract(
                 fighter_id=fighter_id,
@@ -1779,6 +1883,7 @@ def make_contract_offer(
                 expiry_date=expiry,
             )
             session.add(contract)
+            relationship_record.successful_signings += 1
             session.commit()
             msg = random.choice(_OFFER_ACCEPTED_MSGS).format(name=fighter.name)
             return {
@@ -1787,6 +1892,8 @@ def make_contract_offer(
                 "offer_evaluation": offer_evaluation,
             }
         else:
+            relationship_record.rejected_offer_count += 1
+            session.commit()
             msg = random.choice(_OFFER_REJECTED_MSGS).format(name=fighter.name)
             return {
                 "accepted": False,
@@ -1822,6 +1929,11 @@ def release_fighter(fighter_id: int) -> dict:
             fighter.is_cornerstone = False
 
         game_date = _get_game_date(session)
+        relationship_record = _get_relationship_memory_record(
+            session, player_org.id, fighter_id, create=True
+        )
+        relationship_record.releases += 1
+        relationship_record.last_interaction_date = game_date
         notif = Notification(
             message=f"{fighter.name} has been released from your roster.",
             type="fighter_released",
@@ -2226,14 +2338,23 @@ def renew_contract(
         )
         acceptance_prob = offer_evaluation["acceptance_probability"]
 
-        if random.random() < acceptance_prob:
-            from datetime import timedelta
+        from datetime import timedelta
 
-            game_date = _get_game_date(session)
+        game_date = _get_game_date(session)
+        relationship_record = _get_relationship_memory_record(
+            session, player_org.id, fighter_id, create=True
+        )
+        relationship_record.last_interaction_date = game_date
+        relationship_record.last_offer_ratio = offer_evaluation["offer_ratio"]
+        if offer_evaluation["offer_ratio"] < 1.0:
+            relationship_record.lowball_offer_count += 1
+
+        if random.random() < acceptance_prob:
             contract.expiry_date = game_date + timedelta(days=length_months * 30)
             contract.salary = salary
             contract.fight_count_total = fight_count
             contract.fights_remaining = fight_count
+            relationship_record.successful_renewals += 1
             session.commit()
             msg = random.choice(_OFFER_ACCEPTED_MSGS).format(name=fighter.name)
             return {
@@ -2242,6 +2363,8 @@ def renew_contract(
                 "offer_evaluation": offer_evaluation,
             }
         else:
+            relationship_record.rejected_offer_count += 1
+            session.commit()
             msg = random.choice(_OFFER_REJECTED_MSGS).format(name=fighter.name)
             return {
                 "accepted": False,

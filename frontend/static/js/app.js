@@ -544,6 +544,8 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('panel-trajectory-reasons').innerHTML = '';
   document.getElementById('panel-negotiation').innerHTML = '';
   document.getElementById('panel-negotiation').classList.add('hidden');
+  document.getElementById('panel-relationship').innerHTML = '';
+  document.getElementById('panel-relationship').classList.add('hidden');
   document.getElementById('panel-record').textContent  = '\u2014';
   document.getElementById('panel-overall').textContent = '\u2014';
   document.getElementById('panel-goat').textContent    = '\u2014';
@@ -606,6 +608,11 @@ async function showFighterPanel(fighterId, extraData) {
     if (fighter.negotiation_profile && window.MarketUi?.renderNegotiationProfile) {
       negotiationEl.classList.remove('hidden');
       negotiationEl.innerHTML = window.MarketUi.renderNegotiationProfile(fighter.negotiation_profile);
+    }
+    const relationshipEl = document.getElementById('panel-relationship');
+    if (fighter.relationship_memory && window.MarketUi?.renderRelationshipMemory) {
+      relationshipEl.classList.remove('hidden');
+      relationshipEl.innerHTML = window.MarketUi.renderRelationshipMemory(fighter.relationship_memory);
     }
     document.getElementById('panel-record').textContent   = fighter.record;
     document.getElementById('panel-overall').textContent  = fighter.overall;
