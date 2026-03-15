@@ -121,6 +121,10 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     def campaign_objectives():
         return jsonify(services.get_campaign_objectives())
 
+    @app.route("/api/assistant/actions")
+    def smart_assistant_actions():
+        return jsonify(services.get_smart_assistant_actions())
+
     # ------------------------------------------------------------------
     # Rankings
     # ------------------------------------------------------------------

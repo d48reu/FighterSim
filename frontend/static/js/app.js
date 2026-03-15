@@ -233,6 +233,7 @@ async function loadDashboard() {
   loadShowWidget();
   loadNewsWidget();
   loadObjectivesWidget();
+  loadAssistantWidget();
 }
 
 async function loadDashUpcoming() {
@@ -295,6 +296,24 @@ async function loadObjectivesWidget() {
     widget.classList.remove('hidden');
     content.innerHTML = window.MarketUi?.renderObjectivesWidget
       ? window.MarketUi.renderObjectivesWidget(data)
+      : '';
+  } catch (err) {
+    // silent
+  }
+}
+
+async function loadAssistantWidget() {
+  try {
+    const data = await api('/api/assistant/actions');
+    const widget = document.getElementById('assistant-widget');
+    const content = document.getElementById('assistant-widget-content');
+    if (!data || !Object.keys(data).length) {
+      widget.classList.add('hidden');
+      return;
+    }
+    widget.classList.remove('hidden');
+    content.innerHTML = window.MarketUi?.renderSmartAssistantWidget
+      ? window.MarketUi.renderSmartAssistantWidget(data)
       : '';
   } catch (err) {
     // silent

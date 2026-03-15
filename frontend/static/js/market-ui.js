@@ -234,6 +234,30 @@
     `;
   }
 
+  function renderSmartAssistantWidget(actions) {
+    const entries = Object.values(actions || {}).filter(Boolean);
+    if (entries.length === 0) {
+      return '<div class="decision-center-empty">No assistant actions right now.</div>';
+    }
+    return `
+      <div class="market-card assistant-card">
+        <div class="market-card-header">
+          <div class="market-card-title">Chief of Staff</div>
+          <span class="market-trajectory-badge">This Month</span>
+        </div>
+        <div class="assistant-list">
+          ${entries.map((entry) => `
+            <div class="assistant-row">
+              <div class="assistant-label">${esc(entry.label || 'Action')}</div>
+              <div class="assistant-headline">${esc(entry.headline || '')}</div>
+              <div class="assistant-detail">${esc(entry.detail || '')}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   function renderTitlePicture(titlePicture) {
     if (!titlePicture) return '';
     const champion = titlePicture.champion;
@@ -340,6 +364,7 @@
     renderScoutingBoard,
     renderRivalIntel,
     renderObjectivesWidget,
+    renderSmartAssistantWidget,
     renderTitlePicture,
     renderNegotiationProfile,
     renderMarketContextCard,

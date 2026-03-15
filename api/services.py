@@ -615,6 +615,74 @@ def get_campaign_objectives() -> dict:
         }
 
 
+def get_smart_assistant_actions() -> dict:
+    decision_center = get_roster_decision_center()
+    booking = get_event_booking_recommendations()
+    scouting = get_scouting_board()
+
+    best_signing_source = (
+        scouting.get("featured_prospects") or scouting.get("ready_now") or [{}]
+    )[0]
+    best_renewal_source = (decision_center.get("expiring_contracts") or [{}])[0]
+    risk_source = (
+        decision_center.get("sell_candidates")
+        or decision_center.get("expiring_contracts")
+        or [{}]
+    )[0]
+    booking_source = (
+        booking.get("best_main_event") or booking.get("best_safe_money_fight") or {}
+    )
+
+    return {
+        "best_signing": {
+            "label": "Best Signing",
+            "fighter_name": best_signing_source.get("name"),
+            "headline": (
+                f"{best_signing_source.get('name')} is the cleanest add on the board right now."
+                if best_signing_source.get("name")
+                else "No clear signing move right now."
+            ),
+            "detail": best_signing_source.get("recommendation", {}).get("label")
+            or best_signing_source.get("meta")
+            or "Hold your cash.",
+        },
+        "best_renewal": {
+            "label": "Best Renewal",
+            "fighter_name": best_renewal_source.get("name"),
+            "headline": (
+                f"{best_renewal_source.get('name')} should be handled before leverage gets worse."
+                if best_renewal_source.get("name")
+                else "No urgent renewal call right now."
+            ),
+            "detail": best_renewal_source.get("recommendation", {}).get("label")
+            or best_renewal_source.get("meta")
+            or "No major pressure.",
+        },
+        "best_booking": {
+            "label": "Best Booking",
+            "fighter_name": booking_source.get("matchup"),
+            "headline": (
+                f"{booking_source.get('matchup')} is your strongest booking play this month."
+                if booking_source.get("matchup")
+                else "No standout booking recommendation right now."
+            ),
+            "detail": booking_source.get("booking_value") or "Build more matchups.",
+        },
+        "biggest_risk": {
+            "label": "Biggest Risk",
+            "fighter_name": risk_source.get("name"),
+            "headline": (
+                f"{risk_source.get('name')} is the biggest risk to ignore this month."
+                if risk_source.get("name")
+                else "No major red flag this month."
+            ),
+            "detail": risk_source.get("recommendation", {}).get("label")
+            or risk_source.get("meta")
+            or "Stable.",
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Rankings
 # ---------------------------------------------------------------------------
