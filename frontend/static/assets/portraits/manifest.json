@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "style": "broadcast-illustrated-v1",
+  "buckets": {
+    "prospect/striker/global": [
+      "prospect/striker/global_01.svg",
+      "prospect/striker/global_02.svg"
+    ],
+    "prospect/wrestler/global": [
+      "prospect/wrestler/global_01.svg",
+      "prospect/wrestler/global_02.svg"
+    ],
+    "prospect/grappler/global": [
+      "prospect/grappler/global_01.svg",
+      "prospect/grappler/global_02.svg"
+    ],
+    "prime/striker/global": [
+      "prime/striker/global_01.svg",
+      "prime/striker/global_02.svg"
+    ],
+    "prime/wrestler/global": [
+      "prime/wrestler/global_01.svg",
+      "prime/wrestler/global_02.svg"
+    ],
+    "prime/grappler/global": [
+      "prime/grappler/global_01.svg",
+      "prime/grappler/global_02.svg"
+    ],
+    "veteran/striker/global": [
+      "veteran/striker/global_01.svg",
+      "veteran/striker/global_02.svg"
+    ],
+    "veteran/wrestler/global": [
+      "veteran/wrestler/global_01.svg",
+      "veteran/wrestler/global_02.svg"
+    ],
+    "veteran/grappler/global": [
+      "veteran/grappler/global_01.svg",
+      "veteran/grappler/global_02.svg"
+    ]
+  }
+}

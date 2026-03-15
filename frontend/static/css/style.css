@@ -663,6 +663,37 @@ tbody td { padding: 9px 10px; }
 }
 .panel-close:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 
+.panel-portrait-wrap {
+  width: 112px;
+  height: 136px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  box-shadow: var(--shadow-sm);
+}
+
+.panel-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.panel-portrait-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--fs-label);
+  letter-spacing: 1px;
+  color: var(--muted);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%);
+}
+
 .panel-name {
   font-family: var(--font-display);
   font-size: 16px;

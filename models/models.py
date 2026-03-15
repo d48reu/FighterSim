@@ -153,6 +153,7 @@ class Fighter(Base):
     goat_score: Mapped[float] = Column(Float, default=0.0)
     traits: Mapped[Optional[str]] = Column(Text, default="[]")
     is_cornerstone: Mapped[bool] = Column(Boolean, default=False)
+    portrait_key: Mapped[Optional[str]] = Column(String(255), nullable=True)
 
     # Weight management
     natural_weight: Mapped[Optional[float]] = Column(Float, nullable=True)

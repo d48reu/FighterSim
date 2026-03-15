@@ -640,6 +640,9 @@ async function showFighterPanel(fighterId, extraData) {
   // Reset content
   document.getElementById('panel-name').textContent    = 'Loading\u2026';
   document.getElementById('panel-nickname').innerHTML   = '';
+  document.getElementById('panel-portrait').classList.add('hidden');
+  document.getElementById('panel-portrait').removeAttribute('src');
+  document.getElementById('panel-portrait-fallback').classList.remove('hidden');
   document.getElementById('panel-subtitle').textContent = '';
   document.getElementById('panel-archetype').textContent = '';
   document.getElementById('panel-trajectory').classList.add('hidden');
@@ -682,6 +685,17 @@ async function showFighterPanel(fighterId, extraData) {
     ]);
 
     document.getElementById('panel-name').textContent     = fighter.name;
+    const portraitEl = document.getElementById('panel-portrait');
+    const portraitFallbackEl = document.getElementById('panel-portrait-fallback');
+    if (fighter.portrait_url) {
+      portraitEl.src = fighter.portrait_url;
+      portraitEl.alt = `${fighter.name} portrait`;
+      portraitEl.classList.remove('hidden');
+      portraitFallbackEl.classList.add('hidden');
+    } else {
+      portraitEl.classList.add('hidden');
+      portraitFallbackEl.classList.remove('hidden');
+    }
     // Retired badge
     const retiredBadgeEl = document.getElementById('panel-retired-badge');
     if (retiredBadgeEl) retiredBadgeEl.classList.toggle('hidden', !fighter.is_retired);

@@ -33,6 +33,7 @@ from simulation.name_gen import (
 )
 from simulation.stat_gen import generate_stats
 from simulation.narrative import suggest_nicknames
+from simulation.portraits import assign_portrait_key
 
 
 # ---------------------------------------------------------------------------
@@ -822,6 +823,7 @@ def seed_fighters(
             # Assign nickname
             nicknames = suggest_nicknames(f, session)
             f.nickname = nicknames[0] if nicknames else "The Fighter"
+            f.portrait_key = assign_portrait_key(f)
 
             # 5. Org distribution
             org = _assign_organization(

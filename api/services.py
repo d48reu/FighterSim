@@ -9,7 +9,7 @@ import uuid
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import sessionmaker
 
 from models.database import Base
@@ -94,7 +94,36 @@ def init_db(db_url: str) -> None:
         connect_args={"check_same_thread": False},  # required for SQLite + threads
     )
     Base.metadata.create_all(engine)
+    _ensure_fighter_schema(engine)
     _SessionFactory = sessionmaker(bind=engine, autoflush=True, expire_on_commit=False)
+    _backfill_missing_portraits()
+
+
+def _ensure_fighter_schema(engine) -> None:
+    inspector = inspect(engine)
+    columns = {col["name"] for col in inspector.get_columns("fighters")}
+    if "portrait_key" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE fighters ADD COLUMN portrait_key VARCHAR(255)"))
+
+
+def _backfill_missing_portraits() -> None:
+    from simulation.portraits import assign_portrait_key
+
+    if _SessionFactory is None:
+        return
+    with _SessionFactory() as session:
+        fighters = (
+            session.execute(select(Fighter).where(Fighter.portrait_key.is_(None)))
+            .scalars()
+            .all()
+        )
+        if not fighters:
+            return
+        for fighter in fighters:
+            fighter.portrait_key = assign_portrait_key(fighter)
+        session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +431,10 @@ def _fighter_dict(f: Fighter, session=None) -> dict:
         "goat_score": round(f.goat_score, 1),
         "traits": _get_traits_list(f),
         "is_cornerstone": f.is_cornerstone,
+        "portrait_key": f.portrait_key,
+        "portrait_url": f"/static/assets/portraits/{f.portrait_key}"
+        if f.portrait_key
+        else None,
         "natural_weight": f.natural_weight,
         "fighting_weight": f.fighting_weight,
         "cut_severity": get_cut_severity(f),
