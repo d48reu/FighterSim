@@ -251,7 +251,7 @@
               <div class="assistant-label">${esc(entry.label || 'Action')}</div>
               <div class="assistant-headline">${esc(entry.headline || '')}</div>
               <div class="assistant-detail">${esc(entry.detail || '')}</div>
-              ${entry.action ? `<button class="btn btn-primary assistant-execute-btn" data-action-kind="${esc(entry.action.kind || '')}" data-fighter-id="${esc(entry.action.fighter_id || '')}" data-fighter-a-id="${esc(entry.action.fighter_a_id || '')}" data-fighter-b-id="${esc(entry.action.fighter_b_id || '')}">Open</button>` : ''}
+              ${entry.action ? `<button class="btn btn-primary assistant-execute-btn" data-action-kind="${esc(entry.action.kind || '')}" data-fighter-id="${esc(entry.action.fighter_id || '')}" data-fighter-a-id="${esc(entry.action.fighter_a_id || '')}" data-fighter-b-id="${esc(entry.action.fighter_b_id || '')}">${esc(entry.action.label || 'Open')}</button>` : ''}
             </div>
           `).join('')}
         </div>

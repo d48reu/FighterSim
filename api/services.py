@@ -722,6 +722,7 @@ def get_smart_assistant_actions() -> dict:
             "action": {
                 "kind": "open_free_agent",
                 "fighter_id": best_signing_source.get("id"),
+                "label": "Open Signing",
             },
         },
         "best_renewal": {
@@ -738,6 +739,7 @@ def get_smart_assistant_actions() -> dict:
             "action": {
                 "kind": "open_renewal",
                 "fighter_id": best_renewal_source.get("id"),
+                "label": "Open Renewal",
             },
         },
         "best_booking": {
@@ -753,6 +755,7 @@ def get_smart_assistant_actions() -> dict:
                 "kind": "prepare_booking",
                 "fighter_a_id": booking_source.get("fighter_a_id"),
                 "fighter_b_id": booking_source.get("fighter_b_id"),
+                "label": "Prep Matchup",
             },
         },
         "biggest_risk": {
@@ -769,6 +772,7 @@ def get_smart_assistant_actions() -> dict:
             "action": {
                 "kind": "open_roster_fighter",
                 "fighter_id": risk_source.get("id"),
+                "label": "Open Risk",
             },
         },
     }
