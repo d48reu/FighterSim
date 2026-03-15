@@ -164,6 +164,26 @@
     ].join('');
   }
 
+  function renderNegotiationProfile(profile) {
+    if (!profile) return '';
+    return `
+      <div class="market-card negotiation-card">
+        <div class="market-card-header">
+          <div class="market-card-title">Negotiation Read</div>
+          <span class="market-trajectory-badge">Morale: ${esc(profile.morale_label || 'Stable')}</span>
+        </div>
+        <div class="market-grid">
+          <div class="market-stat"><span class="market-stat-label">Loyalty</span><span class="market-stat-value">${esc(profile.loyalty_label || 'Medium')}</span></div>
+          <div class="market-stat"><span class="market-stat-label">Money</span><span class="market-stat-value">${esc(profile.money_priority || 'Medium')}</span></div>
+          <div class="market-stat"><span class="market-stat-label">Activity</span><span class="market-stat-value">${esc(profile.activity_priority || 'Medium')}</span></div>
+          <div class="market-stat"><span class="market-stat-label">Spotlight</span><span class="market-stat-value">${esc(profile.spotlight_priority || 'Medium')}</span></div>
+          <div class="market-stat"><span class="market-stat-label">Prestige</span><span class="market-stat-value">${esc(profile.prestige_priority || 'Medium')}</span></div>
+        </div>
+        <div class="market-card-summary">${esc(profile.summary || 'No strong negotiation preferences.')}</div>
+      </div>
+    `;
+  }
+
   function renderOfferEvaluation(offerEvaluation) {
     if (!offerEvaluation) return '';
 
@@ -174,6 +194,7 @@
           <span class="market-trajectory-badge">${(Number(offerEvaluation.acceptance_probability || 0) * 100).toFixed(1)}%</span>
         </div>
         ${renderRecommendationBadge(offerEvaluation.recommendation)}
+        ${renderNegotiationProfile(offerEvaluation.negotiation_profile)}
         <div class="market-grid">
           <div class="market-stat">
             <span class="market-stat-label">Asking</span>
@@ -206,6 +227,7 @@
     renderDecisionCenterColumn,
     renderBookingRecommendations,
     renderScoutingBoard,
+    renderNegotiationProfile,
     renderMarketContextCard,
     renderOfferEvaluation,
   };

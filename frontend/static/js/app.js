@@ -504,6 +504,8 @@ async function showFighterPanel(fighterId, extraData) {
   document.getElementById('panel-trajectory-badge').textContent = '—';
   document.getElementById('panel-trajectory-summary').textContent = '';
   document.getElementById('panel-trajectory-reasons').innerHTML = '';
+  document.getElementById('panel-negotiation').innerHTML = '';
+  document.getElementById('panel-negotiation').classList.add('hidden');
   document.getElementById('panel-record').textContent  = '\u2014';
   document.getElementById('panel-overall').textContent = '\u2014';
   document.getElementById('panel-goat').textContent    = '\u2014';
@@ -562,6 +564,11 @@ async function showFighterPanel(fighterId, extraData) {
       `${trajectory.recent_form || 'No recent fights'} \u00b7 ${trajectory.market_value_hint || 'Current value looks stable.'}`;
     document.getElementById('panel-trajectory-reasons').innerHTML =
       (trajectory.reasons || []).map(r => `<div class="panel-trajectory-reason">${esc(r)}</div>`).join('');
+    const negotiationEl = document.getElementById('panel-negotiation');
+    if (fighter.negotiation_profile && window.MarketUi?.renderNegotiationProfile) {
+      negotiationEl.classList.remove('hidden');
+      negotiationEl.innerHTML = window.MarketUi.renderNegotiationProfile(fighter.negotiation_profile);
+    }
     document.getElementById('panel-record').textContent   = fighter.record;
     document.getElementById('panel-overall').textContent  = fighter.overall;
     document.getElementById('panel-goat').textContent     = fighter.goat_score > 0 ? fighter.goat_score.toFixed(1) : '\u2014';

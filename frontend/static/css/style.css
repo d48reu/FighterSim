@@ -1289,6 +1289,10 @@ tbody td { padding: 9px 10px; }
   margin-top: 8px;
 }
 
+.panel-negotiation {
+  margin-top: -6px;
+}
+
 /* ── Game date display ─────────────────────────── */
 
 .game-date-display {

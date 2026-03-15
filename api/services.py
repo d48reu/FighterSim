@@ -177,6 +177,105 @@ def get_fighter(fighter_id: int) -> Optional[dict]:
         return _fighter_dict(f, session) if f else None
 
 
+def _days_since_last_fight(fighter_id: int, session) -> Optional[int]:
+    game_date = _get_game_date(session)
+    last_fight = session.execute(
+        select(Fight)
+        .join(Event, Fight.event_id == Event.id)
+        .where(
+            Event.status == EventStatus.COMPLETED,
+            ((Fight.fighter_a_id == fighter_id) | (Fight.fighter_b_id == fighter_id)),
+            Fight.winner_id.isnot(None),
+        )
+        .order_by(Event.event_date.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if not last_fight:
+        return None
+    last_event = session.get(Event, last_fight.event_id)
+    return (game_date - last_event.event_date).days if last_event else None
+
+
+def _negotiation_profile_dict(
+    f: Fighter, session, org_id: Optional[int] = None
+) -> dict:
+    days_inactive = _days_since_last_fight(f.id, session)
+    tags = get_tags(f)
+    active_contract = None
+    if org_id is not None:
+        active_contract = session.execute(
+            select(Contract).where(
+                Contract.fighter_id == f.id,
+                Contract.organization_id == org_id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).scalar_one_or_none()
+
+    morale_score = 50 + (f.confidence - 70) * 0.9 + (f.hype - 40) * 0.15
+    if days_inactive is not None and days_inactive > 180:
+        morale_score -= 12
+    elif days_inactive is not None and days_inactive > 90:
+        morale_score -= 6
+    if "quitter" in tags:
+        morale_score -= 8
+    morale_score = max(0.0, min(100.0, morale_score))
+
+    loyalty_score = 35.0
+    if active_contract:
+        loyalty_score += 15
+        if active_contract.fights_remaining <= 2:
+            loyalty_score += 5
+    if f.is_cornerstone:
+        loyalty_score += 20
+    if "show_winner" in tags or "show_runner_up" in tags:
+        loyalty_score += 5
+    if "quitter" in tags:
+        loyalty_score -= 10
+    loyalty_score = max(0.0, min(100.0, loyalty_score))
+
+    def band(score: float) -> str:
+        if score >= 67:
+            return "High"
+        if score >= 40:
+            return "Medium"
+        return "Low"
+
+    money_priority = band((f.popularity + f.hype) / 2 + (8 if f.age >= 32 else 0))
+    activity_priority = band((75 - f.age) + (15 if (days_inactive or 0) > 180 else 0))
+    spotlight_priority = band((f.popularity * 0.7) + (f.hype * 0.3))
+    prestige_priority = band((f.overall * 0.7) + (f.popularity * 0.3))
+    loyalty_priority = band(loyalty_score)
+
+    summary_parts = []
+    if activity_priority == "High":
+        summary_parts.append("Wants activity")
+    if money_priority == "High":
+        summary_parts.append("expects strong pay")
+    if loyalty_priority == "High":
+        summary_parts.append("values loyalty")
+    if prestige_priority == "High":
+        summary_parts.append("expects a serious stage")
+    if not summary_parts:
+        summary_parts.append("fairly flexible on negotiations")
+
+    return {
+        "morale_score": round(morale_score, 1),
+        "morale_label": "High"
+        if morale_score >= 67
+        else "Stable"
+        if morale_score >= 40
+        else "Low",
+        "loyalty_score": round(loyalty_score, 1),
+        "loyalty_label": loyalty_priority,
+        "money_priority": money_priority,
+        "activity_priority": activity_priority,
+        "spotlight_priority": spotlight_priority,
+        "prestige_priority": prestige_priority,
+        "summary": ", ".join(summary_parts).capitalize() + ".",
+        "days_inactive": days_inactive,
+    }
+
+
 def _fighter_dict(f: Fighter, session=None) -> dict:
     trajectory = (
         analyze_fighter_trajectory(f, session)
@@ -192,6 +291,9 @@ def _fighter_dict(f: Fighter, session=None) -> dict:
             else ("pre-prime" if f.age < f.prime_start else "post-prime"),
             "market_value_hint": "Current value looks stable.",
         }
+    )
+    negotiation_profile = (
+        _negotiation_profile_dict(f, session) if session is not None else None
     )
     return {
         "id": f.id,
@@ -234,6 +336,7 @@ def _fighter_dict(f: Fighter, session=None) -> dict:
         "legacy_score": round(getattr(f, "legacy_score", 0.0), 1),
         "peak_overall": getattr(f, "peak_overall", 0) or f.overall,
         "trajectory": trajectory,
+        "negotiation_profile": negotiation_profile,
     }
 
 
@@ -927,6 +1030,8 @@ def _offer_evaluation_dict(
     *,
     org_id: Optional[int] = None,
     is_renewal: bool = False,
+    fight_count: Optional[int] = None,
+    length_months: Optional[int] = None,
 ) -> dict:
     effective_org_id = org_id if org_id is not None else player_org.id
     market_context = _market_context_dict(fighter, session, effective_org_id)
@@ -943,12 +1048,115 @@ def _offer_evaluation_dict(
     if "quitter" in tags:
         acceptance_probability *= 0.85
     offer_ratio = offered_salary / asking_salary if asking_salary > 0 else 1.0
+    negotiation_profile = _negotiation_profile_dict(fighter, session, effective_org_id)
+    preference_adjustments = []
+
+    if negotiation_profile["money_priority"] == "High":
+        delta = 0.04 if offer_ratio >= 1.08 else (-0.05 if offer_ratio < 1.0 else 0.0)
+        if delta:
+            preference_adjustments.append(
+                {
+                    "key": "money",
+                    "delta": delta,
+                    "reason": "Money expectations are driving the decision.",
+                }
+            )
+            acceptance_probability += delta
+    if fight_count is not None and negotiation_profile["activity_priority"] == "High":
+        delta = 0.04 if fight_count >= 5 else (-0.04 if fight_count <= 3 else 0.0)
+        if delta:
+            preference_adjustments.append(
+                {
+                    "key": "activity",
+                    "delta": delta,
+                    "reason": "This fighter strongly cares about staying active.",
+                }
+            )
+            acceptance_probability += delta
+    if negotiation_profile["prestige_priority"] == "High":
+        delta = (
+            0.03
+            if player_org.prestige >= 65
+            else (-0.03 if player_org.prestige < 45 else 0.0)
+        )
+        if delta:
+            preference_adjustments.append(
+                {
+                    "key": "prestige",
+                    "delta": delta,
+                    "reason": "They want a stage big enough to matter.",
+                }
+            )
+            acceptance_probability += delta
+    if negotiation_profile["spotlight_priority"] == "High" and market_context.get(
+        "booking_value"
+    ) in {"Strong Main Event", "Strong Co-Main"}:
+        preference_adjustments.append(
+            {
+                "key": "spotlight",
+                "delta": 0.03,
+                "reason": "This matchup profile gives them a spotlight path.",
+            }
+        )
+        acceptance_probability += 0.03
+    if is_renewal and negotiation_profile["loyalty_label"] == "High":
+        preference_adjustments.append(
+            {
+                "key": "loyalty",
+                "delta": 0.05,
+                "reason": "Loyalty gives you extra leverage in renewal talks.",
+            }
+        )
+        acceptance_probability += 0.05
+    if length_months is not None:
+        if fighter.age <= 24 and length_months >= 24:
+            preference_adjustments.append(
+                {
+                    "key": "runway",
+                    "delta": 0.03,
+                    "reason": "Younger fighters like longer runways to develop.",
+                }
+            )
+            acceptance_probability += 0.03
+        elif fighter.age >= 32 and length_months <= 12:
+            preference_adjustments.append(
+                {
+                    "key": "flexibility",
+                    "delta": 0.02,
+                    "reason": "Veterans often prefer shorter commitments.",
+                }
+            )
+            acceptance_probability += 0.02
+    if negotiation_profile["morale_label"] == "High":
+        preference_adjustments.append(
+            {
+                "key": "morale",
+                "delta": 0.02,
+                "reason": "Good morale makes negotiations easier.",
+            }
+        )
+        acceptance_probability += 0.02
+    elif negotiation_profile["morale_label"] == "Low":
+        preference_adjustments.append(
+            {
+                "key": "morale",
+                "delta": -0.05,
+                "reason": "Low morale makes the fighter harder to convince.",
+            }
+        )
+        acceptance_probability -= 0.05
+
+    acceptance_probability = min(0.95, max(0.05, acceptance_probability))
     return {
         "asking_salary": asking_salary,
         "offered_salary": offered_salary,
         "offer_ratio": round(offer_ratio, 3),
-        "acceptance_probability": round(min(0.95, acceptance_probability), 4),
+        "acceptance_probability": round(acceptance_probability, 4),
         "market_context": market_context,
+        "negotiation_profile": negotiation_profile,
+        "preference_adjustments": [
+            {**adj, "delta": round(adj["delta"], 3)} for adj in preference_adjustments
+        ],
         "recommendation": _recommendation_dict(
             fighter,
             session,
@@ -1119,6 +1327,8 @@ def make_contract_offer(
             salary,
             session,
             org_id=player_org.id,
+            fight_count=fight_count,
+            length_months=length_months,
         )
         acceptance_prob = offer_evaluation["acceptance_probability"]
 
@@ -1512,6 +1722,8 @@ def renew_contract(
             session,
             org_id=player_org.id,
             is_renewal=True,
+            fight_count=fight_count,
+            length_months=length_months,
         )
         acceptance_prob = offer_evaluation["acceptance_probability"]
 
