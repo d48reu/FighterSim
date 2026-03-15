@@ -641,6 +641,9 @@ tbody td { padding: 9px 10px; }
 .fighter-panel[data-wc="Heavyweight"]  .stat-bar-fill { background: var(--wc-heavyweight); }
 
 .panel-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   padding: 20px 18px 14px;
   border-bottom: 1px solid var(--border);
   position: relative;
@@ -664,20 +667,27 @@ tbody td { padding: 9px 10px; }
 .panel-close:hover { color: var(--text); background: rgba(255,255,255,0.06); }
 
 .panel-portrait-wrap {
-  width: 112px;
-  height: 136px;
+  width: 128px;
+  height: 156px;
   margin-bottom: 12px;
   border-radius: var(--radius-md);
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 2px solid rgba(255,255,255,0.08);
   background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
   box-shadow: var(--shadow-sm);
 }
+
+.fighter-panel[data-wc="Flyweight"] .panel-portrait-wrap { border-color: color-mix(in srgb, var(--wc-flyweight) 55%, white 15%); box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 0 18px color-mix(in srgb, var(--wc-flyweight) 30%, transparent); }
+.fighter-panel[data-wc="Lightweight"] .panel-portrait-wrap { border-color: color-mix(in srgb, var(--wc-lightweight) 55%, white 15%); box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 0 18px color-mix(in srgb, var(--wc-lightweight) 30%, transparent); }
+.fighter-panel[data-wc="Welterweight"] .panel-portrait-wrap { border-color: color-mix(in srgb, var(--wc-welterweight) 55%, white 15%); box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 0 18px color-mix(in srgb, var(--wc-welterweight) 30%, transparent); }
+.fighter-panel[data-wc="Middleweight"] .panel-portrait-wrap { border-color: color-mix(in srgb, var(--wc-middleweight) 55%, white 15%); box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 0 18px color-mix(in srgb, var(--wc-middleweight) 30%, transparent); }
+.fighter-panel[data-wc="Heavyweight"] .panel-portrait-wrap { border-color: color-mix(in srgb, var(--wc-heavyweight) 55%, white 15%); box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 0 18px color-mix(in srgb, var(--wc-heavyweight) 30%, transparent); }
 
 .panel-portrait {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center top;
   display: block;
 }
 
