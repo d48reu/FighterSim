@@ -44,6 +44,12 @@ from simulation.market import (
     compute_contract_acceptance_probability,
     compute_market_signals,
 )
+from simulation.matchmaking import assess_matchup
+from simulation.org_strategy import (
+    candidate_strategy_score,
+    derive_org_identity,
+    event_pairing_strategy_score,
+)
 from simulation.rankings import mark_rankings_dirty
 from simulation.narrative import (
     apply_fight_tags,
@@ -256,7 +262,7 @@ def _generate_ai_event(
         return  # not enough fighters for an event
 
     fighters = [f for _, f in active_contracts]
-    rng.shuffle(fighters)
+    identity = derive_org_identity(org, fighters)
 
     venue = rng.choice(_VENUES)
     event_name = f"{rng.choice(_EVENT_PREFIXES)} {venue.split()[0]} {sim_date.year}"
@@ -273,95 +279,106 @@ def _generate_ai_event(
     session.add(event)
     session.flush()
 
-    # Pair fighters (same weight class preferred)
+    # Pair fighters using org strategy and matchup quality
     paired: set[int] = set()
     card_position = 0
-
+    pairings = []
     for i, fa in enumerate(fighters):
-        if fa.id in paired:
-            continue
         for fb in fighters[i + 1 :]:
-            if fb.id in paired or fb.weight_class != fa.weight_class:
+            if fb.weight_class != fa.weight_class:
                 continue
-
-            fight = Fight(
-                event_id=event.id,
-                fighter_a_id=fa.id,
-                fighter_b_id=fb.id,
-                weight_class=fa.weight_class,
-                card_position=card_position,
-            )
-            session.add(fight)
-            session.flush()
-
-            # Simulate — compute weight cut severity
-            a_stats = _fighter_to_stats(fa)
-            b_stats = _fighter_to_stats(fb)
-            sev_a = _get_cut_severity(fa)
-            sev_b = _get_cut_severity(fb)
-            result = simulate_fight(
-                a_stats,
-                b_stats,
-                seed=rng.randint(0, 999999),
-                cut_severity_a=sev_a,
-                cut_severity_b=sev_b,
-            )
-
-            fight.winner_id = result.winner_id
-            fight.method = result.method
-            fight.round_ended = result.round_ended
-            fight.time_ended = result.time_ended
-            fight.narrative = result.narrative
-
-            # Update records
-            winner = fa if result.winner_id == fa.id else fb
-            loser = fb if result.winner_id == fa.id else fa
-            winner.wins += 1
-            loser.losses += 1
-            if result.method == "KO/TKO":
-                winner.ko_wins += 1
-            elif result.method == "Submission":
-                winner.sub_wins += 1
-
-            # Decrease fights remaining
-            for contract, f in active_contracts:
-                if f.id in (fa.id, fb.id):
-                    contract.fights_remaining = max(0, contract.fights_remaining - 1)
-
-            # Mark rankings dirty
-            mark_rankings_dirty(session, WeightClass(fa.weight_class))
-
-            # Narrative tags and hype
-            apply_fight_tags(winner, loser, fight, session)
-
-            # Generate headline
-            headline_text = generate_fight_headline(winner, loser, fight, session)
-            if headline_text:
-                cat = (
-                    "title"
-                    if fight.is_title_fight
-                    else (
-                        "upset"
-                        if loser.overall - winner.overall >= 10
-                        else "fight_result"
-                    )
+            analysis = assess_matchup(fa, fb)
+            pairings.append(
+                (
+                    event_pairing_strategy_score(fa, fb, analysis, identity),
+                    fa,
+                    fb,
+                    analysis,
                 )
-                session.add(
-                    NewsHeadline(
-                        headline=headline_text,
-                        category=cat,
-                        game_date=sim_date,
-                        fighter_id=winner.id,
-                        event_id=event.id,
-                    )
+            )
+    pairings.sort(key=lambda row: row[0], reverse=True)
+
+    for _, fa, fb, analysis in pairings:
+        if fa.id in paired or fb.id in paired:
+            continue
+
+        is_title_fight = (
+            card_position == 0 and analysis["booking_value"] == "Strong Main Event"
+        )
+        fight = Fight(
+            event_id=event.id,
+            fighter_a_id=fa.id,
+            fighter_b_id=fb.id,
+            weight_class=fa.weight_class,
+            card_position=card_position,
+            is_title_fight=is_title_fight,
+        )
+        session.add(fight)
+        session.flush()
+
+        # Simulate — compute weight cut severity
+        a_stats = _fighter_to_stats(fa)
+        b_stats = _fighter_to_stats(fb)
+        sev_a = _get_cut_severity(fa)
+        sev_b = _get_cut_severity(fb)
+        result = simulate_fight(
+            a_stats,
+            b_stats,
+            seed=rng.randint(0, 999999),
+            cut_severity_a=sev_a,
+            cut_severity_b=sev_b,
+        )
+
+        fight.winner_id = result.winner_id
+        fight.method = result.method
+        fight.round_ended = result.round_ended
+        fight.time_ended = result.time_ended
+        fight.narrative = result.narrative
+
+        # Update records
+        winner = fa if result.winner_id == fa.id else fb
+        loser = fb if result.winner_id == fa.id else fa
+        winner.wins += 1
+        loser.losses += 1
+        if result.method == "KO/TKO":
+            winner.ko_wins += 1
+        elif result.method == "Submission":
+            winner.sub_wins += 1
+
+        # Decrease fights remaining
+        for contract, f in active_contracts:
+            if f.id in (fa.id, fb.id):
+                contract.fights_remaining = max(0, contract.fights_remaining - 1)
+
+        # Mark rankings dirty
+        mark_rankings_dirty(session, WeightClass(fa.weight_class))
+
+        # Narrative tags and hype
+        apply_fight_tags(winner, loser, fight, session)
+
+        # Generate headline
+        headline_text = generate_fight_headline(winner, loser, fight, session)
+        if headline_text:
+            cat = (
+                "title"
+                if fight.is_title_fight
+                else (
+                    "upset" if loser.overall - winner.overall >= 10 else "fight_result"
                 )
+            )
+            session.add(
+                NewsHeadline(
+                    headline=headline_text,
+                    category=cat,
+                    game_date=sim_date,
+                    fighter_id=winner.id,
+                    event_id=event.id,
+                )
+            )
 
-            paired.add(fa.id)
-            paired.add(fb.id)
-            card_position += 1
-
-            if card_position >= 8:
-                break
+        paired.add(fa.id)
+        paired.add(fb.id)
+        card_position += 1
 
         if card_position >= 8:
             break
@@ -1294,22 +1311,32 @@ def _ai_sign_free_agents(
             .all()
         )
         org_fighter_ids = set(org_contracts)
+        org_fighters = [f for f in all_fighters if f.id in org_fighter_ids]
+        org_identity = derive_org_identity(org, org_fighters)
         wc_counts: dict[str, int] = {}
-        for f in all_fighters:
-            if f.id in org_fighter_ids:
-                wc = (
-                    f.weight_class.value
-                    if hasattr(f.weight_class, "value")
-                    else str(f.weight_class)
-                )
-                wc_counts[wc] = wc_counts.get(wc, 0) + 1
+        for f in org_fighters:
+            wc = (
+                f.weight_class.value
+                if hasattr(f.weight_class, "value")
+                else str(f.weight_class)
+            )
+            wc_counts[wc] = wc_counts.get(wc, 0) + 1
 
         candidates = [f for f in free_agents if f.overall >= min_ovr]
         candidates.sort(
-            key=lambda fighter: (
-                compute_market_signals(fighter, session, org.id)["ai_interest_score"],
-                fighter.hype,
-                fighter.popularity,
+            key=lambda fighter: candidate_strategy_score(
+                fighter,
+                org_identity,
+                compute_market_signals(fighter, session, org.id),
+                thin_division=(
+                    wc_counts.get(
+                        fighter.weight_class.value
+                        if hasattr(fighter.weight_class, "value")
+                        else str(fighter.weight_class),
+                        0,
+                    )
+                    < 2
+                ),
             ),
             reverse=True,
         )
@@ -1318,13 +1345,18 @@ def _ai_sign_free_agents(
             if signed >= max_signings:
                 break
 
-            # Prefer thin weight classes — 70% skip for non-thin
             wc = (
                 fighter.weight_class.value
                 if hasattr(fighter.weight_class, "value")
                 else str(fighter.weight_class)
             )
-            if wc_counts.get(wc, 0) >= 4 and rng.random() < 0.70:
+            thin_division = wc_counts.get(wc, 0) < 2
+            if (
+                org_identity["label"] != "Division Sniper"
+                and not thin_division
+                and wc_counts.get(wc, 0) >= 4
+                and rng.random() < 0.70
+            ):
                 continue
 
             # Salary offer and acceptance

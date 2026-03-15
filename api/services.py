@@ -71,6 +71,7 @@ from simulation.market import (
     compute_market_signals,
     compute_sponsorship_terms,
 )
+from simulation.org_strategy import derive_org_identity, candidate_strategy_score
 from simulation.trajectory import analyze_fighter_trajectory
 from simulation.matchmaking import assess_matchup
 
@@ -3657,44 +3658,7 @@ def _org_active_fighters(session, org_id: int) -> list[Fighter]:
 
 def _org_identity_dict(session, org: Organization) -> dict:
     fighters = _org_active_fighters(session, org.id)
-    if not fighters:
-        return {
-            "label": "Talent Factory",
-            "focus": "Building young talent and looking for developmental upside.",
-        }
-
-    avg_age = sum(f.age for f in fighters) / len(fighters)
-    avg_popularity = sum(f.popularity for f in fighters) / len(fighters)
-    avg_overall = sum(f.overall for f in fighters) / len(fighters)
-    weight_counts = {}
-    for fighter in fighters:
-        wc = (
-            fighter.weight_class.value
-            if hasattr(fighter.weight_class, "value")
-            else str(fighter.weight_class)
-        )
-        weight_counts[wc] = weight_counts.get(wc, 0) + 1
-    dominant_wc = max(weight_counts, key=weight_counts.get)
-
-    if org.prestige >= 82 or avg_overall >= 79:
-        return {
-            "label": "Prestige Hunter",
-            "focus": "Chases elite names and marquee fights to defend top status.",
-        }
-    if avg_age <= 26.5:
-        return {
-            "label": "Talent Factory",
-            "focus": "Targets young upside and long-term development pieces.",
-        }
-    if avg_popularity >= 55:
-        return {
-            "label": "Star Chaser",
-            "focus": "Pays for proven draws and visible names.",
-        }
-    return {
-        "label": "Division Sniper",
-        "focus": f"Concentrates resources on winning the {dominant_wc} division.",
-    }
+    return derive_org_identity(org, fighters)
 
 
 def _org_top_targets(session, org: Organization, limit: int = 3) -> list[dict]:
@@ -3710,16 +3674,18 @@ def _org_top_targets(session, org: Organization, limit: int = 3) -> list[dict]:
         .scalars()
         .all()
     )
+    identity = _org_identity_dict(session, org)
     scored = []
     for fighter in candidates:
         if fighter.id in active_ids:
             continue
         signals = compute_market_signals(fighter, session, org.id)
+        score = candidate_strategy_score(fighter, identity, signals)
         scored.append(
             {
                 "name": fighter.name,
-                "reason": f"Interest score {signals['ai_interest_score']:.1f} with {signals['trajectory']['label'].lower()} momentum.",
-                "score": signals["ai_interest_score"],
+                "reason": f"{identity['label']} profile scores this target at {score:.1f} with {signals['trajectory']['label'].lower()} momentum.",
+                "score": score,
             }
         )
     scored.sort(key=lambda row: row["score"], reverse=True)
