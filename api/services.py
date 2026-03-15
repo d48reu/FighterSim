@@ -2125,6 +2125,101 @@ def get_bookable_fighters() -> list[dict]:
         return results
 
 
+def get_event_booking_recommendations() -> dict:
+    with _SessionFactory() as session:
+        bookable = get_bookable_fighters()
+        fighters_by_id = {f["id"]: f for f in bookable}
+        pairings = []
+
+        fighter_rows = [
+            session.get(Fighter, fighter_id) for fighter_id in fighters_by_id.keys()
+        ]
+        fighter_rows = [f for f in fighter_rows if f is not None]
+
+        for i, fighter_a in enumerate(fighter_rows):
+            for fighter_b in fighter_rows[i + 1 :]:
+                if fighter_a.weight_class != fighter_b.weight_class:
+                    continue
+                analysis = assess_matchup(fighter_a, fighter_b)
+                booking_weight = {
+                    "Strong Main Event": 4,
+                    "Strong Co-Main": 3,
+                    "Risky Development Fight": 2,
+                    "Low-Value Filler": 1,
+                }.get(analysis["booking_value"], 0)
+                pairings.append(
+                    {
+                        "fighter_a_id": fighter_a.id,
+                        "fighter_b_id": fighter_b.id,
+                        "matchup": f"{fighter_a.name} vs {fighter_b.name}",
+                        "weight_class": fighter_a.weight_class,
+                        "booking_value": analysis["booking_value"],
+                        "competitiveness": analysis["competitiveness"],
+                        "star_power": analysis["star_power"],
+                        "prospect_risk": analysis["prospect_risk"],
+                        "reasons": analysis["reasons"],
+                        "score": booking_weight * 100 + analysis["combined_draw"],
+                        "combined_draw": analysis["combined_draw"],
+                        "overall_gap": analysis["overall_gap"],
+                    }
+                )
+
+        if not pairings:
+            return {
+                "best_main_event": None,
+                "best_co_main": None,
+                "best_prospect_fight": None,
+                "best_safe_money_fight": None,
+            }
+
+        sorted_by_score = sorted(pairings, key=lambda p: p["score"], reverse=True)
+        best_main_event = {
+            **sorted_by_score[0],
+            "label": "Best Main Event",
+        }
+
+        best_co_main = next(
+            (
+                {**p, "label": "Best Co-Main"}
+                for p in sorted_by_score[1:]
+                if {p["fighter_a_id"], p["fighter_b_id"]}
+                != {best_main_event["fighter_a_id"], best_main_event["fighter_b_id"]}
+            ),
+            {**sorted_by_score[0], "label": "Best Co-Main"},
+        )
+
+        prospect_candidates = [
+            p for p in sorted_by_score if p["prospect_risk"] in {"Medium", "High"}
+        ]
+        best_prospect_fight = {
+            **(prospect_candidates[0] if prospect_candidates else sorted_by_score[0]),
+            "label": "Best Prospect Fight",
+        }
+
+        safe_money_candidates = [
+            p
+            for p in sorted_by_score
+            if p["booking_value"]
+            in {"Strong Main Event", "Strong Co-Main", "Risky Development Fight"}
+            and p["prospect_risk"] != "High"
+        ]
+        best_safe_money_fight = {
+            **(
+                safe_money_candidates[0]
+                if safe_money_candidates
+                else sorted_by_score[0]
+            ),
+            "label": "Best Safe Money Fight",
+        }
+
+        return {
+            "best_main_event": best_main_event,
+            "best_co_main": best_co_main,
+            "best_prospect_fight": best_prospect_fight,
+            "best_safe_money_fight": best_safe_money_fight,
+        }
+
+
 def create_event(name: str, venue: str, event_date_str: str) -> dict:
     from datetime import datetime
 

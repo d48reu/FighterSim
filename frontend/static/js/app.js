@@ -1853,7 +1853,25 @@ async function loadBookableFighters() {
   try {
     state.bookableFighters = await api('/api/events/bookable-fighters');
     renderFighterPool();
+    loadBookingRecommendations();
   } catch (err) { /* silent */ }
+}
+
+async function loadBookingRecommendations() {
+  const el = document.getElementById('booking-recommendations');
+  if (!el) return;
+  try {
+    const data = await api('/api/events/recommendations');
+    if (!window.MarketUi?.renderBookingRecommendations) {
+      el.classList.add('hidden');
+      return;
+    }
+    const html = window.MarketUi.renderBookingRecommendations(data);
+    el.innerHTML = html;
+    el.classList.toggle('hidden', !html);
+  } catch (err) {
+    el.classList.add('hidden');
+  }
 }
 
 function renderFighterPool() {

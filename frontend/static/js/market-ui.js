@@ -140,6 +140,21 @@
     `;
   }
 
+  function renderBookingRecommendations(recommendations) {
+    const entries = Object.values(recommendations || {}).filter(Boolean);
+    if (entries.length === 0) {
+      return '<div class="decision-center-empty">No booking recommendations available.</div>';
+    }
+    return entries.map((entry) => `
+      <div class="booking-rec-card">
+        <div class="booking-rec-title">${esc(entry.label || 'Recommendation')}</div>
+        <div class="booking-rec-matchup">${esc(entry.matchup || 'TBD')}</div>
+        <div class="booking-rec-meta">${esc(entry.booking_value || 'Unclear')} · ${esc(entry.competitiveness || 'Unknown')} · ${esc(entry.star_power || 'Unknown')}</div>
+        <div class="booking-rec-reasons">${(entry.reasons || []).slice(0, 2).map((reason) => `<div class="market-reason">${esc(reason)}</div>`).join('')}</div>
+      </div>
+    `).join('');
+  }
+
   function renderOfferEvaluation(offerEvaluation) {
     if (!offerEvaluation) return '';
 
@@ -180,6 +195,7 @@
     renderRecommendationBadge,
     renderCompactMarketLine,
     renderDecisionCenterColumn,
+    renderBookingRecommendations,
     renderMarketContextCard,
     renderOfferEvaluation,
   };

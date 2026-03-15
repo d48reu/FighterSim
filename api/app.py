@@ -133,6 +133,10 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     def bookable_fighters():
         return jsonify(services.get_bookable_fighters())
 
+    @app.route("/api/events/recommendations")
+    def booking_recommendations():
+        return jsonify(services.get_event_booking_recommendations())
+
     @app.route("/api/events/venues")
     def list_venues():
         return jsonify(services.get_venues())

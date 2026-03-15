@@ -2731,6 +2731,46 @@ tbody td { padding: 9px 10px; }
   line-height: 1.4;
   margin-top: 4px;
 }
+
+.booking-recommendations {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.booking-rec-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.03);
+  padding: 10px;
+}
+
+.booking-rec-title {
+  font-family: var(--font-display);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.booking-rec-matchup {
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.booking-rec-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.booking-rec-reasons {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .cs-cards {
   display: flex;
   gap: 12px;
