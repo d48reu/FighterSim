@@ -164,6 +164,28 @@
     ].join('');
   }
 
+  function renderRivalIntel(rival) {
+    if (!rival) return '';
+    const targets = (rival.top_targets || []).length
+      ? (rival.top_targets || []).map((target) => `
+          <div class="decision-center-item">
+            <div class="decision-center-item-top"><strong>${esc(target.name)}</strong></div>
+            <div class="decision-center-reason">${esc(target.reason)}</div>
+          </div>
+        `).join('')
+      : '<div class="decision-center-empty">No contested targets yet.</div>';
+
+    return `
+      <div class="rival-intel-block">
+        <div class="rival-section-title">Identity</div>
+        <div class="market-recommendation-badge tone-overpay">${esc(rival.identity?.label || 'Unknown')}</div>
+        <div class="decision-center-reason">${esc(rival.identity?.focus || '')}</div>
+        <div class="rival-section-title" style="margin-top:10px">Contested Targets</div>
+        ${targets}
+      </div>
+    `;
+  }
+
   function renderNegotiationProfile(profile) {
     if (!profile) return '';
     return `
@@ -227,6 +249,7 @@
     renderDecisionCenterColumn,
     renderBookingRecommendations,
     renderScoutingBoard,
+    renderRivalIntel,
     renderNegotiationProfile,
     renderMarketContextCard,
     renderOfferEvaluation,

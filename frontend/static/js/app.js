@@ -2550,6 +2550,7 @@ async function loadRivalWidget() {
           <span class="rival-bar-value">${r.prestige}</span>
         </div>
       </div>
+      ${window.MarketUi?.renderRivalIntel ? window.MarketUi.renderRivalIntel(r) : ''}
       <div class="rival-section">
         <div class="rival-section-title">Top Fighters</div>
         ${topHtml || '<div class="muted">No fighters</div>'}

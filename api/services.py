@@ -1022,6 +1022,51 @@ def _recommendation_dict(
     )
 
 
+def _bidding_pressure_dict(
+    fighter: Fighter, session, player_org_id: Optional[int]
+) -> dict:
+    ai_orgs = (
+        session.execute(select(Organization).where(Organization.is_player == False))
+        .scalars()
+        .all()
+    )
+    interested = []
+    for org in ai_orgs:
+        signals = compute_market_signals(fighter, session, org.id)
+        interest_score = signals["ai_interest_score"]
+        booking_value = (
+            (signals.get("matchup") or {}).get("assessment", {}).get("booking_value")
+        )
+        if interest_score >= fighter.overall + 2 or booking_value in {
+            "Strong Main Event",
+            "Strong Co-Main",
+        }:
+            interested.append(
+                {
+                    "org_id": org.id,
+                    "name": org.name,
+                    "prestige": round(org.prestige, 1),
+                    "interest_score": round(interest_score, 1),
+                }
+            )
+    interested.sort(
+        key=lambda row: (row["interest_score"], row["prestige"]), reverse=True
+    )
+    level = "Low"
+    adjustment = 0.0
+    if len(interested) >= 2:
+        level = "High"
+        adjustment = -0.04
+    elif len(interested) == 1:
+        level = "Medium"
+        adjustment = -0.02
+    return {
+        "level": level,
+        "adjustment": adjustment,
+        "interested_orgs": interested[:3],
+    }
+
+
 def _offer_evaluation_dict(
     fighter: Fighter,
     player_org: Organization,
@@ -1049,6 +1094,7 @@ def _offer_evaluation_dict(
         acceptance_probability *= 0.85
     offer_ratio = offered_salary / asking_salary if asking_salary > 0 else 1.0
     negotiation_profile = _negotiation_profile_dict(fighter, session, effective_org_id)
+    bidding_pressure = _bidding_pressure_dict(fighter, session, effective_org_id)
     preference_adjustments = []
 
     if negotiation_profile["money_priority"] == "High":
@@ -1145,6 +1191,15 @@ def _offer_evaluation_dict(
             }
         )
         acceptance_probability -= 0.05
+    if bidding_pressure["adjustment"]:
+        preference_adjustments.append(
+            {
+                "key": "competition",
+                "delta": bidding_pressure["adjustment"],
+                "reason": "Other organizations are actively pursuing this fighter.",
+            }
+        )
+        acceptance_probability += bidding_pressure["adjustment"]
 
     acceptance_probability = min(0.95, max(0.05, acceptance_probability))
     return {
@@ -1154,6 +1209,10 @@ def _offer_evaluation_dict(
         "acceptance_probability": round(acceptance_probability, 4),
         "market_context": market_context,
         "negotiation_profile": negotiation_profile,
+        "bidding_pressure": {
+            **bidding_pressure,
+            "adjustment": round(bidding_pressure["adjustment"], 3),
+        },
         "preference_adjustments": [
             {**adj, "delta": round(adj["delta"], 3)} for adj in preference_adjustments
         ],
@@ -3399,6 +3458,97 @@ def negotiate_deal(tier: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _org_active_fighters(session, org_id: int) -> list[Fighter]:
+    fighter_ids = (
+        session.execute(
+            select(Contract.fighter_id).where(
+                Contract.organization_id == org_id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not fighter_ids:
+        return []
+    return (
+        session.execute(select(Fighter).where(Fighter.id.in_(fighter_ids)))
+        .scalars()
+        .all()
+    )
+
+
+def _org_identity_dict(session, org: Organization) -> dict:
+    fighters = _org_active_fighters(session, org.id)
+    if not fighters:
+        return {
+            "label": "Talent Factory",
+            "focus": "Building young talent and looking for developmental upside.",
+        }
+
+    avg_age = sum(f.age for f in fighters) / len(fighters)
+    avg_popularity = sum(f.popularity for f in fighters) / len(fighters)
+    avg_overall = sum(f.overall for f in fighters) / len(fighters)
+    weight_counts = {}
+    for fighter in fighters:
+        wc = (
+            fighter.weight_class.value
+            if hasattr(fighter.weight_class, "value")
+            else str(fighter.weight_class)
+        )
+        weight_counts[wc] = weight_counts.get(wc, 0) + 1
+    dominant_wc = max(weight_counts, key=weight_counts.get)
+
+    if org.prestige >= 82 or avg_overall >= 79:
+        return {
+            "label": "Prestige Hunter",
+            "focus": "Chases elite names and marquee fights to defend top status.",
+        }
+    if avg_age <= 26.5:
+        return {
+            "label": "Talent Factory",
+            "focus": "Targets young upside and long-term development pieces.",
+        }
+    if avg_popularity >= 55:
+        return {
+            "label": "Star Chaser",
+            "focus": "Pays for proven draws and visible names.",
+        }
+    return {
+        "label": "Division Sniper",
+        "focus": f"Concentrates resources on winning the {dominant_wc} division.",
+    }
+
+
+def _org_top_targets(session, org: Organization, limit: int = 3) -> list[dict]:
+    active_ids = set(
+        session.execute(
+            select(Contract.fighter_id).where(Contract.status == ContractStatus.ACTIVE)
+        )
+        .scalars()
+        .all()
+    )
+    candidates = (
+        session.execute(select(Fighter).where(Fighter.is_retired == False))
+        .scalars()
+        .all()
+    )
+    scored = []
+    for fighter in candidates:
+        if fighter.id in active_ids:
+            continue
+        signals = compute_market_signals(fighter, session, org.id)
+        scored.append(
+            {
+                "name": fighter.name,
+                "reason": f"Interest score {signals['ai_interest_score']:.1f} with {signals['trajectory']['label'].lower()} momentum.",
+                "score": signals["ai_interest_score"],
+            }
+        )
+    scored.sort(key=lambda row: row["score"], reverse=True)
+    return [{"name": row["name"], "reason": row["reason"]} for row in scored[:limit]]
+
+
 def get_rival_info() -> dict:
     """Return rival org info, prestige comparison, and league standings."""
     with _SessionFactory() as session:
@@ -3422,40 +3572,13 @@ def get_rival_info() -> dict:
                 "standings": [],
             }
 
-        # Rival = AI org with minimum abs(prestige - player_prestige)
         rival_org = min(ai_orgs, key=lambda o: abs(o.prestige - player_org.prestige))
 
-        # Get roster counts and top fighters for rival
         def _org_roster_count(org_id):
-            return len(
-                session.execute(
-                    select(Contract.fighter_id).where(
-                        Contract.organization_id == org_id,
-                        Contract.status == ContractStatus.ACTIVE,
-                    )
-                )
-                .scalars()
-                .all()
-            )
+            return len(_org_active_fighters(session, org_id))
 
         def _org_top_fighters(org_id, limit=3):
-            fighter_ids = (
-                session.execute(
-                    select(Contract.fighter_id).where(
-                        Contract.organization_id == org_id,
-                        Contract.status == ContractStatus.ACTIVE,
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            if not fighter_ids:
-                return []
-            fighters = (
-                session.execute(select(Fighter).where(Fighter.id.in_(fighter_ids)))
-                .scalars()
-                .all()
-            )
+            fighters = _org_active_fighters(session, org_id)
             fighters.sort(key=lambda f: f.overall, reverse=True)
             return [
                 {
@@ -3471,11 +3594,11 @@ def get_rival_info() -> dict:
 
         rival_roster_count = _org_roster_count(rival_org.id)
         rival_top = _org_top_fighters(rival_org.id)
+        rival_identity = _org_identity_dict(session, rival_org)
+        top_targets = _org_top_targets(session, rival_org)
 
-        # Last event info for rival
         last_event = None
         if rival_org.last_event_name and rival_org.last_event_date:
-            # Count fights in that event
             evt = session.execute(
                 select(Event).where(
                     Event.organization_id == rival_org.id,
@@ -3492,7 +3615,6 @@ def get_rival_info() -> dict:
 
         prestige_gap = round(abs(rival_org.prestige - player_org.prestige), 1)
 
-        # Build standings (all orgs sorted by prestige desc)
         all_orgs = [player_org] + list(ai_orgs)
         all_orgs.sort(key=lambda o: o.prestige, reverse=True)
         standings = []
@@ -3504,6 +3626,7 @@ def get_rival_info() -> dict:
                     "roster_count": _org_roster_count(org.id),
                     "is_rival": org.id == rival_org.id,
                     "is_player": org.is_player,
+                    "identity": _org_identity_dict(session, org),
                 }
             )
 
@@ -3512,6 +3635,8 @@ def get_rival_info() -> dict:
                 "name": rival_org.name,
                 "prestige": round(rival_org.prestige, 1),
                 "roster_count": rival_roster_count,
+                "identity": rival_identity,
+                "top_targets": top_targets,
                 "top_fighters": rival_top,
                 "last_event": last_event,
             },
