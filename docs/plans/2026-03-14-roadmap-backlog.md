@@ -4,277 +4,292 @@
 
 ## Current Product Thesis
 
-FighterSim is no longer missing core systems. The job now is to turn the existing simulation into a clear, compelling management game where the player can:
-- identify value
-- build profitable and prestigious cards
-- shape roster identity over time
-- compete against rival organizations in a living ecosystem
+FighterSim is now a real management game foundation, not just a simulation sandbox.
+The game can already guide the player through:
+- signing talent
+- retaining or cutting talent
+- booking events
+- scouting future talent
+- handling rival pressure
+- reading title-politics pressure
+- pursuing campaign goals
 
-The next roadmap should prioritize decision quality and game loop strength over raw feature count.
-
----
-
-## Priority Order
-
-1. Recommendation labels for contracts and roster decisions
-2. Booking recommendation engine in event builder
-3. Expiring contracts and roster decision center
-4. Scouting / prospect discovery board
-5. Fighter morale, loyalty, and negotiation depth
-6. Rival org strategy and bidding wars
-7. Media, rivalry, and popularity loops
-8. Title-picture and divisional politics improvements
+The roadmap should now prioritize consequence density, actionability, and long-term campaign texture over adding more disconnected systems.
 
 ---
 
-## Backlog Items
+## Status Snapshot
 
-### 1. Recommendation labels for contracts and roster decisions
+Completed major systems:
+- Recommendation labels for contracts and roster decisions
+- Booking recommendation engine in event builder
+- Expiring contracts and roster decision center
+- Scouting board
+- Scouting uncertainty / fog-of-war
+- Fighter morale, loyalty, negotiation preferences
+- Persistent relationship memory for negotiations
+- Rival org identities and bidding pressure
+- Title-picture and divisional politics surfaces
+- Champion inactivity title-defense enforcement
+- Media / storyline escalation widget
+- Campaign objectives / owner goals
+- Smart assistant actions on dashboard
+- Stronger AI org strategic behavior
+
+This means the original Milestones A-C are largely shipped in MVP form.
+
+---
+
+## New Priority Order
+
+1. Smart assistant execution layer
+2. Deeper media-business coupling
+3. Expanded relationship consequences beyond negotiation
+4. Advanced title-politics systems
+5. Campaign structure and difficulty escalation
+6. Deeper AI org strategic behavior
+7. Premium scouting / intel systems
+8. Presentation and UX unification
+
+---
+
+## Next Backlog Items
+
+### 1. Smart assistant execution layer
 Priority: P0
-Suggested issue title: `Roadmap: add recommendation labels for contracts and roster decisions`
+Suggested issue title: `Roadmap: add one-click execution for smart assistant actions`
 
 Goal:
-Turn visible market data into immediate player guidance.
+Turn the dashboard assistant from advisor into operator.
 
 Scope:
-- Add labels such as:
-  - Buy Now
-  - Fair Price
-  - Overpay Risk
-  - Sell Soon
-  - High-Leverage Renewal
-  - Low-Interest Asset
-- Surface them in:
-  - Free Agents
-  - Roster
-  - Expiring Contracts
-  - Show contestant signing list
-- Back labels with deterministic logic from current `market_context` and `offer_evaluation`.
+- Add one-click actions where safe and obvious:
+  - Sign this fighter
+  - Renew this fighter
+  - Open booking recommendation in event builder
+  - Jump to the risk item that needs attention
+- Every assistant card should support direct action or deep-link navigation.
+- Use existing recommendation outputs rather than inventing new logic.
 
 Acceptance criteria:
-- Recommendation labels appear anywhere the player signs, renews, or evaluates fighter value.
-- API returns a normalized recommendation field.
-- Frontend shows labels consistently and colorfully.
-- Tests cover recommendation generation and rendering.
+- Dashboard assistant cards expose direct actions.
+- Sign / renew actions prefill existing UI and reduce clicks.
+- Booking action opens the relevant matchup context in the event flow.
+- Tests cover assistant action metadata and UI rendering.
 
 Why now:
-This is the fastest path from “visible data” to “playable decisions.”
+The game already knows what the best move is. The next win is making the move fast.
 
 ---
 
-### 2. Booking recommendation engine in event builder
-Priority: P0
-Suggested issue title: `Roadmap: add matchmaking recommendations to the event builder`
-
-Goal:
-Help the player build better cards faster.
-
-Scope:
-- Add recommended matchups using current roster + available free agents where relevant.
-- Suggest:
-  - best main event
-  - best co-main
-  - best prospect development fight
-  - best “safe money” fight
-- Show reasons:
-  - booking value
-  - competitiveness
-  - star power
-  - prospect risk
-  - projected profit / prestige contribution
-
-Acceptance criteria:
-- Event screen exposes a recommendation section or smart autofill actions.
-- At least the top 3 matchup suggestions are shown with reasons.
-- Player can click a recommendation to add the matchup directly.
-- Tests cover ranking/scoring behavior for recommendations.
-
-Why now:
-Booking should become the center of the management loop.
-
----
-
-### 3. Expiring contracts and roster decision center
-Priority: P0
-Suggested issue title: `Roadmap: build an expiring contracts and roster decision center`
-
-Goal:
-Create a clear “what do I do now?” contract-management surface.
-
-Scope:
-- Add a dedicated dashboard or panel for:
-  - contracts expiring soon
-  - bad contracts
-  - roster surplus by division
-  - divisions needing reinforcements
-  - salary efficiency / value-over-cost readouts
-- Add recommendation actions:
-  - Renew
-  - Wait
-  - Release
-  - Replace
-
-Acceptance criteria:
-- Player can review all near-term contract problems in one place.
-- Contract rows include value context and recommendation labels.
-- Roster pressure / imbalance is shown per weight class.
-- Tests cover contract-center data derivation.
-
-Why now:
-This creates a real retention / churn game instead of passive roster ownership.
-
----
-
-### 4. Scouting and prospect discovery board
+### 2. Deeper media-business coupling
 Priority: P1
-Suggested issue title: `Roadmap: add scouting and prospect discovery systems`
+Suggested issue title: `Roadmap: make media storylines materially affect business outcomes`
 
 Goal:
-Make acquisition more interesting than browsing a static list.
+Make storylines change economics and roster value, not just dashboard flavor.
 
 Scope:
-- Add scouting board with discovered prospects.
-- Add scout-quality / uncertainty mechanics.
-- Surface “heard about this guy” leads and prospect pipelines.
-- Optionally add region, archetype, and upside-based scouting categories.
+- Media arcs should feed into:
+  - booking demand
+  - popularity drift
+  - hype persistence
+  - sponsorship attractiveness
+  - rivalry intensity
+- Add stronger categories like:
+  - breakout buzz
+  - falling stock
+  - revenge angle
+  - champion under pressure
+  - poaching war
 
 Acceptance criteria:
-- Player can discover fighters not immediately obvious from current lists.
-- Some prospect information is uncertain until scouted further.
-- Scouting produces a repeatable monthly pipeline of leads.
-- Tests cover discovery generation and uncertainty formatting.
+- Storylines influence at least one projection or negotiation-facing system.
+- News and media widgets become mechanically relevant.
+- Tests cover storyline-to-business propagation.
 
 Why now:
-This makes the market into gameplay rather than spreadsheet sorting.
+The storyline layer exists. Now it should matter.
 
 ---
 
-### 5. Fighter morale, loyalty, and negotiation depth
+### 3. Expanded relationship consequences beyond negotiation
 Priority: P1
-Suggested issue title: `Roadmap: add morale loyalty and negotiation preferences`
+Suggested issue title: `Roadmap: extend relationship memory into roster and career consequences`
 
 Goal:
-Make negotiations multi-dimensional instead of pure math.
+Make relationship memory affect more than immediate acceptance math.
 
 Scope:
-- Add preferences like:
-  - wants money
-  - wants activity
-  - wants contenders only
-  - values prestige
-  - prefers loyalty / hates lowball offers
-- Add morale and org relationship effects.
-- Add consequences from inactivity, repeated low offers, or broken expectations.
+- Use relationship memory to influence:
+  - willingness to renew after inactivity
+  - tolerance for lower pay after good treatment
+  - trust decay after releases or repeated lowballs
+  - headline/storyline language
+  - loyalty pressure for cornerstone-type fighters
+- Add clearer long-term trust trajectories.
 
 Acceptance criteria:
-- Contract acceptance depends on more than salary + prestige.
-- Fighter profile surfaces key negotiation preferences.
-- Repeated bad management changes future negotiations.
-- Tests cover preference-driven acceptance changes.
+- Relationship memory visibly changes more than offer acceptance.
+- Fighter profile makes trust state legible.
+- Repeat management style produces meaningfully different outcomes over time.
+- Tests cover longer-lived relationship effects.
 
 Why now:
-This is how the roster becomes a cast of personalities instead of pure assets.
+Persistent memory is shipped. The next step is deeper consequence.
 
 ---
 
-### 6. Rival organization strategy and bidding wars
+### 4. Advanced title-politics systems
 Priority: P1
-Suggested issue title: `Roadmap: add rival org identities and bidding wars`
+Suggested issue title: `Roadmap: deepen title-politics with vacancy and interim flows`
 
 Goal:
-Make the world push back on the player.
+Push title management from “good surface” to “real sports-politics system.”
 
 Scope:
-- Give AI orgs identifiable strategies:
-  - prospect hunters
-  - prestige-chasers
-  - budget opportunists
-  - division snipers
-- Add bidding wars and targeted poaching.
-- Add rivalry pressure around key divisions and stars.
+- Interim title logic
+- Vacancy logic when champs are absent too long
+- contender queue pressure
+- stronger backlash for bad title booking
+- clearer ranking consequences around eliminators and defenses
 
 Acceptance criteria:
-- AI org behavior differs meaningfully by strategy.
-- Contested fighters can trigger bidding competition.
-- Player sees why rival orgs are dangerous in specific divisions.
-- Tests cover org strategy outputs and bidding behavior.
+- Inactive champion pressure can escalate beyond a single booking block.
+- Title scenes produce different branches: defense, interim, vacancy, eliminator.
+- Rankings and title state stay coherent.
+- Tests cover title-state transitions.
 
 Why now:
-A static world kills long campaigns.
+Current title enforcement is good, but still MVP-level.
 
 ---
 
-### 7. Media, rivalry, and popularity machine
+### 5. Campaign structure and difficulty escalation
+Priority: P1
+Suggested issue title: `Roadmap: deepen campaign structure and difficulty progression`
+
+Goal:
+Turn owner goals into a fuller campaign arc.
+
+Scope:
+- Mid-game and late-game objectives
+- milestone rewards or consequences
+- origin-specific escalation
+- possible fail states / recovery paths
+- difficulty pressure tied to org growth
+
+Acceptance criteria:
+- Objectives evolve over time instead of remaining static.
+- Campaign pressure scales with the player’s progress.
+- Different origins diverge more strongly in playstyle.
+
+Why now:
+The game has goals; it now needs progression structure.
+
+---
+
+### 6. Deeper AI org strategic behavior
 Priority: P2
-Suggested issue title: `Roadmap: deepen media narratives rivalries and star-building`
+Suggested issue title: `Roadmap: deepen AI org strategy in booking and roster construction`
 
 Goal:
-Let publicity and storylines materially shape value.
+Make AI organizations feel like durable competitors with distinct habits.
 
 Scope:
-- Make media arcs influence popularity, hype, and booking power.
-- Expand rivalry effects on event value and fighter demand.
-- Add villain / fan-favorite / cult-hero / can’t-miss prospect style identities.
+- More aggressive identity expression in:
+  - roster composition
+  - title focus
+  - event quality profile
+  - signing thresholds
+  - division concentration
+- More visible consequences in rival intel.
 
 Acceptance criteria:
-- Narrative arcs produce measurable business consequences.
-- Rivalries materially affect event projections and fighter value.
-- UI makes those narratives legible.
+- AI org behavior diverges more clearly by identity over long campaigns.
+- Rival dashboard intel explains real future threats.
+- Tests cover org strategy effects across multiple systems.
 
 Why later:
-High upside, but decision clarity and loop structure should come first.
+The base identity system exists and is useful already.
 
 ---
 
-### 8. Title picture and divisional politics
+### 7. Premium scouting / intel systems
 Priority: P2
-Suggested issue title: `Roadmap: improve title-picture logic and divisional politics`
+Suggested issue title: `Roadmap: deepen scouting with tiers, reveal progression, and intel quality`
 
 Goal:
-Make rankings and championships matter more.
+Turn scouting into a progression system, not just a board.
 
 Scope:
-- Better contender logic
-- title eliminators
-- inactivity pressure on champs
-- fan backlash for weak title booking
-- division heat/cold indicators
+- Scout tiers or scouting spend
+- reveal progression over time
+- better hidden-info structure
+- richer upside / downside reads
+- more division-specific search behavior
 
 Acceptance criteria:
-- Rankings have clearer gameplay consequences.
-- Title fights are harder to abuse.
-- Division quality and health are visible.
+- Scouting quality changes what the player can know.
+- Re-scouting or time investment improves certainty.
+- Tests cover reveal progression and uncertainty tightening.
 
 Why later:
-Important, but less urgent than roster, booking, and acquisition loops.
+The current fog-of-war MVP is already doing real work.
+
+---
+
+### 8. Presentation and UX unification
+Priority: P2
+Suggested issue title: `Roadmap: unify dashboard and panel UX across all guidance systems`
+
+Goal:
+Make all the advice systems feel like one coherent product instead of stacked widgets.
+
+Scope:
+- visual consistency across:
+  - objectives
+  - assistant actions
+  - decision center
+  - title picture
+  - scouting
+  - media
+- improve density and scanability
+- reduce duplicate information and clutter
+
+Acceptance criteria:
+- Core dashboard widgets feel visually and structurally unified.
+- The player can scan the dashboard quickly for action.
+- UI tests and manual QA confirm improved readability.
+
+Why later:
+Important, but not as high leverage as deeper mechanics.
 
 ---
 
 ## Suggested Milestone Packaging
 
-### Milestone A: Decision Clarity
-- Recommendation labels
-- Expiring contracts / roster decision center
-- Booking recommendations
+### Milestone D: Operator Layer
+- Smart assistant execution
+- dashboard UX tightening
 
-### Milestone B: Talent Pipeline
-- Scouting board
-- Prospect surfacing
-- Negotiation depth
+### Milestone E: Consequence Layer
+- media-business coupling
+- relationship consequences
+- advanced title politics
 
-### Milestone C: Living World
-- Rival org strategy
-- bidding wars
-- media / rivalry machine
-- divisional politics
+### Milestone F: Long Campaign Layer
+- campaign escalation
+- deeper AI org strategy
+- premium scouting systems
 
 ---
 
 ## Immediate Next Build Recommendation
 
-If we continue right now, do this next:
-1. Recommendation labels for contracts and roster decisions
-2. Expiring contracts / roster decision center
-3. Booking recommendation engine
+If continuing right now, do this next:
+1. Smart assistant execution layer
+2. Deeper media-business coupling
+3. Expanded relationship consequences beyond negotiation
 
-That is the shortest path to making FighterSim feel like a real game instead of a broad simulation sandbox.
+That sequence sharpens the current game the fastest without blowing up complexity.
