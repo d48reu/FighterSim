@@ -293,6 +293,28 @@ ORIGIN_CONFIGS = {
 }
 
 
+def _org_distribution_weights(career_stage: str, org_count: int) -> list[float]:
+    """Scale default prestige-rank weights to the available org count."""
+    if org_count <= 0:
+        return []
+
+    if career_stage in ("prime", "veteran"):
+        base_weights = [40, 25, 25, 10]
+    elif career_stage == "prospect":
+        base_weights = [10, 20, 20, 50]
+    else:  # transitional
+        base_weights = [20, 25, 30, 25]
+
+    if org_count == len(base_weights):
+        return base_weights
+    if org_count == 1:
+        return [sum(base_weights)]
+
+    source_positions = np.linspace(0.0, 1.0, num=len(base_weights))
+    target_positions = np.linspace(0.0, 1.0, num=org_count)
+    return np.interp(target_positions, source_positions, base_weights).tolist()
+
+
 def _assign_organization(
     career_stage: str,
     archetype_str: str,
@@ -321,20 +343,7 @@ def _assign_organization(
 
     # Sort orgs by prestige descending
     sorted_orgs = sorted(orgs, key=lambda o: o.prestige, reverse=True)
-
-    # Prestige-gated distribution weights based on career stage
-    if career_stage in ("prime", "veteran"):
-        # Better fighters go to higher-prestige orgs
-        # UCC: 40%, One: 25%, Bellator: 25%, Player: 10%
-        weights = [40, 25, 25, 10]
-    elif career_stage == "prospect":
-        # Prospects distributed more evenly, player gets more
-        # UCC: 10%, One: 20%, Bellator: 20%, Player: 50%
-        weights = [10, 20, 20, 50]
-    else:  # transitional
-        # Moderately distributed
-        # UCC: 20%, One: 25%, Bellator: 30%, Player: 25%
-        weights = [20, 25, 30, 25]
+    weights = _org_distribution_weights(career_stage, len(sorted_orgs))
 
     return py_rng.choices(sorted_orgs, weights=weights, k=1)[0]
 
