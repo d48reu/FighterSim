@@ -68,7 +68,7 @@ def test_get_fighter_exposes_portrait_url(tmp_path):
     )
 
 
-def test_fighter_panel_template_includes_portrait_slot():
+def test_fighter_panel_template_hides_placeholder_portrait_slot_from_ui():
     html = Path("frontend/templates/index.html").read_text(encoding="utf-8")
-    assert 'id="panel-portrait"' in html
-    assert 'id="panel-portrait-fallback"' in html
+    assert 'id="panel-portrait"' not in html
+    assert 'id="panel-portrait-fallback"' not in html
