@@ -117,6 +117,29 @@
     `;
   }
 
+  function renderDecisionCenterColumn(title, items) {
+    const safeItems = Array.isArray(items) ? items : [];
+    const body = safeItems.length
+      ? safeItems.map((item) => `
+          <div class="decision-center-item">
+            <div class="decision-center-item-top">
+              <strong>${esc(item.name || item.weight_class || 'Unknown')}</strong>
+              ${renderRecommendationBadge(item.recommendation)}
+            </div>
+            ${item.meta ? `<div class="decision-center-meta">${esc(item.meta)}</div>` : ''}
+            ${item.reason ? `<div class="decision-center-reason">${esc(item.reason)}</div>` : ''}
+          </div>
+        `).join('')
+      : '<div class="decision-center-empty">No immediate actions.</div>';
+
+    return `
+      <div class="decision-center-column">
+        <div class="decision-center-title">${esc(title)}</div>
+        ${body}
+      </div>
+    `;
+  }
+
   function renderOfferEvaluation(offerEvaluation) {
     if (!offerEvaluation) return '';
 
@@ -156,6 +179,7 @@
     getMarketSignalTone,
     renderRecommendationBadge,
     renderCompactMarketLine,
+    renderDecisionCenterColumn,
     renderMarketContextCard,
     renderOfferEvaluation,
   };

@@ -527,6 +527,10 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     def list_roster():
         return jsonify(services.get_roster())
 
+    @app.route("/api/roster/decision-center")
+    def roster_decision_center():
+        return jsonify(services.get_roster_decision_center())
+
     @app.route("/api/contracts/offer", methods=["POST"])
     def contract_offer():
         data = request.json

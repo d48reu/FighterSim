@@ -1240,6 +1240,148 @@ def get_expiring_contracts() -> list[dict]:
         return results
 
 
+def get_roster_decision_center() -> dict:
+    with _SessionFactory() as session:
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not player_org:
+            return {
+                "expiring_contracts": [],
+                "sell_candidates": [],
+                "buy_targets": [],
+                "division_outlook": [],
+            }
+
+        game_date = _get_game_date(session)
+        rows = session.execute(
+            select(Contract, Fighter)
+            .join(Fighter, Contract.fighter_id == Fighter.id)
+            .where(
+                Contract.organization_id == player_org.id,
+                Contract.status == ContractStatus.ACTIVE,
+            )
+        ).all()
+
+        expiring_contracts = []
+        sell_candidates = []
+        division_counts: dict[str, list[Fighter]] = {}
+
+        for contract, fighter in rows:
+            division_counts.setdefault(fighter.weight_class, []).append(fighter)
+            days_to_expiry = (
+                (contract.expiry_date - game_date).days
+                if contract.expiry_date
+                else None
+            )
+            expiring_rec = _recommendation_dict(
+                fighter,
+                session,
+                org_id=player_org.id,
+                surface="expiring_contract",
+                days_to_expiry=days_to_expiry,
+                fights_remaining=contract.fights_remaining,
+            )
+            if days_to_expiry is not None and (
+                days_to_expiry <= 60 or contract.fights_remaining <= 1
+            ):
+                expiring_contracts.append(
+                    {
+                        "id": fighter.id,
+                        "name": fighter.name,
+                        "weight_class": fighter.weight_class,
+                        "meta": f"{fighter.weight_class} · {contract.fights_remaining} fight(s) left · expires {contract.expiry_date.isoformat()}",
+                        "recommendation": expiring_rec,
+                        "reason": expiring_rec["reason"],
+                    }
+                )
+
+            roster_rec = _recommendation_dict(
+                fighter,
+                session,
+                org_id=player_org.id,
+                surface="roster",
+            )
+            if roster_rec["tone"] == "cold-asset":
+                sell_candidates.append(
+                    {
+                        "id": fighter.id,
+                        "name": fighter.name,
+                        "weight_class": fighter.weight_class,
+                        "meta": f"OVR {fighter.overall} · {fighter.record} · salary {int(contract.salary):,}/yr",
+                        "recommendation": roster_rec,
+                        "reason": roster_rec["reason"],
+                    }
+                )
+
+        free_agents = [
+            agent
+            for agent in get_free_agents()
+            if agent.get("recommendation", {}).get("label") != "Low-Interest Asset"
+        ]
+        free_agents.sort(
+            key=lambda agent: (
+                1 if agent.get("recommendation", {}).get("label") == "Buy Now" else 0,
+                agent["market_context"]["ai_interest_score"],
+                agent["overall"],
+            ),
+            reverse=True,
+        )
+        buy_targets = [
+            {
+                "id": agent["id"],
+                "name": agent["name"],
+                "weight_class": agent["weight_class"],
+                "meta": f"OVR {agent['overall']} · {agent['record']} · {int(agent['asking_salary']):,}/yr",
+                "recommendation": agent["recommendation"],
+                "reason": agent["recommendation"]["reason"],
+            }
+            for agent in free_agents[:5]
+        ]
+
+        division_outlook = []
+        for weight_class in [wc.value for wc in WeightClass]:
+            fighters = division_counts.get(weight_class, [])
+            count = len(fighters)
+            avg_overall = (
+                round(sum(f.overall for f in fighters) / count, 1) if count else 0.0
+            )
+            if count == 0:
+                recommendation = {
+                    "label": "Urgent Need",
+                    "tone": "cold-asset",
+                    "reason": "No active roster presence in this division.",
+                }
+            elif count == 1 or avg_overall < 72:
+                recommendation = {
+                    "label": "Needs Upgrade",
+                    "tone": "overpay",
+                    "reason": "Depth or quality is thin enough to justify shopping.",
+                }
+            else:
+                recommendation = {
+                    "label": "Stable",
+                    "tone": "buy-now",
+                    "reason": "Current depth is good enough to avoid immediate pressure.",
+                }
+            division_outlook.append(
+                {
+                    "weight_class": weight_class,
+                    "name": weight_class,
+                    "meta": f"{count} rostered · avg OVR {avg_overall}",
+                    "recommendation": recommendation,
+                    "reason": recommendation["reason"],
+                }
+            )
+
+        return {
+            "expiring_contracts": expiring_contracts[:5],
+            "sell_candidates": sell_candidates[:5],
+            "buy_targets": buy_targets,
+            "division_outlook": division_outlook,
+        }
+
+
 def renew_contract(
     fighter_id: int, salary: float, fight_count: int, length_months: int
 ) -> dict:

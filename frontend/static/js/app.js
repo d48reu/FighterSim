@@ -960,6 +960,8 @@ async function loadRoster() {
     fill.style.width = `${pctUsed}%`;
     fill.className = 'payroll-progress-fill' + (pctUsed > 80 ? ' danger' : pctUsed > 50 ? ' warning' : '');
 
+    loadRosterDecisionCenter();
+
     if (roster.length === 0) {
       tbody.innerHTML = '<tr><td colspan="10" class="muted">No fighters on roster. Sign some free agents!</td></tr>';
       return;
@@ -1004,6 +1006,26 @@ async function loadRoster() {
     loadCornerstones();
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="10" class="muted">Error: ${esc(err.message)}</td></tr>`;
+  }
+}
+
+async function loadRosterDecisionCenter() {
+  const el = document.getElementById('roster-decision-center');
+  if (!el) return;
+  try {
+    const data = await api('/api/roster/decision-center');
+    if (!window.MarketUi?.renderDecisionCenterColumn) {
+      el.innerHTML = '';
+      return;
+    }
+    el.innerHTML = [
+      window.MarketUi.renderDecisionCenterColumn('Renewal Pressure', data.expiring_contracts),
+      window.MarketUi.renderDecisionCenterColumn('Sell / Replace', data.sell_candidates),
+      window.MarketUi.renderDecisionCenterColumn('Buy Targets', data.buy_targets),
+      window.MarketUi.renderDecisionCenterColumn('Division Outlook', data.division_outlook),
+    ].join('');
+  } catch (err) {
+    el.innerHTML = '<div class="decision-center-column"><div class="decision-center-title">Decision Center</div><div class="decision-center-empty">Error loading decision center.</div></div>';
   }
 }
 
