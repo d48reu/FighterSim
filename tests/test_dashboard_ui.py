@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -38,3 +39,22 @@ def test_dashboard_template_promotes_business_signals_over_duplicate_stats(tmp_p
     assert 'id="dash-sponsorship-income"' in html
     assert 'id="dash-balance"' not in html
     assert 'id="dash-roster-size"' not in html
+
+
+def test_dashboard_empty_states_use_actionable_copy_and_keep_business_widgets_visible():
+    js = Path("frontend/static/js/app.js").read_text(encoding="utf-8")
+
+    assert "No event booked this month." in js
+    assert "Open Events and build a card before you burn a month." in js
+    assert "No completed shows yet." in js
+    assert (
+        "Book and simulate an event so the promotion starts generating history." in js
+    )
+    assert "No broadcast deal yet." in js
+    assert "Open TV Deals and lock in distribution before prestige stalls." in js
+    assert "No active sponsor income." in js
+    assert "Use Roster to target marketable fighters and start monetizing them." in js
+    assert "No reality show running." in js
+    assert "Start one if you want prospect hype and a discounted winner signing." in js
+    assert "No upcoming events. Go to Events to create one." not in js
+    assert "No completed events yet." not in js

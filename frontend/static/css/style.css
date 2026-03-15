@@ -2432,6 +2432,19 @@ tbody td { padding: 9px 10px; }
   border-bottom: 1px solid var(--border);
 }
 
+.dash-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.dash-empty-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
 .dash-event-card {
   cursor: pointer;
   padding: 8px;

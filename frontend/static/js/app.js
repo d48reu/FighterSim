@@ -242,7 +242,13 @@ async function loadDashUpcoming() {
     const events = await api('/api/events/scheduled');
     const el = document.getElementById('dash-upcoming');
     if (events.length === 0) {
-      el.innerHTML = '<p class="muted">No upcoming events. Go to Events to create one.</p>';
+      el.innerHTML = `
+        <div class="dash-empty-state">
+          <div class="dash-empty-title">No event booked this month.</div>
+          <div class="muted">Open Events and build a card before you burn a month.</div>
+          <button class="btn btn-secondary" style="margin-top:10px" onclick="navigate('events')">Open Events</button>
+        </div>
+      `;
       return;
     }
     const ev = events[0];
@@ -260,7 +266,13 @@ async function loadDashRecentResults() {
     const events = await api('/api/events/history?limit=3');
     const el = document.getElementById('dash-recent-results');
     if (events.length === 0) {
-      el.innerHTML = '<p class="muted">No completed events yet.</p>';
+      el.innerHTML = `
+        <div class="dash-empty-state">
+          <div class="dash-empty-title">No completed shows yet.</div>
+          <div class="muted">Book and simulate an event so the promotion starts generating history.</div>
+          <button class="btn btn-secondary" style="margin-top:10px" onclick="navigate('events')">Build First Event</button>
+        </div>
+      `;
       return;
     }
     el.innerHTML = events.map(ev => `
@@ -2740,8 +2752,8 @@ async function loadBroadcastWidget() {
     const data = await api('/api/broadcast/active');
     const widget = document.getElementById('broadcast-widget');
     const content = document.getElementById('broadcast-widget-content');
+    widget.classList.remove('hidden');
     if (data.deal) {
-      widget.classList.remove('hidden');
       const d = data.deal;
       content.innerHTML = `
         <div class="broadcast-widget-info">
@@ -2751,7 +2763,13 @@ async function loadBroadcastWidget() {
         </div>
       `;
     } else {
-      widget.classList.add('hidden');
+      content.innerHTML = `
+        <div class="dash-empty-state">
+          <div class="dash-empty-title">No broadcast deal yet.</div>
+          <div class="muted">Open TV Deals and lock in distribution before prestige stalls.</div>
+          <button class="btn btn-secondary" style="margin-top:10px" onclick="navigate('broadcast')">Open TV Deals</button>
+        </div>
+      `;
     }
   } catch (err) { /* silent */ }
 }
@@ -3131,8 +3149,8 @@ async function loadSponsorshipWidget() {
     const data = await api('/api/sponsorships/summary');
     const widget = document.getElementById('sponsorship-widget');
     const content = document.getElementById('sponsorship-widget-content');
+    widget.classList.remove('hidden');
     if (data.active_count > 0) {
-      widget.classList.remove('hidden');
       const earnersHtml = data.top_earners.map(e =>
         `<div class="sponsor-earner-row">
           <span class="sponsor-earner-name">${esc(e.name)}</span>
@@ -3147,7 +3165,13 @@ async function loadSponsorshipWidget() {
         ${earnersHtml ? `<div class="sponsor-widget-earners">${earnersHtml}</div>` : ''}
       `;
     } else {
-      widget.classList.add('hidden');
+      content.innerHTML = `
+        <div class="dash-empty-state">
+          <div class="dash-empty-title">No active sponsor income.</div>
+          <div class="muted">Use Roster to target marketable fighters and start monetizing them.</div>
+          <button class="btn btn-secondary" style="margin-top:10px" onclick="navigate('roster')">Open Roster</button>
+        </div>
+      `;
     }
   } catch (err) { /* silent */ }
 }
@@ -3746,13 +3770,20 @@ async function loadShowWidget() {
   try {
     const data = await api('/api/show/active');
     const widget = document.getElementById('show-widget');
+    const content = document.getElementById('show-widget-content');
+    widget.classList.remove('hidden');
     if (!data.show) {
-      widget.classList.add('hidden');
+      content.innerHTML = `
+        <div class="dash-empty-state">
+          <div class="dash-empty-title">No reality show running.</div>
+          <div class="muted">Start one if you want prospect hype and a discounted winner signing.</div>
+          <button class="btn btn-secondary" style="margin-top:10px" onclick="navigate('show')">Open Reality Show</button>
+        </div>
+      `;
       return;
     }
-    widget.classList.remove('hidden');
     const show = data.show;
-    document.getElementById('show-widget-content').innerHTML = `
+    content.innerHTML = `
       <div class="show-widget-info">
         <div><strong>${esc(show.name)}</strong></div>
         <div>Episode ${show.episodes_aired}/${show.total_episodes} | ${show.weight_class}</div>
