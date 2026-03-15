@@ -406,6 +406,66 @@ tbody td { padding: 9px 10px; }
   margin-bottom: 16px;
 }
 
+.objectives-widget {
+  margin-top: 16px;
+}
+
+.objective-card {
+  gap: 12px;
+}
+
+.objective-completion {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.objective-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.objective-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.objective-row.completed .objective-label {
+  color: var(--positive);
+}
+
+.objective-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.objective-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.objective-progress {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.objective-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+
+.objective-bar-fill {
+  height: 100%;
+  background: var(--info);
+  border-radius: 999px;
+}
+
 .title-picture-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

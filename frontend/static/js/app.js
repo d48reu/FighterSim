@@ -232,6 +232,7 @@ async function loadDashboard() {
   loadSponsorshipWidget();
   loadShowWidget();
   loadNewsWidget();
+  loadObjectivesWidget();
 }
 
 async function loadDashUpcoming() {
@@ -279,6 +280,24 @@ async function loadFinances() {
     document.getElementById('dash-fight-costs').textContent = formatCurrency(fin.projected_fight_costs);
   } catch (err) {
     // silently fail — cards stay at "—"
+  }
+}
+
+async function loadObjectivesWidget() {
+  try {
+    const data = await api('/api/objectives');
+    const widget = document.getElementById('objectives-widget');
+    const content = document.getElementById('objectives-widget-content');
+    if (!data.objectives || data.objectives.length === 0) {
+      widget.classList.add('hidden');
+      return;
+    }
+    widget.classList.remove('hidden');
+    content.innerHTML = window.MarketUi?.renderObjectivesWidget
+      ? window.MarketUi.renderObjectivesWidget(data)
+      : '';
+  } catch (err) {
+    // silent
   }
 }
 

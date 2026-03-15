@@ -117,6 +117,10 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
             return jsonify({"error": "No player organization found"}), 404
         return jsonify(org)
 
+    @app.route("/api/objectives")
+    def campaign_objectives():
+        return jsonify(services.get_campaign_objectives())
+
     # ------------------------------------------------------------------
     # Rankings
     # ------------------------------------------------------------------

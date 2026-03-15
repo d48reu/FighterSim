@@ -210,6 +210,30 @@
     `;
   }
 
+  function renderObjectivesWidget(objectives) {
+    if (!objectives) return '';
+    const objectiveRows = (objectives.objectives || []).map((obj) => `
+      <div class="objective-row ${obj.completed ? 'completed' : ''}">
+        <div class="objective-top">
+          <span class="objective-label">${esc(obj.label)}</span>
+          <span class="objective-progress">${obj.progress_pct}%</span>
+        </div>
+        <div class="objective-bar"><div class="objective-bar-fill" style="width:${obj.progress_pct}%"></div></div>
+      </div>
+    `).join('') || '<div class="decision-center-empty">No active objectives.</div>';
+    return `
+      <div class="market-card objective-card">
+        <div class="market-card-header">
+          <div class="market-card-title">Owner Goals</div>
+          <span class="market-trajectory-badge">${esc(objectives.origin_label || 'Campaign')}</span>
+        </div>
+        <div class="market-card-summary">${esc(objectives.summary || '')}</div>
+        <div class="objective-completion">${objectives.completed_count || 0}/${objectives.total_count || 0} complete</div>
+        <div class="objective-list">${objectiveRows}</div>
+      </div>
+    `;
+  }
+
   function renderTitlePicture(titlePicture) {
     if (!titlePicture) return '';
     const champion = titlePicture.champion;
@@ -315,6 +339,7 @@
     renderBookingRecommendations,
     renderScoutingBoard,
     renderRivalIntel,
+    renderObjectivesWidget,
     renderTitlePicture,
     renderNegotiationProfile,
     renderMarketContextCard,

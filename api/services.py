@@ -421,6 +421,200 @@ def get_player_org() -> Optional[dict]:
         }
 
 
+def get_campaign_objectives() -> dict:
+    with _SessionFactory() as session:
+        gs = session.get(GameState, 1)
+        player_org = session.execute(
+            select(Organization).where(Organization.is_player == True)
+        ).scalar_one_or_none()
+        if not gs or not player_org:
+            return {
+                "origin_type": None,
+                "origin_label": "No Campaign",
+                "summary": "Start a career to receive owner goals.",
+                "completed_count": 0,
+                "total_count": 0,
+                "objectives": [],
+            }
+
+        roster_count = len(
+            session.execute(
+                select(Contract).where(
+                    Contract.organization_id == player_org.id,
+                    Contract.status == ContractStatus.ACTIVE,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        completed_events = (
+            session.execute(
+                select(Event).where(
+                    Event.organization_id == player_org.id,
+                    Event.status == EventStatus.COMPLETED,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        active_deal = _get_org_broadcast_deal(session, player_org.id)
+        avg_card_quality = 0.0
+        if completed_events:
+            qualities = []
+            for event in completed_events[-3:]:
+                try:
+                    qualities.append(
+                        _collect_event_financials(session, event, player_org.id)[
+                            "card_quality"
+                        ]
+                    )
+                except Exception:
+                    pass
+            avg_card_quality = (
+                round(sum(qualities) / len(qualities), 1) if qualities else 0.0
+            )
+
+        origin_type = gs.origin_type or "sandbox"
+        objective_specs = {
+            "The Comeback": {
+                "summary": "Claw your way back into relevance with a solvent, credible promotion.",
+                "objectives": [
+                    {
+                        "key": "prestige",
+                        "label": "Reach 35 prestige",
+                        "current": player_org.prestige,
+                        "target": 35,
+                        "unit": "prestige",
+                    },
+                    {
+                        "key": "roster",
+                        "label": "Build a roster of 10 fighters",
+                        "current": roster_count,
+                        "target": 10,
+                        "unit": "fighters",
+                    },
+                    {
+                        "key": "bank_balance",
+                        "label": "Push bank balance to $3,000,000",
+                        "current": player_org.bank_balance,
+                        "target": 3_000_000,
+                        "unit": "$",
+                    },
+                ],
+            },
+            "The Matchmaker": {
+                "summary": "Prove your eye for cards by turning matchmaking into momentum.",
+                "objectives": [
+                    {
+                        "key": "events",
+                        "label": "Promote 3 completed events",
+                        "current": len(completed_events),
+                        "target": 3,
+                        "unit": "events",
+                    },
+                    {
+                        "key": "card_quality",
+                        "label": "Average 65 card quality over recent events",
+                        "current": avg_card_quality,
+                        "target": 65,
+                        "unit": "quality",
+                    },
+                    {
+                        "key": "prestige",
+                        "label": "Reach 50 prestige",
+                        "current": player_org.prestige,
+                        "target": 50,
+                        "unit": "prestige",
+                    },
+                ],
+            },
+            "The Heir": {
+                "summary": "Stabilize the inherited company and turn it into a real contender.",
+                "objectives": [
+                    {
+                        "key": "prestige",
+                        "label": "Reach 65 prestige",
+                        "current": player_org.prestige,
+                        "target": 65,
+                        "unit": "prestige",
+                    },
+                    {
+                        "key": "roster",
+                        "label": "Maintain a roster of 18 fighters",
+                        "current": roster_count,
+                        "target": 18,
+                        "unit": "fighters",
+                    },
+                    {
+                        "key": "tv_deal",
+                        "label": "Secure an active broadcast deal",
+                        "current": 1 if active_deal else 0,
+                        "target": 1,
+                        "unit": "deal",
+                    },
+                ],
+            },
+            "sandbox": {
+                "summary": "Grow the promotion across prestige, roster depth, and event execution.",
+                "objectives": [
+                    {
+                        "key": "prestige",
+                        "label": "Reach 60 prestige",
+                        "current": player_org.prestige,
+                        "target": 60,
+                        "unit": "prestige",
+                    },
+                    {
+                        "key": "events",
+                        "label": "Promote 4 completed events",
+                        "current": len(completed_events),
+                        "target": 4,
+                        "unit": "events",
+                    },
+                    {
+                        "key": "roster",
+                        "label": "Build a roster of 14 fighters",
+                        "current": roster_count,
+                        "target": 14,
+                        "unit": "fighters",
+                    },
+                ],
+            },
+        }
+        spec = objective_specs.get(origin_type, objective_specs["sandbox"])
+        objectives = []
+        completed_count = 0
+        for obj in spec["objectives"]:
+            current = obj["current"]
+            target = obj["target"]
+            progress_pct = (
+                100
+                if target <= 0
+                else max(0, min(100, round((current / target) * 100)))
+            )
+            completed = current >= target
+            if completed:
+                completed_count += 1
+            objectives.append(
+                {
+                    **obj,
+                    "current": round(current, 1)
+                    if isinstance(current, float)
+                    else current,
+                    "progress_pct": progress_pct,
+                    "completed": completed,
+                }
+            )
+        return {
+            "origin_type": origin_type,
+            "origin_label": origin_type if origin_type != "sandbox" else "Sandbox",
+            "summary": spec["summary"],
+            "completed_count": completed_count,
+            "total_count": len(objectives),
+            "objectives": objectives,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Rankings
 # ---------------------------------------------------------------------------
