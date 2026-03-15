@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from models.models import Contract, ContractStatus, Fighter, Organization
 from simulation.matchmaking import assess_matchup
+from simulation.media import get_fighter_storyline_effects
 from simulation.trajectory import analyze_fighter_trajectory
 
 
@@ -83,24 +84,30 @@ def compute_market_signals(
     trajectory_sponsorship = _TRAJECTORY_SPONSORSHIP_ADJUST.get(
         trajectory["label"], 0.0
     )
+    storyline = get_fighter_storyline_effects(session, fighter)
 
     salary_multiplier = _clamp(
-        1.0 + trajectory_salary + matchup_salary,
+        1.0 + trajectory_salary + matchup_salary + storyline["salary_adjustment"],
         0.78,
         1.35,
     )
     acceptance_adjustment = _clamp(
-        trajectory_acceptance + matchup_acceptance,
+        trajectory_acceptance + matchup_acceptance + storyline["acceptance_adjustment"],
         -0.18,
         0.18,
     )
     sponsorship_multiplier = _clamp(
-        1.0 + trajectory_sponsorship + matchup_sponsorship,
+        1.0
+        + trajectory_sponsorship
+        + matchup_sponsorship
+        + storyline["sponsorship_adjustment"],
         0.80,
         1.35,
     )
     sponsorship_acceptance_adjustment = _clamp(
-        trajectory_sponsorship * 0.6 + matchup_sponsorship * 0.5,
+        trajectory_sponsorship * 0.6
+        + matchup_sponsorship * 0.5
+        + storyline["sponsorship_adjustment"] * 0.5,
         -0.15,
         0.18,
     )
@@ -108,6 +115,7 @@ def compute_market_signals(
     return {
         "trajectory": trajectory,
         "matchup": matchup,
+        "storyline": storyline,
         "salary_multiplier": salary_multiplier,
         "acceptance_adjustment": acceptance_adjustment,
         "ai_interest_score": fighter.overall + ai_interest_bonus,

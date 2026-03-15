@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+from sqlalchemy.orm import object_session
+
 from models.models import Fighter
+from simulation.media import get_matchup_storyline_effects
 
 
 def assess_matchup(a: Fighter, b: Fighter) -> dict:
     """Return a player-facing assessment of the matchup."""
     overall_gap = abs(a.overall - b.overall)
-    combined_draw = (a.hype + b.hype + a.popularity + b.popularity) / 4
+    base_draw = (a.hype + b.hype + a.popularity + b.popularity) / 4
+    session = object_session(a) or object_session(b)
+    media_storyline = (
+        get_matchup_storyline_effects(session, a, b)
+        if session is not None and a.id is not None and b.id is not None
+        else {"type": None, "labels": [], "reasons": [], "draw_bonus": 0.0}
+    )
+    combined_draw = base_draw + float(media_storyline.get("draw_bonus", 0.0))
     avg_overall = (a.overall + b.overall) / 2
 
     competitiveness = "Mismatch"
@@ -83,6 +93,8 @@ def assess_matchup(a: Fighter, b: Fighter) -> dict:
     if style_hook:
         reasons.append(style_hook)
 
+    reasons.extend(media_storyline.get("reasons", []))
+
     return {
         "booking_value": booking_value,
         "competitiveness": competitiveness,
@@ -92,6 +104,11 @@ def assess_matchup(a: Fighter, b: Fighter) -> dict:
         "combined_draw": round(combined_draw, 1),
         "avg_overall": round(avg_overall, 1),
         "reasons": reasons[:4],
+        "media_storyline": {
+            "type": media_storyline.get("type"),
+            "labels": media_storyline.get("labels", []),
+            "draw_bonus": round(float(media_storyline.get("draw_bonus", 0.0)), 1),
+        },
     }
 
 
