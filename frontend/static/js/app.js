@@ -2342,6 +2342,126 @@ function buildScorecardHtml(f) {
   </table></div>`;
 }
 
+function buildRoundStatsHtml(f) {
+  if (!f.round_stats || f.round_stats.length === 0) return '';
+  const rounds = f.round_stats;
+  const nameA = rounds[0].fighters[0].name;
+  const nameB = rounds[0].fighters[1].name;
+
+  // Round tabs
+  let tabs = '<div class="rviz-rounds">';
+  for (let i = 0; i < rounds.length; i++) {
+    const isFinish = (i === rounds.length - 1 && f.round === rounds.length && f.method && !f.method.includes('Decision'));
+    tabs += `<div class="rviz-round-tab${i === 0 ? ' rviz-active' : ''}${isFinish ? ' rviz-finish' : ''}" data-round="${i}">R${i + 1}</div>`;
+  }
+  tabs += '</div>';
+
+  // Panels for each round
+  let panels = '';
+  for (let i = 0; i < rounds.length; i++) {
+    const rd = rounds[i];
+    const fa = rd.fighters[0];
+    const fb = rd.fighters[1];
+
+    // Momentum: convert from [-1,1] per fighter to a tug-of-war percentage
+    // Positive momentum for A shifts bar left (more blue), positive for B shifts right (more red)
+    const momDiff = fa.momentum - fb.momentum;  // range -2 to 2
+    const momPctA = Math.round(Math.max(5, Math.min(95, 50 + momDiff * 25)));
+
+    // Stat comparison helper
+    function statBar(label, valA, valB, icon) {
+      const total = (valA + valB) || 1;
+      const pctA = Math.round((valA / total) * 100);
+      const pctB = 100 - pctA;
+      return `<div class="rviz-stat-row">
+        <span class="rviz-val rviz-val-a">${valA}</span>
+        <div class="rviz-bar-track"><div class="rviz-bar rviz-bar-a" style="width:${pctA}%"></div></div>
+        <span class="rviz-stat-label">${icon ? icon + ' ' : ''}${label}</span>
+        <div class="rviz-bar-track"><div class="rviz-bar rviz-bar-b" style="width:${pctB}%"></div></div>
+        <span class="rviz-val rviz-val-b">${valB}</span>
+      </div>`;
+    }
+
+    // Stamina level
+    function stamLevel(val) {
+      if (val >= 70) return 'high';
+      if (val >= 40) return 'mid';
+      return 'low';
+    }
+
+    // Total damage dealt this round
+    const dmgA = Math.round(fa.standing_damage_dealt + fa.ground_damage_dealt);
+    const dmgB = Math.round(fb.standing_damage_dealt + fb.ground_damage_dealt);
+
+    // Events
+    let eventsHtml = '';
+    if (rd.events && rd.events.length > 0) {
+      eventsHtml = '<div class="rviz-events">';
+      for (const evt of rd.events) {
+        let icon = '⚡', cls = 'sig';
+        const el = evt.toLowerCase();
+        if (el.includes('knockdown') || el.includes('drops')) { icon = '💀'; cls = 'kd'; }
+        else if (el.includes('submits') || el.includes('submission') || el.includes('locks')) { icon = '🔒'; cls = 'sub'; }
+        else if (el.includes('drags') || el.includes('takedown')) { icon = '⬇'; cls = 'td'; }
+        else if (el.includes('escapes')) { icon = '🔓'; cls = 'td'; }
+        else if (el.includes('stops') || el.includes('finishes')) { icon = '🏆'; cls = 'kd'; }
+        eventsHtml += `<div class="rviz-event"><span class="rviz-event-icon rviz-event-${cls}">${icon}</span><span class="rviz-event-text">${esc(evt)}</span></div>`;
+      }
+      eventsHtml += '</div>';
+    }
+
+    panels += `<div class="rviz-panel${i === 0 ? ' rviz-visible' : ''}" data-round="${i}">
+      <div class="rviz-section-label">MOMENTUM</div>
+      <div class="rviz-momentum-track">
+        <div class="rviz-momentum-fill" style="width:${momPctA}%"></div>
+        <div class="rviz-momentum-center"></div>
+      </div>
+      <div class="rviz-momentum-names">
+        <span class="rviz-name-a">${esc(nameA)}</span>
+        <span class="rviz-name-b">${esc(nameB)}</span>
+      </div>
+
+      <div class="rviz-section-label" style="margin-top:8px">ROUND STATS</div>
+      ${statBar('Sig. Strikes', fa.sig_strikes, fb.sig_strikes, '')}
+      ${statBar('Damage', dmgA, dmgB, '')}
+      ${statBar('Takedowns', fa.takedowns, fb.takedowns, '')}
+      ${fa.knockdowns + fb.knockdowns > 0 ? statBar('Knockdowns', fa.knockdowns, fb.knockdowns, '') : ''}
+
+      <div class="rviz-section-label" style="margin-top:8px">STAMINA</div>
+      <div class="rviz-stamina-row">
+        <span class="rviz-stamina-label rviz-name-a">${Math.round(fa.stamina)}%</span>
+        <div class="rviz-stamina-track"><div class="rviz-stamina-bar rviz-stamina-a" data-level="${stamLevel(fa.stamina)}" style="width:${fa.stamina}%"></div></div>
+        <div class="rviz-stamina-track"><div class="rviz-stamina-bar rviz-stamina-b" data-level="${stamLevel(fb.stamina)}" style="width:${fb.stamina}%"></div></div>
+        <span class="rviz-stamina-label rviz-name-b">${Math.round(fb.stamina)}%</span>
+      </div>
+
+      ${eventsHtml}
+    </div>`;
+  }
+
+  return `<div class="rviz-container">
+    ${tabs}
+    ${panels}
+  </div>`;
+}
+
+function initRoundStatsTabHandlers(container) {
+  container.querySelectorAll('.rviz-container').forEach(rviz => {
+    const tabs = rviz.querySelectorAll('.rviz-round-tab');
+    const panels = rviz.querySelectorAll('.rviz-panel');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const rd = tab.dataset.round;
+        tabs.forEach(t => t.classList.remove('rviz-active'));
+        panels.forEach(p => p.classList.remove('rviz-visible'));
+        tab.classList.add('rviz-active');
+        const panel = rviz.querySelector(`.rviz-panel[data-round="${rd}"]`);
+        if (panel) panel.classList.add('rviz-visible');
+      });
+    });
+  });
+}
+
 async function showAnimatedResults(result) {
   const header = document.getElementById('event-header');
   const cardBuilder = document.getElementById('event-card-builder');
@@ -2391,6 +2511,7 @@ async function showAnimatedResults(result) {
     card.className = 'result-fight-card anim-enter';
     const missedHtml = f.missed_weight ? f.missed_weight.map(m => `<div class="missed-weight-warning">MISSED WEIGHT: ${esc(m.fighter)} (fined ${formatCurrency(m.fine)})</div>`).join('') : '';
     const scorecardHtml = f.judge_breakdown ? buildScorecardHtml(f) : '';
+    const roundStatsHtml = buildRoundStatsHtml(f);
     card.innerHTML = `
       ${f.is_title_fight ? '<div class="title-banner gold">TITLE FIGHT</div>' : ''}
       ${missedHtml}
@@ -2405,8 +2526,10 @@ async function showAnimatedResults(result) {
       </div>
       <div class="result-narrative typewriter" data-text="${esc(f.narrative || '')}"></div>
       ${scorecardHtml}
+      ${roundStatsHtml}
     `;
     container.appendChild(card);
+    initRoundStatsTabHandlers(card);
 
     // Trigger enter animation
     requestAnimationFrame(() => card.classList.add('entered'));
@@ -2470,6 +2593,7 @@ function renderFinalResults(result, container) {
     const isWinnerA = f.winner_id === f.fighter_a_id;
     const missedHtml = f.missed_weight ? f.missed_weight.map(m => `<div class="missed-weight-warning">MISSED WEIGHT: ${esc(m.fighter)} (fined ${formatCurrency(m.fine)})</div>`).join('') : '';
     const scorecardHtml = f.judge_breakdown ? buildScorecardHtml(f) : '';
+    const roundStatsHtml = buildRoundStatsHtml(f);
     html += `
       <div class="result-fight-card entered ${f.is_title_fight ? 'title-fight' : ''}">
         ${f.is_title_fight ? '<div class="title-banner gold">TITLE FIGHT</div>' : ''}
@@ -2485,6 +2609,7 @@ function renderFinalResults(result, container) {
         </div>
         ${f.narrative ? `<div class="result-narrative">${esc(f.narrative)}</div>` : ''}
         ${scorecardHtml}
+        ${roundStatsHtml}
       </div>
     `;
   }
@@ -2505,6 +2630,7 @@ function renderFinalResults(result, container) {
     profit: result.profit,
   });
   container.innerHTML = html;
+  initRoundStatsTabHandlers(container);
 }
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }

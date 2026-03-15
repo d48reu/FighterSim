@@ -15,9 +15,11 @@ from typing import Optional
 # Data transfer objects (engine works with these, not ORM models directly)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FighterStats:
     """Lightweight snapshot of fighter attributes used during simulation."""
+
     id: int
     name: str
     striking: int
@@ -141,9 +143,26 @@ class FighterStats:
 # Round / fight result DTOs
 # ---------------------------------------------------------------------------
 
+
+@dataclass
+class RoundStats:
+    """Per-fighter snapshot captured at the end of each round."""
+
+    fighter_id: int
+    fighter_name: str
+    stamina: float = 100.0
+    standing_damage_dealt: float = 0.0
+    ground_damage_dealt: float = 0.0
+    sig_strikes_landed: int = 0
+    takedowns_landed: int = 0
+    knockdowns_scored: int = 0
+    momentum: float = 0.0
+
+
 @dataclass
 class RoundResult:
     """Outcome of a single round."""
+
     round_num: int
     winner_id: Optional[int] = None
     method: Optional[str] = None
@@ -151,11 +170,15 @@ class RoundResult:
     events: list[str] = field(default_factory=list)
     knockdowns: dict[int, int] = field(default_factory=dict)
     momentum_swings: list[str] = field(default_factory=list)
+    # Per-round tracking for visualization
+    stats: list[RoundStats] = field(default_factory=list)
+    takedowns: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass
 class FightResult:
     """Full fight outcome."""
+
     winner_id: int
     loser_id: int
     method: str
@@ -165,11 +188,15 @@ class FightResult:
     is_draw: bool = False
     total_knockdowns: dict[int, int] = field(default_factory=dict)
     judge_breakdown: Optional[list[dict]] = None  # per-judge scorecards for decisions
+    round_stats: list[dict] = field(
+        default_factory=list
+    )  # per-round visualization data
 
 
 # ---------------------------------------------------------------------------
 # Style matchup system
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class _StyleContext:
@@ -209,7 +236,9 @@ def _compute_style_context(a: FighterStats, b: FighterStats) -> _StyleContext:
         ctx.clinch_prob = 0.10
         ctx.style_narrative = "striking battle"
     # Wrestler vs Striker (either order)
-    elif (sa == "Wrestler" and sb == "Striker") or (sa == "Striker" and sb == "Wrestler"):
+    elif (sa == "Wrestler" and sb == "Striker") or (
+        sa == "Striker" and sb == "Wrestler"
+    ):
         ctx.clinch_prob = 0.30
         ctx.style_narrative = "takedown battle"
     # Grappler vs Grappler
@@ -241,10 +270,10 @@ MAX_ROUNDS_STANDARD = 3
 # ---------------------------------------------------------------------------
 
 CUT_PENALTIES: dict[str, dict[str, int]] = {
-    "easy":     {"stamina": 0,   "chin": 0},
-    "moderate": {"stamina": -3,  "chin": -2},
-    "severe":   {"stamina": -7,  "chin": -5},
-    "extreme":  {"stamina": -12, "chin": -8},
+    "easy": {"stamina": 0, "chin": 0},
+    "moderate": {"stamina": -3, "chin": -2},
+    "severe": {"stamina": -7, "chin": -5},
+    "extreme": {"stamina": -12, "chin": -8},
 }
 
 
@@ -298,9 +327,16 @@ def simulate_fight(
     style_ctx = _compute_style_context(a, b)
 
     round_results: list[RoundResult] = []
+    all_round_stats: list[dict] = []
     total_knockdowns: dict[int, int] = {a.id: 0, b.id: 0}
 
     for round_num in range(1, max_rounds + 1):
+        # Snapshot damage before this round so we can compute deltas
+        pre_standing_a = b.standing_damage  # damage dealt BY a = damage ON b
+        pre_ground_a = b.ground_damage
+        pre_standing_b = a.standing_damage  # damage dealt BY b = damage ON a
+        pre_ground_b = a.ground_damage
+
         # Per-round resets
         for f in (a, b):
             f.current_round = round_num
@@ -310,6 +346,70 @@ def simulate_fight(
             f.strikes_landed_this_round = 0
 
         result = _simulate_round(a, b, round_num, rng, style_ctx)
+
+        # Capture per-round stat snapshots for visualization
+        result.stats = [
+            RoundStats(
+                fighter_id=a.id,
+                fighter_name=a.name,
+                stamina=round(a.stamina, 1),
+                standing_damage_dealt=round(b.standing_damage - pre_standing_a, 1),
+                ground_damage_dealt=round(b.ground_damage - pre_ground_a, 1),
+                sig_strikes_landed=a.strikes_landed_this_round,
+                takedowns_landed=result.takedowns.get(a.id, 0),
+                knockdowns_scored=result.knockdowns.get(b.id, 0),
+                momentum=round(a.momentum, 2),
+            ),
+            RoundStats(
+                fighter_id=b.id,
+                fighter_name=b.name,
+                stamina=round(b.stamina, 1),
+                standing_damage_dealt=round(a.standing_damage - pre_standing_b, 1),
+                ground_damage_dealt=round(a.ground_damage - pre_ground_b, 1),
+                sig_strikes_landed=b.strikes_landed_this_round,
+                takedowns_landed=result.takedowns.get(b.id, 0),
+                knockdowns_scored=result.knockdowns.get(a.id, 0),
+                momentum=round(b.momentum, 2),
+            ),
+        ]
+
+        # Build serializable round stats dict
+        all_round_stats.append(
+            {
+                "round": round_num,
+                "fighters": [
+                    {
+                        "id": s.fighter_id,
+                        "name": s.fighter_name,
+                        "stamina": s.stamina,
+                        "standing_damage_dealt": s.standing_damage_dealt,
+                        "ground_damage_dealt": s.ground_damage_dealt,
+                        "sig_strikes": s.sig_strikes_landed,
+                        "takedowns": s.takedowns_landed,
+                        "knockdowns": s.knockdowns_scored,
+                        "momentum": s.momentum,
+                    }
+                    for s in result.stats
+                ],
+                "events": [
+                    e
+                    for e in result.events
+                    if any(
+                        kw in e.lower()
+                        for kw in (
+                            "knockdown",
+                            "submits",
+                            "submission",
+                            "stops",
+                            "finishes",
+                            "escapes",
+                            "drags",
+                        )
+                    )
+                ],
+            }
+        )
+
         round_results.append(result)
 
         # Accumulate knockdowns
@@ -319,7 +419,9 @@ def simulate_fight(
         if result.winner_id is not None:
             winner = a if result.winner_id == a.id else b
             loser = b if result.winner_id == a.id else a
-            narrative = _build_narrative(a, b, round_results, result.method, winner, style_ctx, total_knockdowns)
+            narrative = _build_narrative(
+                a, b, round_results, result.method, winner, style_ctx, total_knockdowns
+            )
             return FightResult(
                 winner_id=winner.id,
                 loser_id=loser.id,
@@ -328,15 +430,20 @@ def simulate_fight(
                 time_ended=result.time,
                 narrative=narrative,
                 total_knockdowns=total_knockdowns,
+                round_stats=all_round_stats,
             )
 
         _apply_round_fatigue(a, round_num)
         _apply_round_fatigue(b, round_num)
 
     # Judges' decision
-    winner, method, scorecards = _judges_decision(a, b, round_results, rng, total_knockdowns)
+    winner, method, scorecards = _judges_decision(
+        a, b, round_results, rng, total_knockdowns
+    )
     loser = b if winner.id == a.id else a
-    narrative = _build_narrative(a, b, round_results, method, winner, style_ctx, total_knockdowns)
+    narrative = _build_narrative(
+        a, b, round_results, method, winner, style_ctx, total_knockdowns
+    )
     return FightResult(
         winner_id=winner.id,
         loser_id=loser.id,
@@ -346,6 +453,7 @@ def simulate_fight(
         narrative=narrative,
         total_knockdowns=total_knockdowns,
         judge_breakdown=scorecards,
+        round_stats=all_round_stats,
     )
 
 
@@ -353,9 +461,13 @@ def simulate_fight(
 # Round simulation
 # ---------------------------------------------------------------------------
 
+
 def _simulate_round(
-    a: FighterStats, b: FighterStats, round_num: int,
-    rng: random.Random, style_ctx: _StyleContext,
+    a: FighterStats,
+    b: FighterStats,
+    round_num: int,
+    rng: random.Random,
+    style_ctx: _StyleContext,
 ) -> RoundResult:
     result = RoundResult(round_num=round_num)
     was_ground = False
@@ -410,9 +522,11 @@ def _simulate_round(
             if td_prob_a >= td_prob_b:
                 a.adjust_momentum(+0.15)
                 b.adjust_momentum(-0.05)
+                result.takedowns[a.id] = result.takedowns.get(a.id, 0) + 1
             else:
                 b.adjust_momentum(+0.15)
                 a.adjust_momentum(-0.05)
+                result.takedowns[b.id] = result.takedowns.get(b.id, 0) + 1
             _simulate_ground_tick(a, b, rng, result)
         elif clinch_roll < style_ctx.clinch_prob:
             _simulate_clinch_tick(a, b, rng, result, round_num, style_ctx)
@@ -467,9 +581,13 @@ def _simulate_round(
 # Striking
 # ---------------------------------------------------------------------------
 
+
 def _simulate_striking_tick(
-    a: FighterStats, b: FighterStats, rng: random.Random,
-    result: RoundResult, round_num: int = 1,
+    a: FighterStats,
+    b: FighterStats,
+    rng: random.Random,
+    result: RoundResult,
+    round_num: int = 1,
 ) -> None:
     # Determine initiative based on speed (+ fast_hands bonus)
     speed_a = a.speed + (8 if a._has("fast_hands") else 0)
@@ -487,8 +605,10 @@ def _simulate_striking_tick(
 
 
 def _process_strike(
-    attacker: FighterStats, defender: FighterStats,
-    rng: random.Random, result: RoundResult,
+    attacker: FighterStats,
+    defender: FighterStats,
+    rng: random.Random,
+    result: RoundResult,
     is_initiator: bool = False,
 ) -> None:
     hit_prob = _hit_probability(attacker, defender)
@@ -538,8 +658,12 @@ def _process_strike(
             defender.knockdowns_suffered += 1
             defender.round_knockdowns += 1
             result.knockdowns[defender.id] = result.knockdowns.get(defender.id, 0) + 1
-            result.events.append(f"{attacker.name} scores a knockdown on {defender.name}!")
-            result.momentum_swings.append(f"Knockdown: {attacker.name} drops {defender.name}")
+            result.events.append(
+                f"{attacker.name} scores a knockdown on {defender.name}!"
+            )
+            result.momentum_swings.append(
+                f"Knockdown: {attacker.name} drops {defender.name}"
+            )
 
             # Momentum swing for knockdown
             attacker.adjust_momentum(+0.30)
@@ -549,14 +673,18 @@ def _process_strike(
             if rng.random() < 0.12:
                 result.winner_id = attacker.id
                 result.method = "KO/TKO"
-                result.events.append(f"Referee stops the fight! {attacker.name} wins by TKO after knockdown")
+                result.events.append(
+                    f"Referee stops the fight! {attacker.name} wins by TKO after knockdown"
+                )
                 return
 
             # Double knockdown in same round: auto TKO
             if defender.round_knockdowns >= 2:
                 result.winner_id = attacker.id
                 result.method = "KO/TKO"
-                result.events.append(f"Second knockdown in the round! {attacker.name} wins by TKO")
+                result.events.append(
+                    f"Second knockdown in the round! {attacker.name} wins by TKO"
+                )
                 return
 
     # Knockout artist: small per-strike chance of bonus impact
@@ -568,9 +696,13 @@ def _process_strike(
 # Clinch
 # ---------------------------------------------------------------------------
 
+
 def _simulate_clinch_tick(
-    a: FighterStats, b: FighterStats, rng: random.Random,
-    result: RoundResult, round_num: int = 1,
+    a: FighterStats,
+    b: FighterStats,
+    rng: random.Random,
+    result: RoundResult,
+    round_num: int = 1,
     style_ctx: Optional[_StyleContext] = None,
 ) -> None:
     if rng.random() < 0.5:
@@ -598,7 +730,9 @@ def _simulate_clinch_tick(
         if wrestler and rng.random() < 0.40:
             td_prob = _takedown_probability(wrestler, opponent) + 0.10
             if rng.random() < td_prob:
-                result.events.append(f"{wrestler.name} drags {opponent.name} down from the clinch")
+                result.events.append(
+                    f"{wrestler.name} drags {opponent.name} down from the clinch"
+                )
                 wrestler.adjust_momentum(+0.15)
                 _simulate_ground_tick(a, b, rng, result)
 
@@ -606,6 +740,7 @@ def _simulate_clinch_tick(
 # ---------------------------------------------------------------------------
 # Ground
 # ---------------------------------------------------------------------------
+
 
 def _simulate_ground_tick(
     a: FighterStats, b: FighterStats, rng: random.Random, result: RoundResult
@@ -634,8 +769,12 @@ def _simulate_ground_tick(
     sub_rate = 0.32 if attacker.effective_grappling() > 80 else 0.22
     if rng.random() < sub_rate:
         # Escape probability
-        escape_prob = (defender.effective_grappling() * 0.7 + defender.effective_wrestling() * 0.3) / 180
-        escape_prob = max(0.22, escape_prob)  # minimum floor — no fighter is completely helpless
+        escape_prob = (
+            defender.effective_grappling() * 0.7 + defender.effective_wrestling() * 0.3
+        ) / 180
+        escape_prob = max(
+            0.22, escape_prob
+        )  # minimum floor — no fighter is completely helpless
 
         # Penalties/bonuses to escape
         if defender.is_hurt:
@@ -671,6 +810,7 @@ def _simulate_ground_tick(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _takedown_probability(a: FighterStats, b: FighterStats) -> float:
     shoot = (a.effective_wrestling() / 100) * 0.20
     defense = (b.effective_wrestling() / 100) * 0.12
@@ -687,7 +827,9 @@ def _hit_probability(attacker: FighterStats, defender: FighterStats) -> float:
     return max(0.15, min(0.85, prob))
 
 
-def _strike_damage(attacker: FighterStats, defender: FighterStats, rng: random.Random) -> float:
+def _strike_damage(
+    attacker: FighterStats, defender: FighterStats, rng: random.Random
+) -> float:
     power = attacker.effective_striking() / 100
     chin_reduction = defender.chin / 100
     base = rng.uniform(4, 14)
@@ -718,14 +860,17 @@ def _apply_round_fatigue(fighter: FighterStats, completed_round: int) -> None:
 # Judges' decision — per-judge scoring with bias profiles
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class JudgeProfile:
     """A judge with specific scoring biases."""
+
     name: str
-    striking_bias: float = 0.0   # bonus weight on striking damage
+    striking_bias: float = 0.0  # bonus weight on striking damage
     grappling_bias: float = 0.0  # bonus weight on ground damage
-    aggression_bias: float = 0.0 # bonus for forward pressure (momentum)
-    damage_bias: float = 0.0     # bonus for raw damage dealt
+    aggression_bias: float = 0.0  # bonus for forward pressure (momentum)
+    damage_bias: float = 0.0  # bonus for raw damage dealt
+
 
 JUDGE_POOL: list[JudgeProfile] = [
     JudgeProfile(name="Garcia", striking_bias=0.20, damage_bias=0.10),
@@ -798,12 +943,14 @@ def _judges_decision(
 
     for judge in judges:
         sa, sb = _judge_score_fight(judge, a, b, total_knockdowns, rng)
-        scorecards.append({
-            "judge": judge.name,
-            "score_a": sa,
-            "score_b": sb,
-            "winner_id": a.id if sa > sb else b.id,
-        })
+        scorecards.append(
+            {
+                "judge": judge.name,
+                "score_a": sa,
+                "score_b": sb,
+                "winner_id": a.id if sa > sb else b.id,
+            }
+        )
         if sa > sb:
             a_wins += 1
 
@@ -861,7 +1008,9 @@ def _build_narrative(
     total_knockdowns: Optional[dict[int, int]] = None,
 ) -> str:
     loser = b if winner.id == a.id else a
-    templates = _NARRATIVE_TEMPLATES.get(method, ["A competitive fight ended with {winner} defeating {loser}."])
+    templates = _NARRATIVE_TEMPLATES.get(
+        method, ["A competitive fight ended with {winner} defeating {loser}."]
+    )
     template = random.choice(templates)
     text = template.format(
         winner=winner.name,
@@ -875,7 +1024,9 @@ def _build_narrative(
         for fid, count in total_knockdowns.items():
             if count > 0:
                 name = a.name if fid == a.id else b.name
-                kd_parts.append(f"{name} was knocked down {count} time{'s' if count > 1 else ''}")
+                kd_parts.append(
+                    f"{name} was knocked down {count} time{'s' if count > 1 else ''}"
+                )
         if kd_parts:
             text += " " + ". ".join(kd_parts) + "."
 

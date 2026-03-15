@@ -4161,3 +4161,155 @@ tbody td { padding: 9px 10px; }
 .league-history-section h3 {
   color: var(--color-accent-secondary, #f4a261);
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Round-by-Round Fight Visualization (.rviz-)
+   Sits inside .result-fight-card below the fight narrative.
+   Class names match the JS in app.js buildRoundStatsHtml().
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Container ─── */
+.rviz-container {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── Round Tabs ─── */
+.rviz-rounds { display: flex; gap: 4px; margin-bottom: 10px; }
+
+.rviz-round-tab {
+  flex: 1; padding: 5px 0;
+  background: var(--bg-surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-secondary); font-family: var(--font-display); font-size: var(--fs-caption);
+  font-weight: 600; text-align: center; cursor: pointer; user-select: none; line-height: 1;
+  transition: all var(--duration-normal) var(--ease-out);
+}
+.rviz-round-tab:hover { background: rgba(96,165,250,0.08); border-color: rgba(96,165,250,0.25); color: var(--text); }
+.rviz-round-tab.rviz-active { background: rgba(96,165,250,0.12); border-color: var(--info); color: var(--info); box-shadow: 0 0 6px rgba(96,165,250,0.15); }
+.rviz-round-tab.rviz-finish { border-color: var(--accent); color: var(--accent); background: rgba(230,57,70,0.10); }
+.rviz-round-tab.rviz-finish.rviz-active { box-shadow: 0 0 8px rgba(230,57,70,0.2); }
+
+/* ─── Round Panel ─── */
+.rviz-panel { display: none; }
+.rviz-panel.rviz-visible { display: block; animation: rviz-fade-in var(--duration-normal) var(--ease-out); }
+@keyframes rviz-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ─── Section Labels ─── */
+.rviz-section-label {
+  font-family: var(--font-display); font-size: var(--fs-label); font-weight: 600;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+}
+
+/* ─── Momentum Tug-of-War Bar ─── */
+.rviz-momentum-track {
+  position: relative; height: 10px; background: var(--bg-surface-2);
+  border-radius: 5px; overflow: hidden; border: 1px solid var(--border);
+}
+.rviz-momentum-fill {
+  position: absolute; top: 0; left: 0; height: 100%; border-radius: 5px 0 0 5px;
+  background: linear-gradient(90deg, var(--info) 0%, rgba(96,165,250,0.6) 100%);
+  transition: width var(--duration-slow) var(--ease-out); z-index: 1;
+}
+.rviz-momentum-track::after {
+  content: ''; position: absolute; top: 0; right: 0; height: 100%; width: 100%;
+  border-radius: 0 5px 5px 0;
+  background: linear-gradient(270deg, var(--accent) 0%, rgba(230,57,70,0.5) 50%, transparent 100%);
+  pointer-events: none; z-index: 0;
+}
+.rviz-momentum-center,
+.rviz-momentum-track::before {
+  content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 100%;
+  background: rgba(240,240,245,0.25); z-index: 2;
+}
+.rviz-momentum-center { position: absolute; }
+
+.rviz-momentum-names { display: flex; justify-content: space-between; margin-top: 3px; margin-bottom: 6px; }
+.rviz-name-a { font-family: var(--font-display); font-size: var(--fs-label); font-weight: 600; color: var(--info); }
+.rviz-name-b { font-family: var(--font-display); font-size: var(--fs-label); font-weight: 600; color: var(--accent); }
+
+/* ─── Stat Comparison Bars ─── */
+.rviz-stat-row {
+  display: grid; grid-template-columns: 36px 1fr 72px 1fr 36px;
+  align-items: center; gap: 0; height: 18px; margin-bottom: 2px;
+}
+
+.rviz-val { font-family: var(--font-display); font-size: var(--fs-caption); font-weight: 700; line-height: 1; }
+.rviz-val-a { text-align: right; color: var(--info); padding-right: 4px; }
+.rviz-val-b { text-align: left; color: var(--accent); padding-left: 4px; }
+
+.rviz-stat-label {
+  text-align: center; font-family: var(--font-body); font-size: var(--fs-micro);
+  font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+}
+
+.rviz-bar-track {
+  position: relative; height: 6px; background: var(--bg-surface-2); border-radius: 3px; overflow: hidden;
+}
+.rviz-bar {
+  display: block; height: 100%; border-radius: 3px;
+  transition: width var(--duration-slow) var(--ease-out);
+}
+.rviz-bar-a { background: linear-gradient(270deg, var(--info), rgba(96,165,250,0.5)); float: right; }
+.rviz-bar-b { background: linear-gradient(90deg, var(--accent), rgba(230,57,70,0.5)); }
+
+/* ─── Stamina Gauges ─── */
+.rviz-stamina-row {
+  display: grid; grid-template-columns: 40px 1fr 1fr 40px;
+  align-items: center; gap: 6px; margin-bottom: 6px;
+}
+.rviz-stamina-label { font-family: var(--font-display); font-size: var(--fs-label); font-weight: 700; }
+.rviz-stamina-label.rviz-name-a { text-align: right; }
+.rviz-stamina-label.rviz-name-b { text-align: left; }
+
+.rviz-stamina-track {
+  height: 5px; background: var(--bg-surface-2); border-radius: 3px; overflow: hidden; border: 1px solid var(--border);
+}
+.rviz-stamina-bar {
+  height: 100%; border-radius: 3px;
+  transition: width var(--duration-slow) var(--ease-out), background-color var(--duration-slow) var(--ease-out);
+}
+.rviz-stamina-bar[data-level="high"] { background: linear-gradient(90deg, var(--positive), rgba(52,211,153,0.6)); }
+.rviz-stamina-bar[data-level="mid"]  { background: linear-gradient(90deg, var(--warning), rgba(251,191,36,0.6)); }
+.rviz-stamina-bar[data-level="low"]  { background: linear-gradient(90deg, var(--negative), rgba(248,113,113,0.6)); }
+.rviz-stamina-a { float: right; }
+
+/* ─── Key Events Timeline ─── */
+.rviz-events { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+
+.rviz-event {
+  display: flex; align-items: center; gap: 6px; padding: 3px 6px;
+  background: rgba(34,34,46,0.6); border-radius: var(--radius-sm);
+  border-left: 2px solid var(--border);
+  transition: background var(--duration-normal) var(--ease-out);
+}
+.rviz-event:hover { background: rgba(34,34,46,0.9); }
+
+.rviz-event-icon {
+  flex-shrink: 0; width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; line-height: 1; border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+}
+.rviz-event-kd .rviz-event-icon  { color: var(--negative); }
+.rviz-event-sub .rviz-event-icon { color: var(--warning); }
+.rviz-event-td .rviz-event-icon  { color: var(--positive); }
+.rviz-event-sig .rviz-event-icon { color: var(--info); }
+
+.rviz-event-text { font-family: var(--font-body); font-size: var(--fs-label); color: var(--text-secondary); line-height: 1.3; }
+
+/* ─── Responsive ─── */
+@media (max-width: 480px) {
+  .rviz-stat-row { grid-template-columns: 28px 1fr 48px 1fr 28px; height: 16px; }
+  .rviz-val { font-size: var(--fs-micro); }
+  .rviz-stat-label { font-size: 9px; }
+  .rviz-round-tab { padding: 4px 0; font-size: var(--fs-label); }
+}
+
+/* ─── Bar entrance animation ─── */
+@keyframes rviz-bar-grow { from { width: 0 !important; } }
+.rviz-panel.rviz-visible .rviz-bar,
+.rviz-panel.rviz-visible .rviz-momentum-fill,
+.rviz-panel.rviz-visible .rviz-stamina-bar {
+  animation: rviz-bar-grow var(--duration-slow) var(--ease-out);
+}

@@ -1074,6 +1074,7 @@ def _run_simulate_event(task_id: str, seed: int) -> None:
                             "round": result.round_ended,
                             "time": result.time_ended,
                             "narrative": result.narrative,
+                            "round_stats": result.round_stats,
                         }
                     )
 
@@ -3549,6 +3550,7 @@ def _run_simulate_player_event(task_id: str, event_id: int, seed: int) -> None:
                         if missed_weight_info
                         else None,
                         "judge_breakdown": result.judge_breakdown,
+                        "round_stats": result.round_stats,
                     }
                 )
 
