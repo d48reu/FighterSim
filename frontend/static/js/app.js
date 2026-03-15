@@ -1248,9 +1248,17 @@ async function loadRankings(weightClass) {
   });
 
   const tbody = document.getElementById('rankings-tbody');
+  const titlePictureEl = document.getElementById('title-picture');
   tbody.innerHTML = '<tr><td colspan="5" class="muted">Loading...</td></tr>';
   try {
-    const rankings = sortCollection(await api(`/api/rankings/${encodeURIComponent(weightClass)}`), 'rankings');
+    const [rankingsRaw, titlePicture] = await Promise.all([
+      api(`/api/rankings/${encodeURIComponent(weightClass)}`),
+      api(`/api/title-picture/${encodeURIComponent(weightClass)}`),
+    ]);
+    const rankings = sortCollection(rankingsRaw, 'rankings');
+    if (window.MarketUi?.renderTitlePicture) {
+      titlePictureEl.innerHTML = window.MarketUi.renderTitlePicture(titlePicture);
+    }
     if (rankings.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" class="muted">No rankings available.</td></tr>';
       return;
@@ -1266,6 +1274,7 @@ async function loadRankings(weightClass) {
     `).join('');
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="5" class="muted">Error: ${esc(err.message)}</td></tr>`;
+    titlePictureEl.innerHTML = `<div class="decision-center-empty">Error: ${esc(err.message)}</div>`;
   }
 }
 

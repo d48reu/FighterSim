@@ -125,6 +125,10 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
     def get_rankings(weight_class: str):
         return jsonify(services.get_rankings_for_class(weight_class))
 
+    @app.route("/api/title-picture/<weight_class>")
+    def title_picture(weight_class: str):
+        return jsonify(services.get_title_picture(weight_class))
+
     # ------------------------------------------------------------------
     # Event booking
     # ------------------------------------------------------------------

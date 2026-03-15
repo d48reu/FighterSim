@@ -186,6 +186,47 @@
     `;
   }
 
+  function renderTitlePicture(titlePicture) {
+    if (!titlePicture) return '';
+    const champion = titlePicture.champion;
+    const contenders = (titlePicture.contenders || []).map((c) => `
+      <div class="title-contender-row">
+        <span><strong>#${c.rank}</strong> ${esc(c.name)}</span>
+        <span class="muted">${esc(c.record)} · ${c.overall} OVR</span>
+      </div>
+    `).join('') || '<div class="decision-center-empty">No contenders yet.</div>';
+    const eliminator = titlePicture.title_eliminator
+      ? `<div class="title-eliminator-box">
+          <div class="title-eliminator-title">Title Eliminator</div>
+          <div class="title-eliminator-matchup">${esc(titlePicture.title_eliminator.fighter_a.name)} vs ${esc(titlePicture.title_eliminator.fighter_b.name)}</div>
+          <div class="title-eliminator-meta">${esc(titlePicture.title_eliminator.booking_value || 'Unclear')} · ${esc(titlePicture.title_eliminator.competitiveness || 'Unknown')}</div>
+        </div>`
+      : '<div class="decision-center-empty">No eliminator recommendation yet.</div>';
+    const politics = (titlePicture.politics || []).map((note) => `<div class="market-reason">${esc(note)}</div>`).join('');
+
+    return `
+      <div class="title-picture-grid">
+        <div class="market-card">
+          <div class="market-card-title">Champion</div>
+          ${champion ? `<div class="booking-rec-matchup">${esc(champion.name)}</div><div class="booking-rec-meta">${esc(champion.record)} · ${champion.overall} OVR</div>` : '<div class="decision-center-empty">No champion yet.</div>'}
+        </div>
+        <div class="market-card">
+          <div class="market-card-title">Division Heat</div>
+          <div class="market-recommendation-badge tone-overpay">${esc(titlePicture.division_heat?.label || 'Cold')}</div>
+          <div class="market-card-summary">${esc(titlePicture.division_heat?.reason || '')}</div>
+          <div class="title-politics-list">${politics}</div>
+        </div>
+        <div class="market-card">
+          <div class="market-card-title">Contenders</div>
+          ${contenders}
+        </div>
+        <div class="market-card">
+          ${eliminator}
+        </div>
+      </div>
+    `;
+  }
+
   function renderNegotiationProfile(profile) {
     if (!profile) return '';
     return `
@@ -250,6 +291,7 @@
     renderBookingRecommendations,
     renderScoutingBoard,
     renderRivalIntel,
+    renderTitlePicture,
     renderNegotiationProfile,
     renderMarketContextCard,
     renderOfferEvaluation,
