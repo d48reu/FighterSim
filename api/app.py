@@ -259,6 +259,10 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
         limit = int(request.args.get("limit", 15))
         return jsonify(services.get_news_feed(limit))
 
+    @app.route("/api/media/storylines")
+    def media_storylines():
+        return jsonify(services.get_media_storylines())
+
     @app.route("/api/fighters/<int:fighter_id>/timeline")
     def fighter_timeline(fighter_id: int):
         result = services.get_fighter_timeline(fighter_id)

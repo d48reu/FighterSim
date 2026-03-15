@@ -1285,6 +1285,66 @@ def get_news_feed(limit: int = 15) -> list[dict]:
         ]
 
 
+def get_media_storylines() -> list[dict]:
+    storylines = []
+
+    rivalries = get_rivalries()
+    if rivalries:
+        rivalry = rivalries[0]
+        storylines.append(
+            {
+                "type": "rivalry",
+                "headline": f"{rivalry['fighter_a']['name']} vs {rivalry['fighter_b']['name']} is heating up again.",
+                "angle": f"Grudge match brewing in {rivalry['weight_class']}.",
+                "urgency": "High",
+            }
+        )
+
+    for weight_class in [wc.value for wc in WeightClass]:
+        title_picture = get_title_picture(weight_class)
+        if title_picture.get("division_heat", {}).get("label") == "Boiling":
+            storylines.append(
+                {
+                    "type": "title",
+                    "headline": f"{weight_class} title picture is boiling over.",
+                    "angle": title_picture["division_heat"]["reason"],
+                    "urgency": "High",
+                }
+            )
+            break
+
+    scouting = get_scouting_board()
+    if scouting.get("featured_prospects"):
+        prospect = scouting["featured_prospects"][0]
+        storylines.append(
+            {
+                "type": "prospect",
+                "headline": f"{prospect['name']} is building quiet momentum.",
+                "angle": prospect.get("scouting_report", {}).get(
+                    "fog_note", "Scouts think the ceiling is rising."
+                ),
+                "urgency": prospect.get("scouting_report", {}).get(
+                    "confidence_label", "Medium"
+                ),
+            }
+        )
+
+    rival = get_rival_info()
+    rival_data = rival.get("rival") if isinstance(rival, dict) else None
+    if rival_data and rival_data.get("top_targets"):
+        target = rival_data["top_targets"][0]
+        storylines.append(
+            {
+                "type": "poaching",
+                "headline": f"{rival_data['name']} is circling {target['name']}.",
+                "angle": target["reason"],
+                "urgency": "Medium",
+            }
+        )
+
+    return storylines[:4]
+
+
 def get_fighter_timeline(fighter_id: int) -> Optional[dict]:
     """Return chronological fight history with running record for a fighter."""
     from sqlalchemy import or_

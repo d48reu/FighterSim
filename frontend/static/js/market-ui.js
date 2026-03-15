@@ -258,6 +258,23 @@
     `;
   }
 
+  function renderMediaStorylines(storylines) {
+    const entries = Array.isArray(storylines) ? storylines : [];
+    if (!entries.length) {
+      return '<div class="decision-center-empty">No storyline pressure right now.</div>';
+    }
+    return entries.map((story) => `
+      <div class="media-story-card ${esc(story.type || 'general')}">
+        <div class="media-story-top">
+          <span class="media-story-urgency">${esc(story.urgency || 'Medium')}</span>
+          <span class="media-story-type">${esc(story.type || 'story')}</span>
+        </div>
+        <div class="media-story-headline">${esc(story.headline || '')}</div>
+        <div class="media-story-angle">${esc(story.angle || '')}</div>
+      </div>
+    `).join('');
+  }
+
   function renderTitlePicture(titlePicture) {
     if (!titlePicture) return '';
     const champion = titlePicture.champion;
@@ -386,6 +403,7 @@
     renderRivalIntel,
     renderObjectivesWidget,
     renderSmartAssistantWidget,
+    renderMediaStorylines,
     renderTitlePicture,
     renderNegotiationProfile,
     renderRelationshipMemory,
