@@ -1382,6 +1382,99 @@ def get_roster_decision_center() -> dict:
         }
 
 
+def get_scouting_board() -> dict:
+    free_agents = get_free_agents()
+    decision_center = get_roster_decision_center()
+
+    featured_prospects = sorted(
+        [agent for agent in free_agents if agent["age"] <= 24],
+        key=lambda agent: (
+            agent["overall"],
+            agent.get("market_context", {}).get("ai_interest_score", 0),
+        ),
+        reverse=True,
+    )[:5]
+
+    under_the_radar = sorted(
+        [
+            agent
+            for agent in free_agents
+            if agent["popularity"] <= 35
+            and agent["overall"] >= 70
+            and agent["age"] <= 28
+        ],
+        key=lambda agent: (
+            agent["overall"],
+            -agent["popularity"],
+            agent.get("market_context", {}).get("ai_interest_score", 0),
+        ),
+        reverse=True,
+    )[:5]
+
+    ready_now = sorted(
+        [
+            agent
+            for agent in free_agents
+            if 25 <= agent["age"] <= 31
+            and (agent["overall"] >= 77 or agent["hype"] >= 60)
+        ],
+        key=lambda agent: (
+            agent.get("market_context", {}).get("booking_value")
+            in {"Strong Main Event", "Strong Co-Main"},
+            agent["hype"],
+            agent["overall"],
+        ),
+        reverse=True,
+    )[:5]
+
+    division_targets = []
+    for outlook in decision_center.get("division_outlook", []):
+        if outlook.get("recommendation", {}).get("label") == "Stable":
+            continue
+        candidates = [
+            agent
+            for agent in free_agents
+            if agent["weight_class"] == outlook["weight_class"]
+        ]
+        if not candidates:
+            continue
+        target = max(
+            candidates,
+            key=lambda agent: (
+                agent.get("recommendation", {}).get("label") == "Buy Now",
+                agent.get("market_context", {}).get("ai_interest_score", 0),
+                agent["overall"],
+            ),
+        )
+        division_targets.append(
+            {
+                "id": target["id"],
+                "name": target["name"],
+                "weight_class": target["weight_class"],
+                "meta": f"{target['weight_class']} · OVR {target['overall']} · {target['record']}",
+                "recommendation": target.get("recommendation"),
+                "reason": outlook["recommendation"]["reason"],
+            }
+        )
+
+    def to_card(agent: dict) -> dict:
+        return {
+            "id": agent["id"],
+            "name": agent["name"],
+            "weight_class": agent["weight_class"],
+            "meta": f"{agent['weight_class']} · OVR {agent['overall']} · age {agent['age']}",
+            "recommendation": agent.get("recommendation"),
+            "reason": agent.get("recommendation", {}).get("reason"),
+        }
+
+    return {
+        "featured_prospects": [to_card(agent) for agent in featured_prospects],
+        "under_the_radar": [to_card(agent) for agent in under_the_radar],
+        "ready_now": [to_card(agent) for agent in ready_now],
+        "division_targets": division_targets[:5],
+    }
+
+
 def renew_contract(
     fighter_id: int, salary: float, fight_count: int, length_months: int
 ) -> dict:

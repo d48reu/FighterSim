@@ -203,6 +203,7 @@ function loadView(view) {
   if (view === 'broadcast')    loadBroadcastView();
   if (view === 'show')          loadShowView();
   if (view === 'free-agents')  loadFreeAgents();
+  if (view === 'scouting')     loadScoutingView();
   if (view === 'rankings')     loadRankings(state.currentWeightClass);
   if (view === 'hof')          loadHallOfFame();
 }
@@ -1026,6 +1027,21 @@ async function loadRosterDecisionCenter() {
     ].join('');
   } catch (err) {
     el.innerHTML = '<div class="decision-center-column"><div class="decision-center-title">Decision Center</div><div class="decision-center-empty">Error loading decision center.</div></div>';
+  }
+}
+
+async function loadScoutingView() {
+  const el = document.getElementById('scouting-board');
+  if (!el) return;
+  try {
+    const board = await api('/api/scouting/board');
+    if (!window.MarketUi?.renderScoutingBoard) {
+      el.innerHTML = '';
+      return;
+    }
+    el.innerHTML = window.MarketUi.renderScoutingBoard(board);
+  } catch (err) {
+    el.innerHTML = '<div class="decision-center-column"><div class="decision-center-title">Scouting</div><div class="decision-center-empty">Error loading scouting board.</div></div>';
   }
 }
 

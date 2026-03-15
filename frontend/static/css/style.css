@@ -2732,6 +2732,11 @@ tbody td { padding: 9px 10px; }
   margin-top: 4px;
 }
 
+.scouting-subtitle {
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
 .booking-recommendations {
   margin-top: 14px;
   display: flex;

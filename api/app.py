@@ -527,6 +527,10 @@ def create_app(db_url: str = "sqlite:///mma_test.db") -> Flask:
             services.get_free_agents(weight_class, style, min_overall, sort_by)
         )
 
+    @app.route("/api/scouting/board")
+    def scouting_board():
+        return jsonify(services.get_scouting_board())
+
     @app.route("/api/roster")
     def list_roster():
         return jsonify(services.get_roster())

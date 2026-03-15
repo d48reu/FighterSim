@@ -155,6 +155,15 @@
     `).join('');
   }
 
+  function renderScoutingBoard(board) {
+    return [
+      renderDecisionCenterColumn('Featured Prospects', board?.featured_prospects || []),
+      renderDecisionCenterColumn('Under the Radar', board?.under_the_radar || []),
+      renderDecisionCenterColumn('Immediate Options', board?.ready_now || []),
+      renderDecisionCenterColumn('Division Targets', board?.division_targets || []),
+    ].join('');
+  }
+
   function renderOfferEvaluation(offerEvaluation) {
     if (!offerEvaluation) return '';
 
@@ -196,6 +205,7 @@
     renderCompactMarketLine,
     renderDecisionCenterColumn,
     renderBookingRecommendations,
+    renderScoutingBoard,
     renderMarketContextCard,
     renderOfferEvaluation,
   };
