@@ -162,3 +162,7 @@ def test_smart_assistant_actions_surface_best_move_categories(tmp_path):
     assert actions["best_signing"]["fighter_name"] == "Buy Candidate"
     assert actions["best_renewal"]["fighter_name"] == "Core Prospect"
     assert actions["biggest_risk"]["fighter_name"] in {"Core Prospect", "Aging Vet"}
+    assert actions["best_signing"]["action"]["kind"] == "open_free_agent"
+    assert actions["best_renewal"]["action"]["kind"] == "open_renewal"
+    assert actions["best_booking"]["action"]["kind"] == "prepare_booking"
+    assert actions["biggest_risk"]["action"]["kind"] == "open_roster_fighter"

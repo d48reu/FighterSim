@@ -316,8 +316,97 @@ async function loadAssistantWidget() {
     content.innerHTML = window.MarketUi?.renderSmartAssistantWidget
       ? window.MarketUi.renderSmartAssistantWidget(data)
       : '';
+    content.querySelectorAll('.assistant-execute-btn').forEach(btn => {
+      btn.addEventListener('click', () => executeAssistantAction({
+        kind: btn.dataset.actionKind,
+        fighter_id: btn.dataset.fighterId ? Number(btn.dataset.fighterId) : null,
+        fighter_a_id: btn.dataset.fighterAId ? Number(btn.dataset.fighterAId) : null,
+        fighter_b_id: btn.dataset.fighterBId ? Number(btn.dataset.fighterBId) : null,
+      }));
+    });
   } catch (err) {
     // silent
+  }
+}
+
+async function executeAssistantAction(action) {
+  if (!action?.kind) return;
+  try {
+    if (action.kind === 'open_free_agent' && action.fighter_id) {
+      const agents = await api('/api/free-agents');
+      const fighter = agents.find(f => f.id === action.fighter_id);
+      navigate('free-agents');
+      if (!fighter) {
+        setStatus('Assistant target is no longer available.', true);
+        return;
+      }
+      state.panelContext = 'free-agents';
+      await showFighterPanel(action.fighter_id, {
+        asking_salary: fighter.asking_salary,
+        asking_fights: fighter.asking_fights,
+        asking_length_months: fighter.asking_length_months,
+        market_context: fighter.market_context || null,
+        recommendation: fighter.recommendation || null,
+      });
+      setStatus('Opened the recommended signing target.');
+      return;
+    }
+
+    if (action.kind === 'open_renewal' && action.fighter_id) {
+      const roster = await api('/api/roster');
+      const fighter = roster.find(f => f.id === action.fighter_id);
+      navigate('roster');
+      if (!fighter) {
+        setStatus('Assistant renewal target is no longer on roster.', true);
+        return;
+      }
+      state.panelContext = 'roster';
+      await showFighterPanel(action.fighter_id, {
+        salary: fighter.salary,
+        fights_remaining: fighter.fights_remaining,
+        fight_count_total: fighter.fight_count_total,
+        expiry_date: fighter.expiry_date,
+        market_context: fighter.market_context || null,
+        recommendation: fighter.recommendation || null,
+      });
+      setTimeout(() => document.getElementById('btn-show-renew')?.click(), 0);
+      setStatus('Opened the recommended renewal target.');
+      return;
+    }
+
+    if (action.kind === 'prepare_booking' && action.fighter_a_id && action.fighter_b_id) {
+      navigate('events');
+      await loadEventsView();
+      state.selectedFighterA = action.fighter_a_id;
+      state.selectedFighterB = action.fighter_b_id;
+      renderFighterPool();
+      updateMatchupButton();
+      await loadMatchupCompare();
+      setStatus('Prepared the recommended matchup in the event builder.');
+      return;
+    }
+
+    if (action.kind === 'open_roster_fighter' && action.fighter_id) {
+      const roster = await api('/api/roster');
+      const fighter = roster.find(f => f.id === action.fighter_id);
+      navigate('roster');
+      if (!fighter) {
+        setStatus('Assistant risk target is no longer on roster.', true);
+        return;
+      }
+      state.panelContext = 'roster';
+      await showFighterPanel(action.fighter_id, {
+        salary: fighter.salary,
+        fights_remaining: fighter.fights_remaining,
+        fight_count_total: fighter.fight_count_total,
+        expiry_date: fighter.expiry_date,
+        market_context: fighter.market_context || null,
+        recommendation: fighter.recommendation || null,
+      });
+      setStatus('Opened the highest-risk roster situation.');
+    }
+  } catch (err) {
+    setStatus('Assistant action failed: ' + err.message, true);
   }
 }
 

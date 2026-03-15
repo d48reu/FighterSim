@@ -719,6 +719,10 @@ def get_smart_assistant_actions() -> dict:
             "detail": best_signing_source.get("recommendation", {}).get("label")
             or best_signing_source.get("meta")
             or "Hold your cash.",
+            "action": {
+                "kind": "open_free_agent",
+                "fighter_id": best_signing_source.get("id"),
+            },
         },
         "best_renewal": {
             "label": "Best Renewal",
@@ -731,6 +735,10 @@ def get_smart_assistant_actions() -> dict:
             "detail": best_renewal_source.get("recommendation", {}).get("label")
             or best_renewal_source.get("meta")
             or "No major pressure.",
+            "action": {
+                "kind": "open_renewal",
+                "fighter_id": best_renewal_source.get("id"),
+            },
         },
         "best_booking": {
             "label": "Best Booking",
@@ -741,6 +749,11 @@ def get_smart_assistant_actions() -> dict:
                 else "No standout booking recommendation right now."
             ),
             "detail": booking_source.get("booking_value") or "Build more matchups.",
+            "action": {
+                "kind": "prepare_booking",
+                "fighter_a_id": booking_source.get("fighter_a_id"),
+                "fighter_b_id": booking_source.get("fighter_b_id"),
+            },
         },
         "biggest_risk": {
             "label": "Biggest Risk",
@@ -753,6 +766,10 @@ def get_smart_assistant_actions() -> dict:
             "detail": risk_source.get("recommendation", {}).get("label")
             or risk_source.get("meta")
             or "Stable.",
+            "action": {
+                "kind": "open_roster_fighter",
+                "fighter_id": risk_source.get("id"),
+            },
         },
     }
 
